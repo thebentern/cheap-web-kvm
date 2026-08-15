@@ -1,0 +1,707 @@
+<!-- Loaded via $.load() into #screenRecorder -->
+<style>
+/*  Draggable control panel  */
+#srPanel {
+    position: fixed;
+    top: 70px;
+    right: 20px;
+    width: 272px;
+    background: rgba(26, 26, 26, 0.96);
+    border-radius: 8px;
+    z-index: 1500;
+    display: none;
+    flex-direction: column;
+    box-shadow: 0 6px 28px rgba(0, 0, 0, 0.55);
+    color: #eee;
+    font-size: 13px;
+    user-select: none;
+}
+
+.sr-drag-bar {
+    background: rgba(80, 80, 80, 0.6);
+    padding: 7px 10px;
+    border-radius: 8px 8px 0 0;
+    cursor: move;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.sr-drag-title { color: #ccc; font-size: 12px; }
+
+.sr-body { padding: 12px; }
+
+/* Timer / size row – hidden when idle */
+.sr-info-row {
+    display: none;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding: 6px 8px;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 5px;
+    font-family: monospace;
+}
+.sr-timer { color: #ff5555; font-weight: bold; font-size: 14px; }
+.sr-bytes { color: #aaa; font-size: 12px; }
+
+/* Mode badge (full-video / area) */
+.sr-mode-badge {
+    font-size: 11px;
+    color: #888;
+    margin-bottom: 8px;
+    display: none;
+}
+
+/* 2-column button grid */
+.sr-btn-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+.sr-btn-grid .ui.button {
+    padding: 8px 4px;
+    font-size: 11.5px;
+    margin: 0;
+}
+
+.sr-proc {
+    margin-top: 8px;
+    text-align: center;
+    font-size: 11px;
+    color: #aaa;
+    display: none;
+}
+
+/*  Area-selection overlay  */
+#srAreaOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2500;
+    display: none;
+    cursor: default;
+}
+
+/* Selection box */
+#srSelBox {
+    position: absolute;
+    border: 2px solid #44aaff;
+    cursor: move;
+    box-sizing: border-box;
+}
+
+/* 8 resize handles */
+.sr-handle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background: #fff;
+    border: 2px solid #44aaff;
+    border-radius: 2px;
+    box-sizing: border-box;
+    z-index: 1;
+}
+.sr-handle[data-h="nw"] { top:0;   left:0;   transform:translate(-50%,-50%); cursor:nw-resize; }
+.sr-handle[data-h="n"]  { top:0;   left:50%; transform:translate(-50%,-50%); cursor:n-resize;  }
+.sr-handle[data-h="ne"] { top:0;   right:0;  transform:translate(50%,-50%);  cursor:ne-resize; }
+.sr-handle[data-h="e"]  { top:50%; right:0;  transform:translate(50%,-50%);  cursor:e-resize;  }
+.sr-handle[data-h="se"] { bottom:0; right:0; transform:translate(50%,50%);   cursor:se-resize; }
+.sr-handle[data-h="s"]  { bottom:0; left:50%;transform:translate(-50%,50%);  cursor:s-resize;  }
+.sr-handle[data-h="sw"] { bottom:0; left:0;  transform:translate(-50%,50%);  cursor:sw-resize; }
+.sr-handle[data-h="w"]  { top:50%; left:0;   transform:translate(-50%,-50%); cursor:w-resize;  }
+
+/* Floating toolbar (confirm / cancel) */
+#srAreaToolbar {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    background: rgba(26, 26, 26, 0.94);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    white-space: nowrap;
+    z-index: 2;
+}
+#srAreaSizeLabel {
+    font-size: 11px;
+    color: #aaa;
+    font-family: monospace;
+    margin-right: 2px;
+}
+</style>
+
+<!--  Control panel  -->
+<div id="srPanel">
+    <div class="sr-drag-bar" id="srDragBar">
+        <span class="sr-drag-title"><i class="video camera icon"></i> Screen Recorder</span>
+        <button class="ui mini compact icon button"
+                onclick="toggleScreenRecorder()"
+                style="padding:4px 6px;margin:0;"
+                title="Close">
+            <i class="times icon"></i>
+        </button>
+    </div>
+    <div class="sr-body">
+        <!-- Timer / accumulated size -->
+        <div class="sr-info-row" id="srInfoRow">
+            <span class="sr-timer" id="srTimerVal">00:00:00</span>
+            <span class="sr-bytes" id="srBytesVal">~0 KB</span>
+        </div>
+
+        <!-- Active-recording mode badge -->
+        <div class="sr-mode-badge" id="srModeBadge"></div>
+
+        <!-- Action buttons -->
+        <div class="sr-btn-grid">
+            <button id="srBtnStart" class="ui mini green  button" onclick="srStartFull()">
+                <i class="circle icon"></i> Record
+            </button>
+            <button id="srBtnArea"  class="ui mini teal   button" onclick="srStartArea()">
+                <i class="crop icon"></i> Select Area
+            </button>
+            <button id="srBtnStop"  class="ui mini red    button disabled" onclick="srStop()" disabled>
+                <i class="stop icon"></i> Stop
+            </button>
+            <button id="srBtnSave"  class="ui mini blue   button disabled" onclick="srSave()" disabled>
+                <i class="download icon"></i> Save
+            </button>
+        </div>
+
+        <!-- Processing spinner (shown between Stop and blob-ready) -->
+        <div class="sr-proc" id="srProcRow">
+            <i class="spinner loading icon"></i> Processing recording…
+        </div>
+    </div>
+</div>
+
+<!--  Area-selection overlay  -->
+<div id="srAreaOverlay">
+    <!-- SVG dim layer (hole cut for the selection) -->
+    <svg id="srDimSvg"
+         style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;"></svg>
+
+    <!-- The adjustable selection rectangle -->
+    <div id="srSelBox">
+        <div class="sr-handle" data-h="nw"></div>
+        <div class="sr-handle" data-h="n"></div>
+        <div class="sr-handle" data-h="ne"></div>
+        <div class="sr-handle" data-h="e"></div>
+        <div class="sr-handle" data-h="se"></div>
+        <div class="sr-handle" data-h="s"></div>
+        <div class="sr-handle" data-h="sw"></div>
+        <div class="sr-handle" data-h="w"></div>
+    </div>
+
+    <!-- Toolbar pinned near the selection box -->
+    <div id="srAreaToolbar">
+        <span id="srAreaSizeLabel">0 × 0 px</span>
+        <button class="ui mini green button" onclick="srConfirmArea()">
+            <i class="check icon"></i> Record Area
+        </button>
+        <button class="ui mini icon button" onclick="srCancelArea()" title="Cancel">
+            <i class="times icon"></i>
+        </button>
+    </div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════════════
+   Screen Recorder
+   ════════════════════════════════════════════════════════════════════════════
+
+   Full-video mode  : captures the <video> element via video.captureStream().
+   Area mode        : draws the selected sub-region onto a hidden <canvas> each
+                      frame (requestAnimationFrame), then records that canvas
+                      via canvas.captureStream(30).
+
+   Sharpening note  : if the sharpening canvas (#sharpenCanvas) is active its
+                      content is used as the source for full-video recordings so
+                      the recorded video reflects what the user sees on screen.
+*/
+
+/*  State  */
+let srRecording      = false;
+let srMediaRecorder  = null;
+let srChunks         = [];
+let srBlob           = null;
+let srTimerIv        = null;
+let srStartMs        = 0;
+let srAccumBytes     = 0;
+let srCanvasRafId    = null;
+let srSelCoords      = null;   /* { x, y, w, h } in viewport px */
+let srMimeType       = 'video/webm';
+let srResizeWatcher  = null;
+
+/* Panel drag */
+let srDragActive = false;
+let srDragOff    = { x: 0, y: 0 };
+
+/* Area-selector drag */
+let srSelDrag = null;  /* { type:'move'|'resize', hnd, sx, sy, ss:{x,y,w,h} } */
+
+const SR_MIN_W = 120;
+const SR_MIN_H =  80;
+
+/*  Detect best MIME type  */
+(function () {
+    const candidates = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+    ];
+    if (typeof MediaRecorder === 'undefined') return;
+    for (const m of candidates) {
+        if (MediaRecorder.isTypeSupported(m)) { srMimeType = m; break; }
+    }
+})();
+
+/*  Helpers  */
+
+/**
+ * Returns the actual video-content rect in viewport px,
+ * accounting for letterboxing / pillarboxing.
+ */
+function srVideoRect() {
+    const v = document.getElementById('video');
+    if (!v) return null;
+    const r  = v.getBoundingClientRect();
+    const ar = (v.videoWidth && v.videoHeight) ? v.videoWidth / v.videoHeight : 16 / 9;
+    let x, y, w, h;
+    if (r.width / r.height > ar) {
+        h = r.height; w = h * ar;
+        x = r.left + (r.width - w) / 2; y = r.top;
+    } else {
+        w = r.width; h = w / ar;
+        x = r.left; y = r.top + (r.height - h) / 2;
+    }
+    return { x, y, w, h };
+}
+
+function srFmtTime(s) {
+    return [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60]
+        .map(v => String(v).padStart(2, '0')).join(':');
+}
+
+function srFmtBytes(b) {
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+    return (b / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function srBtnState(id, enabled) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.disabled = !enabled;
+    el.classList.toggle('disabled', !enabled);
+}
+
+/*  UI state machine  */
+/* states: 'idle' | 'recording' | 'processing' | 'done' */
+function srUI(state) {
+    srBtnState('srBtnStart', state === 'idle'      || state === 'done');
+    srBtnState('srBtnArea',  state === 'idle'      || state === 'done');
+    srBtnState('srBtnStop',  state === 'recording');
+    srBtnState('srBtnSave',  state === 'done');
+
+    const infoRow = document.getElementById('srInfoRow');
+    const procRow = document.getElementById('srProcRow');
+    const badge   = document.getElementById('srModeBadge');
+
+    infoRow.style.display = (state === 'recording' || state === 'done') ? 'flex'  : 'none';
+    procRow.style.display = (state === 'processing')                    ? 'block' : 'none';
+    badge.style.display   = (state === 'recording')                     ? 'block' : 'none';
+}
+
+/*  Panel show / hide  */
+function toggleScreenRecorder() {
+    const p = document.getElementById('srPanel');
+    if (!p) return;
+    if (p.style.display === 'flex') {
+        p.style.display = 'none';
+    } else {
+        p.style.display      = 'flex';
+        p.style.flexDirection = 'column';
+    }
+}
+window.toggleScreenRecorder = toggleScreenRecorder;
+
+/*  Panel drag  */
+(function () {
+    const bar = document.getElementById('srDragBar');
+    if (!bar) return;
+
+    bar.addEventListener('mousedown', function (e) {
+        if (e.target.closest('button')) return;
+        const r  = document.getElementById('srPanel').getBoundingClientRect();
+        srDragActive = true;
+        srDragOff    = { x: e.clientX - r.left, y: e.clientY - r.top };
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function (e) {
+        if (!srDragActive) return;
+        const p  = document.getElementById('srPanel');
+        const nx = Math.max(0, Math.min(e.clientX - srDragOff.x, window.innerWidth  - p.offsetWidth));
+        const ny = Math.max(0, Math.min(e.clientY - srDragOff.y, window.innerHeight - p.offsetHeight));
+        p.style.left   = nx + 'px';
+        p.style.top    = ny + 'px';
+        p.style.right  = 'auto';
+        p.style.bottom = 'auto';
+    });
+
+    document.addEventListener('mouseup', function () { srDragActive = false; });
+})();
+
+/*  Warning dialog  */
+function srWarn() {
+    return new Promise(resolve => {
+        let m = document.getElementById('srWarnModal');
+        if (!m) {
+            m = document.createElement('div');
+            m.id = 'srWarnModal';
+            m.style.cssText =
+                'position:fixed;inset:0;z-index:3000;display:flex;' +
+                'align-items:center;justify-content:center;background:rgba(0,0,0,0.65);';
+            m.innerHTML = `
+              <div style="background:#fff;border-radius:8px;padding:24px 28px;max-width:400px;
+                          width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+                <h3 style="margin:0 0 14px;font-size:15px;">
+                  <i class="orange warning sign icon"></i> Before you start recording
+                </h3>
+                <p style="margin:0 0 18px;line-height:1.65;color:#444;font-size:13px;">
+                  The video feed from the capture card will be recorded directly in the browser
+                  as a <strong>WebM</strong> file.<br><br>
+                  <strong>⚠ Resizing the browser window</strong> during recording will
+                  <strong>stop the recording automatically</strong> to prevent a corrupted output.
+                  Avoid resizing until you click <em>Stop</em>.
+                </p>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                  <button class="ui green button" id="srWarnOK" style="font-size:13px;">
+                    <i class="video icon"></i> Start Recording
+                  </button>
+                  <button class="ui button" id="srWarnNo" style="font-size:13px;">Cancel</button>
+                </div>
+              </div>`;
+            document.body.appendChild(m);
+        }
+        m.style.display = 'flex';
+        document.getElementById('srWarnOK').onclick = () => { m.style.display = 'none'; resolve(true);  };
+        document.getElementById('srWarnNo').onclick = () => { m.style.display = 'none'; resolve(false); };
+    });
+}
+
+/*  Core recording engine  */
+function srBegin(stream, mode) {
+    srChunks     = [];
+    srBlob       = null;
+    srRecording  = true;
+    srAccumBytes = 0;
+
+    let rec;
+    try { rec = new MediaRecorder(stream, { mimeType: srMimeType }); }
+    catch (e) { rec = new MediaRecorder(stream); }
+    srMediaRecorder = rec;
+
+    rec.ondataavailable = function (e) {
+        if (e.data && e.data.size > 0) {
+            srChunks.push(e.data);
+            srAccumBytes += e.data.size;
+        }
+    };
+
+    rec.onstop = function () {
+        srRecording = false;
+        _srStopTimer();
+        _srStopResizeWatch();
+        if (srCanvasRafId) { cancelAnimationFrame(srCanvasRafId); srCanvasRafId = null; }
+        srUI('processing');
+        /* Yield to let the browser repaint before building the blob */
+        setTimeout(function () {
+            srBlob   = new Blob(srChunks, { type: srMimeType.split(';')[0] || 'video/webm' });
+            srChunks = [];
+            srUI('done');
+            $('body').toast({
+                message: '<i class="check circle icon"></i> Recording ready — click <b>Save</b> to download.',
+                class: 'success'
+            });
+        }, 50);
+    };
+
+    rec.start(200);   /* emit a data chunk every 200 ms */
+
+    /* Timer */
+    srStartMs = Date.now();
+    srTimerIv = setInterval(function () {
+        const s = Math.floor((Date.now() - srStartMs) / 1000);
+        document.getElementById('srTimerVal').textContent = srFmtTime(s);
+        document.getElementById('srBytesVal').textContent = '~' + srFmtBytes(srAccumBytes);
+    }, 500);
+
+    /* Window-resize watcher */
+    const iW = window.innerWidth, iH = window.innerHeight;
+    srResizeWatcher = function () {
+        if (srRecording && (window.innerWidth !== iW || window.innerHeight !== iH)) {
+            $('body').toast({
+                message: '<i class="warning sign icon"></i> Window resized — recording stopped automatically.',
+                class: 'warning',
+                displayTime: 5000
+            });
+            srStop();
+        }
+    };
+    window.addEventListener('resize', srResizeWatcher);
+
+    const badge = document.getElementById('srModeBadge');
+    badge.textContent = (mode === 'area') ? '● Area recording' : '● Full-video recording';
+    srUI('recording');
+    $('body').toast({ message: '<i class="circle red icon"></i> Recording started', displayTime: 2000 });
+}
+
+function _srStopTimer() {
+    if (srTimerIv) { clearInterval(srTimerIv); srTimerIv = null; }
+}
+
+function _srStopResizeWatch() {
+    if (srResizeWatcher) { window.removeEventListener('resize', srResizeWatcher); srResizeWatcher = null; }
+}
+
+/*   Start full-video  */
+async function srStartFull() {
+    if (srRecording) return;
+    const v = document.getElementById('video');
+    if (!v || !v.srcObject) {
+        $('body').toast({ message: '<i class="warning icon"></i> No active video stream.', class: 'warning' });
+        return;
+    }
+    if (!await srWarn()) return;
+
+    /* Prefer the sharpening canvas when it is active, so the recording matches
+       what the user sees on screen. Fall back to the raw <video> element. */
+    const sharpenCanvas = document.getElementById('sharpenCanvas');
+    const source = (sharpenCanvas && sharpenCanvas.style.display !== 'none')
+        ? sharpenCanvas
+        : v;
+
+    let stream;
+    try { stream = source.captureStream ? source.captureStream() : v.captureStream(); }
+    catch (e) {
+        $('body').toast({ message: '<i class="warning icon"></i> Cannot capture stream: ' + e.message, class: 'error' });
+        return;
+    }
+    srBegin(stream, 'full');
+}
+
+/*   Start area-select flow  */
+function srStartArea() {
+    if (srRecording) return;
+    const v = document.getElementById('video');
+    if (!v || !v.srcObject) {
+        $('body').toast({ message: '<i class="warning icon"></i> No active video stream.', class: 'warning' });
+        return;
+    }
+    _srOpenSelector();
+}
+
+/*  Stop  */
+function srStop() {
+    if (!srRecording || !srMediaRecorder) return;
+    srMediaRecorder.stop();  /* onstop handles the rest */
+}
+
+/*   Save  */
+function srSave() {
+    if (!srBlob) return;
+    const url = URL.createObjectURL(srBlob);
+    const a   = document.createElement('a');
+    const ts  = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    a.href     = url;
+    a.download = 'KVM-Recording-' + ts + '.webm';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); document.body.removeChild(a); }, 1000);
+    $('body').toast({ message: '<i class="download icon"></i> Recording download started.', class: 'success' });
+}
+
+/*   Area selector  */
+function _srOpenSelector() {
+    const overlay = document.getElementById('srAreaOverlay');
+    overlay.style.display = 'block';
+
+    /* Default selection: centre 70 % of the video content area */
+    const vr = srVideoRect();
+    if (!vr) { overlay.style.display = 'none'; return; }
+    const pad = 0.15;
+    srSelCoords = {
+        x: vr.x + vr.w * pad,
+        y: vr.y + vr.h * pad,
+        w: vr.w * (1 - pad * 2),
+        h: vr.h * (1 - pad * 2)
+    };
+    _srRefreshSelBox();
+}
+
+function _srRefreshSelBox() {
+    const s   = srSelCoords;
+    const box = document.getElementById('srSelBox');
+    box.style.left   = s.x + 'px';
+    box.style.top    = s.y + 'px';
+    box.style.width  = s.w + 'px';
+    box.style.height = s.h + 'px';
+
+    _srDrawDim();
+    _srPositionToolbar();
+
+    /* Update pixel-size readout */
+    const v  = document.getElementById('video');
+    let px = Math.round(s.w), py = Math.round(s.h);
+    if (v && v.videoWidth && v.videoHeight) {
+        const vr = srVideoRect();
+        if (vr && vr.w && vr.h) {
+            px = Math.round(s.w * v.videoWidth  / vr.w);
+            py = Math.round(s.h * v.videoHeight / vr.h);
+        }
+    }
+    document.getElementById('srAreaSizeLabel').textContent = px + ' × ' + py + ' px';
+}
+
+/* SVG with a mask that creates a "hole" for the selected area */
+function _srDrawDim() {
+    const s = srSelCoords;
+    const W = window.innerWidth, H = window.innerHeight;
+    document.getElementById('srDimSvg').innerHTML =
+        '<defs>' +
+          '<mask id="srMask">' +
+            '<rect width="' + W + '" height="' + H + '" fill="white"/>' +
+            '<rect x="' + s.x + '" y="' + s.y + '" width="' + s.w + '" height="' + s.h + '" fill="black"/>' +
+          '</mask>' +
+        '</defs>' +
+        '<rect width="' + W + '" height="' + H + '" fill="rgba(0,0,0,0.58)" mask="url(#srMask)"/>';
+}
+
+/* Position the confirm/cancel toolbar below (or above if no room) the selection */
+function _srPositionToolbar() {
+    const s  = srSelCoords;
+    const tb = document.getElementById('srAreaToolbar');
+    const tbW = tb.offsetWidth  || 280;
+    const tbH = tb.offsetHeight || 40;
+
+    let ty = s.y + s.h + 12;
+    if (ty + tbH > window.innerHeight - 8) ty = s.y - tbH - 12;
+    if (ty < 4) ty = s.y + 4;
+
+    let tx = s.x + s.w / 2 - tbW / 2;
+    tx = Math.max(4, Math.min(tx, window.innerWidth - tbW - 4));
+
+    tb.style.left = tx + 'px';
+    tb.style.top  = ty + 'px';
+}
+
+/*   Area selector drag / resize  */
+(function () {
+    /* Move the whole box */
+    document.getElementById('srSelBox').addEventListener('mousedown', function (e) {
+        if (e.target.closest('.sr-handle')) return;
+        e.preventDefault();
+        srSelDrag = { type: 'move', sx: e.clientX, sy: e.clientY, ss: Object.assign({}, srSelCoords) };
+    });
+
+    /* Resize via a handle */
+    document.querySelectorAll('#srSelBox .sr-handle').forEach(function (h) {
+        h.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            srSelDrag = { type: 'resize', hnd: h.dataset.h, sx: e.clientX, sy: e.clientY, ss: Object.assign({}, srSelCoords) };
+        });
+    });
+
+    document.addEventListener('mousemove', function (e) {
+        if (!srSelDrag) return;
+        const vr = srVideoRect() || { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
+        const dx = e.clientX - srSelDrag.sx;
+        const dy = e.clientY - srSelDrag.sy;
+        const ss = srSelDrag.ss;
+        let { x, y, w, h } = ss;
+
+        if (srSelDrag.type === 'move') {
+            x = Math.max(vr.x, Math.min(ss.x + dx, vr.x + vr.w - w));
+            y = Math.max(vr.y, Math.min(ss.y + dy, vr.y + vr.h - h));
+
+        } else {
+            const hnd = srSelDrag.hnd;
+
+            if (hnd.includes('e')) { w = Math.max(SR_MIN_W, ss.w + dx); }
+            if (hnd.includes('s')) { h = Math.max(SR_MIN_H, ss.h + dy); }
+            if (hnd.includes('w')) { const nw = Math.max(SR_MIN_W, ss.w - dx); x = ss.x + ss.w - nw; w = nw; }
+            if (hnd.includes('n')) { const nh = Math.max(SR_MIN_H, ss.h - dy); y = ss.y + ss.h - nh; h = nh; }
+
+            /* Clamp within video bounds */
+            if (x < vr.x)            { w -= (vr.x - x); x = vr.x; }
+            if (y < vr.y)            { h -= (vr.y - y); y = vr.y; }
+            if (x + w > vr.x + vr.w) { w = vr.x + vr.w - x; }
+            if (y + h > vr.y + vr.h) { h = vr.y + vr.h - y; }
+
+            /* Re-enforce minimum after boundary clamp */
+            w = Math.max(SR_MIN_W, w);
+            h = Math.max(SR_MIN_H, h);
+        }
+
+        srSelCoords = { x, y, w, h };
+        _srRefreshSelBox();
+    });
+
+    document.addEventListener('mouseup', function () { srSelDrag = null; });
+})();
+
+/* Confirm area and begin recording */
+async function srConfirmArea() {
+    document.getElementById('srAreaOverlay').style.display = 'none';
+
+    const v = document.getElementById('video');
+    if (!v || !v.srcObject) {
+        $('body').toast({ message: '<i class="warning icon"></i> No active video stream.', class: 'warning' });
+        return;
+    }
+    if (!await srWarn()) return;
+
+    /* Map the viewport-px selection to source-video pixels */
+    const vr    = srVideoRect();
+    const scaleX = v.videoWidth  / vr.w;
+    const scaleY = v.videoHeight / vr.h;
+    const s      = srSelCoords;
+    const srcX   = Math.round((s.x - vr.x) * scaleX);
+    const srcY   = Math.round((s.y - vr.y) * scaleY);
+    const srcW   = Math.round(s.w * scaleX);
+    const srcH   = Math.round(s.h * scaleY);
+
+    /* Off-screen canvas: draws the selected region each frame */
+    const canvas = document.createElement('canvas');
+    canvas.width  = srcW;
+    canvas.height = srcH;
+    const ctx = canvas.getContext('2d');
+
+    function drawLoop() {
+        if (!srRecording) return;
+        ctx.drawImage(v, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
+        srCanvasRafId = requestAnimationFrame(drawLoop);
+    }
+    srCanvasRafId = requestAnimationFrame(drawLoop);
+
+    let stream;
+    try { stream = canvas.captureStream(30); }
+    catch (e) {
+        cancelAnimationFrame(srCanvasRafId);
+        srCanvasRafId = null;
+        $('body').toast({ message: '<i class="warning icon"></i> Cannot capture canvas: ' + e.message, class: 'error' });
+        return;
+    }
+    srBegin(stream, 'area');
+}
+
+function srCancelArea() {
+    document.getElementById('srAreaOverlay').style.display = 'none';
+}
+
+srUI('idle');
+</script>

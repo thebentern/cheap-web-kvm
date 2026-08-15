@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+
+# GPIO19/20 are muxed between USB-OTG and USB Serial/JTAG, and UART0 carries the
+# host protocol, so the console goes to UART1. Set CONFIG_ESP_CONSOLE_NONE once
+# it is no longer needed.
+CONFIG_ESP_CONSOLE_UART_CUSTOM=y
+CONFIG_ESP_CONSOLE_UART_CUSTOM_NUM_1=y
+CONFIG_ESP_CONSOLE_UART_TX_GPIO=17
+CONFIG_ESP_CONSOLE_UART_RX_GPIO=18
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
+
+# Boot keyboard + pointer.
+CONFIG_TINYUSB_HID_COUNT=2
+
+# 1 ms resolution for the inter-report floor in kvm_hid.c.
+CONFIG_FREERTOS_HZ=1000
+
+# Octal PSRAM left disabled: it consumes GPIO35/36/37 and nothing here needs it.

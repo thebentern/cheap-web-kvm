@@ -141,3 +141,17 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# --- ESP-IDF firmware ---
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/managed_components/
+# firmware/dependencies.lock is intentionally NOT ignored: it pins the resolved
+# esp_tinyusb / tinyusb versions so builds are reproducible.
+
+# --- Go HTTPS helper (self-signed certs generated on first run) ---
+src/cert.pem
+src/key.pem
+src/usbkvm
+src/usbkvm.exe

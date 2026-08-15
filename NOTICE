@@ -1,0 +1,98 @@
+cheap-web-kvm
+Copyright (C) 2026 Ben Meadors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. See LICENSE for the full text.
+
+
+================================================================================
+UPSTREAM WORK
+================================================================================
+
+This project contains a modified copy of DezKVM-Go.
+
+    DezKVM-Go
+    Copyright (C) tobychui
+    https://github.com/tobychui/DezKVM-Go
+    Licensed under the GNU General Public License v3.0
+
+The entire web front-end -- docs/ and src/www/ -- together with the Go HTTPS
+helper in src/ originates there. That includes the paste box, the OCR copy box,
+the on-screen keyboard, quick-access hotkeys and macros, the screen recorder,
+stacked keys, the mouse jiggler, the settings panel, and the CH9329 byte
+serialisation that this project's firmware was written to match.
+
+
+================================================================================
+MODIFICATIONS (GPLv3 section 5a)
+================================================================================
+
+Relative to upstream DezKVM-Go as of the fork point:
+
+Added
+  firmware/                   ESP32-S3 firmware (ESP-IDF + TinyUSB). Presents a
+                              boot-protocol HID keyboard and an absolute mouse to
+                              the target, and accepts CH9329-compatible frames
+                              from the host on UART0 at 115200. New work, GPLv3.
+  tools/ch9329_test.py        Protocol test harness. New work, GPLv3.
+  tools/verify_descriptors.py USB descriptor validator. New work, GPLv3.
+  docs/PROTOCOL.md            The CH9329 wire protocol as the UI actually speaks
+                              it, extracted from docs/local-kvm.js. New work.
+  NOTICE                      This file.
+
+Changed
+  docs/local-kvm.js           Added the MS2130 capture dongle (534d:2130,
+  src/www/local-kvm.js        345f:2130) to supportedVidPidPairs, ahead of the
+                              existing MS2109 entries which are retained. Added a
+                              1080p60 entry to MODE_LIST for the MS2130. Reworded
+                              two MS2109-specific console/toast messages to refer
+                              to the capture device generically.
+
+  docs/settings.html          Reworded the HID Baudrate field description: this
+  src/www/settings.html       firmware always starts at 115200, so the CH9329
+                              9600-baud reconfiguration step does not apply. The
+                              9600 option itself is retained for use with real
+                              CH9329 hardware.
+
+  src/update_githubpage.sh    The clean step now preserves docs/PROTOCOL.md,
+                              which lives in docs/ but is not part of the served
+                              UI and would otherwise be deleted on every sync.
+
+  README.md                   Rewritten for this hardware and setup flow.
+
+Removed
+  PCB/                        Not copied. See below.
+  3D Models/
+  img/                        Upstream product photography, not applicable here.
+
+
+================================================================================
+HARDWARE ASSETS DELIBERATELY NOT INCLUDED
+================================================================================
+
+Upstream licenses its hardware assets -- the PCB/ and "3D Models/" directories --
+under Creative Commons BY-NC-ND (Attribution, NonCommercial, NoDerivatives).
+NoDerivatives means they may not be modified and redistributed, so they are not
+copied into this repository in any form, modified or otherwise.
+
+This project does not need them: it uses a stock ESP32-S3 dev board and an
+off-the-shelf HDMI capture dongle. Obtain the reference hardware from upstream
+under its own terms.
+
+
+================================================================================
+THIRD-PARTY COMPONENTS
+================================================================================
+
+jQuery 3.7.1 (docs/scripts/, src/www/scripts/)   MIT License
+    Copyright OpenJS Foundation and other contributors
+    Vendored by upstream; carried over unmodified.
+
+Fomantic-UI / Semantic-UI classes are referenced by the markup inherited from
+upstream.
+
+The firmware pulls espressif/esp_tinyusb and espressif/tinyusb at build time via
+the ESP-IDF component manager; both are Apache-2.0 / MIT and are not vendored
+into this repository.

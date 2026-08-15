@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Pinned to the 2.x API: 2.0 moved descriptors from Kconfig into tinyusb_config_t.
+
+dependencies:
+  idf: ">=5.0"
+  espressif/esp_tinyusb: ">=2.0.0,<3.0.0"
