@@ -25,15 +25,17 @@ static const char *TAG = "kvm_hid";
  * than this. The endpoint interval is also 10 ms, so it rarely adds delay. */
 #define KVM_MIN_REPORT_INTERVAL_MS 10
 
-/* Kept well under the 300 ms the web UI waits for its ACK. */
-#define KVM_HID_READY_TIMEOUT_MS 100
+/* Must stay under CH9329_POST_TIMEOUT_MS, or a stalled endpoint on one
+ * interface backs the shared queue up and turns host ACKs into errors. */
+#define KVM_HID_READY_TIMEOUT_MS 40
 
 #define KVM_HID_TASK_STACK 4096
 #define KVM_HID_TASK_PRIO  4
 
-static QueueHandle_t s_evt_queue;
-static volatile bool s_mounted;
-static int64_t       s_last_report_us[KVM_HID_ITF_COUNT];
+static QueueHandle_t   s_evt_queue;
+static volatile bool   s_mounted;
+static volatile uint8_t s_kbd_leds;
+static int64_t         s_last_report_us[KVM_HID_ITF_COUNT];
 
 typedef struct __attribute__((packed)) {
     uint8_t modifier;
@@ -59,9 +61,20 @@ _Static_assert(sizeof(kvm_kbd_report_t) == 8, "boot keyboard report must be 8 by
 _Static_assert(sizeof(kvm_mouse_abs_report_t) == 6, "absolute mouse report must be 6 bytes");
 _Static_assert(sizeof(kvm_mouse_rel_report_t) == 4, "relative mouse report must be 4 bytes");
 
+/* Last report sent on each path, so Get_Report can be answered and so
+ * hid_release_all() can clear buttons without moving the pointer. */
+static kvm_kbd_report_t       s_last_kbd;
+static kvm_mouse_abs_report_t s_last_abs;
+static kvm_mouse_rel_report_t s_last_rel;
+
 bool kvm_hid_mounted(void)
 {
     return s_mounted;
+}
+
+uint8_t kvm_hid_leds(void)
+{
+    return s_kbd_leds;
 }
 
 static bool hid_wait_writable(uint8_t instance)
@@ -70,6 +83,14 @@ static bool hid_wait_writable(uint8_t instance)
     int64_t elapsed = esp_timer_get_time() - s_last_report_us[instance];
     if (elapsed < floor_us) {
         vTaskDelay(pdMS_TO_TICKS((floor_us - elapsed + 999) / 1000));
+    }
+
+    /* tud_hid_n_ready() goes false on bus suspend while s_mounted stays true,
+     * so without this every event would burn the whole timeout and be dropped. */
+    if (tud_suspended()) {
+        if (!tud_remote_wakeup()) {
+            return false;
+        }
     }
 
     const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(KVM_HID_READY_TIMEOUT_MS);
@@ -82,30 +103,63 @@ static bool hid_wait_writable(uint8_t instance)
     return true;
 }
 
-static void hid_send(uint8_t instance, uint8_t report_id, const void *report, uint16_t len)
+static bool hid_send(uint8_t instance, uint8_t report_id, const void *report, uint16_t len)
 {
     if (!s_mounted) {
-        return;
+        return false;
     }
     if (!hid_wait_writable(instance)) {
         ESP_LOGW(TAG, "HID interface %u not writable, dropping report", instance);
-        return;
+        return false;
     }
     if (!tud_hid_n_report(instance, report_id, report, len)) {
         ESP_LOGW(TAG, "tud_hid_n_report failed on interface %u", instance);
-        return;
+        return false;
     }
     s_last_report_us[instance] = esp_timer_get_time();
+    return true;
 }
 
-/* Stops a key held when the link dropped from staying down on the target. */
+/* Stops a key or button held when the link dropped from staying down on the
+ * target. Both pointer report IDs are separate top-level collections, so hosts
+ * track their button state independently and both must be cleared. The absolute
+ * report keeps its last position so clearing does not fling the cursor. */
 static void hid_release_all(void)
 {
-    const kvm_kbd_report_t kbd = {0};
-    hid_send(KVM_HID_ITF_KEYBOARD, 0, &kbd, sizeof(kbd));
+    memset(&s_last_kbd, 0, sizeof(s_last_kbd));
+    hid_send(KVM_HID_ITF_KEYBOARD, 0, &s_last_kbd, sizeof(s_last_kbd));
 
-    const kvm_mouse_rel_report_t rel = {0};
-    hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_REL, &rel, sizeof(rel));
+    s_last_abs.buttons = 0;
+    s_last_abs.wheel   = 0;
+    hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_ABS, &s_last_abs, sizeof(s_last_abs));
+
+    memset(&s_last_rel, 0, sizeof(s_last_rel));
+    hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_REL, &s_last_rel, sizeof(s_last_rel));
+}
+
+/* The web UI puts modifier usages (0xE0-0xE7) in the keycode array instead of
+ * the modifier byte - paste-box.js sends Shift as SendKeyboardPress(16), which
+ * maps to usage 0xE1 and lands in a keycode slot. Boot-protocol consumers only
+ * read the modifier byte, so a BIOS would see lowercase for every shifted
+ * character. Fold them across; the resulting report is strictly more standard
+ * and identical for hosts that already handled the array form. */
+static void fold_array_modifiers(kvm_kbd_report_t *report)
+{
+    uint8_t keys[6] = {0};
+    uint8_t n = 0;
+
+    for (int i = 0; i < 6; i++) {
+        uint8_t k = report->keycode[i];
+        if (k == 0) {
+            continue;
+        }
+        if (k >= 0xE0 && k <= 0xE7) {
+            report->modifier |= (uint8_t)(1u << (k - 0xE0));
+        } else if (n < sizeof(keys)) {
+            keys[n++] = k;
+        }
+    }
+    memcpy(report->keycode, keys, sizeof(keys));
 }
 
 static void kvm_hid_task(void *arg)
@@ -125,6 +179,8 @@ static void kvm_hid_task(void *arg)
                 .reserved = 0,
             };
             memcpy(report.keycode, evt.kbd.keys, sizeof(report.keycode));
+            fold_array_modifiers(&report);
+            s_last_kbd = report;
             hid_send(KVM_HID_ITF_KEYBOARD, 0, &report, sizeof(report));
             break;
         }
@@ -138,6 +194,7 @@ static void kvm_hid_task(void *arg)
                 .y       = y,
                 .wheel   = evt.abs.wheel,
             };
+            s_last_abs = report;
             hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_ABS, &report, sizeof(report));
             break;
         }
@@ -149,6 +206,7 @@ static void kvm_hid_task(void *arg)
                 .dy      = evt.rel.dy,
                 .wheel   = evt.rel.wheel,
             };
+            s_last_rel = report;
             hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_REL, &report, sizeof(report));
             break;
         }
@@ -189,6 +247,7 @@ static void kvm_usb_event_cb(tinyusb_event_t *event, void *arg)
         break;
     case TINYUSB_EVENT_DETACHED:
         s_mounted = false;
+        s_kbd_leds = 0;
         ESP_LOGW(TAG, "target detached (powered off or unplugged)");
         break;
     default:
@@ -232,19 +291,44 @@ esp_err_t kvm_hid_start(void)
     return ESP_OK;
 }
 
+/* Get_Report is a mandatory HID class request; returning 0 would STALL EP0. */
 uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id,
                                hid_report_type_t report_type, uint8_t *buffer,
                                uint16_t reqlen)
 {
-    (void)instance;
-    (void)report_id;
-    (void)report_type;
-    (void)buffer;
-    (void)reqlen;
-    return 0;
+    const void *src = NULL;
+    uint16_t len = 0;
+
+    if (report_type == HID_REPORT_TYPE_INPUT) {
+        if (instance == KVM_HID_ITF_KEYBOARD) {
+            src = &s_last_kbd;
+            len = sizeof(s_last_kbd);
+        } else if (instance == KVM_HID_ITF_MOUSE) {
+            if (report_id == KVM_REPORT_ID_MOUSE_ABS) {
+                src = &s_last_abs;
+                len = sizeof(s_last_abs);
+            } else if (report_id == KVM_REPORT_ID_MOUSE_REL) {
+                src = &s_last_rel;
+                len = sizeof(s_last_rel);
+            }
+        }
+    } else if (report_type == HID_REPORT_TYPE_OUTPUT &&
+               instance == KVM_HID_ITF_KEYBOARD) {
+        static uint8_t leds;
+        leds = s_kbd_leds;
+        src  = &leds;
+        len  = sizeof(leds);
+    }
+
+    if (src == NULL || len > reqlen) {
+        return 0;
+    }
+    memcpy(buffer, src, len);
+    return len;
 }
 
-/* Only OUT report is the keyboard LED state; the target owns it, so ignore. */
+/* Only OUT report is the keyboard LED state; kept so CH9329 GET_INFO can
+ * report it. */
 void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
                            hid_report_type_t report_type, const uint8_t *buffer,
                            uint16_t bufsize)
@@ -252,6 +336,6 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
     (void)report_id;
     if (instance == KVM_HID_ITF_KEYBOARD && report_type == HID_REPORT_TYPE_OUTPUT &&
         bufsize >= 1) {
-        ESP_LOGD(TAG, "keyboard LED state: 0x%02x", buffer[0]);
+        s_kbd_leds = buffer[0];
     }
 }

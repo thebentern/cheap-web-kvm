@@ -3,13 +3,16 @@
 
 SPDX-License-Identifier: GPL-3.0-or-later
 """
+import argparse
+import pathlib
 import re
 import subprocess
 import sys
 
-ELF = "/Users/benmeadors/Documents/GitHub/cheap-web-kvm/firmware/build/cheap-web-kvm.elf"
+DEFAULT_ELF = pathlib.Path(__file__).resolve().parent.parent / "firmware/build/cheap-web-kvm.elf"
 OBJDUMP = "xtensa-esp32s3-elf-objdump"
 NM = "xtensa-esp32s3-elf-nm"
+ELF = str(DEFAULT_ELF)
 
 
 def symbols():
@@ -89,6 +92,15 @@ def report_sizes(items):
 
 
 def main():
+    global ELF
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("elf", nargs="?", default=str(DEFAULT_ELF),
+                    help="firmware ELF (default: firmware/build/cheap-web-kvm.elf)")
+    ELF = ap.parse_args().elf
+    if not pathlib.Path(ELF).is_file():
+        print(f"ELF not found: {ELF}\nBuild it first: cd firmware && idf.py build", file=sys.stderr)
+        return 2
+
     syms, mem = symbols(), memory_image()
     ok = True
 
@@ -113,6 +125,8 @@ def main():
     total = int.from_bytes(cfg[2:4], "little")
     check(total == size, f"wTotalLength={total} matches actual array length {size}")
     check(cfg[4] == 2, f"bNumInterfaces={cfg[4]}")
+    check(bool(cfg[7] & 0x20),
+          f"bmAttributes=0x{cfg[7]:02x} advertises Remote Wakeup (can wake a sleeping target)")
 
     i, itfs = 0, []
     while i < len(cfg):

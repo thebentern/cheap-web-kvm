@@ -173,11 +173,53 @@ BIOS/UEFI especially.
 ## 6. Commands the firmware implements but the UI never sends
 
 `0x01` (get info) replies with an 8-byte payload: firmware version `0x30`, USB
-enumeration status (`0x01` when the target has enumerated us), keyboard LED
-state, then reserved zeros. It exists for compatibility with third-party CH9329
-tooling. Nothing in the web UI calls it.
+enumeration status (`0x01` when the target has enumerated us), the keyboard LED
+bitmap the target last pushed over `SET_REPORT`, then reserved zeros. It exists
+for compatibility with third-party CH9329 tooling. Nothing in the web UI calls
+it.
 
-## 7. Where this contradicts the project brief
+## 7. Deliberate deviations from byte-faithful emulation
+
+Two places where the firmware does **not** simply forward what the UI sent.
+
+### Modifier usages are folded into the modifier byte
+
+The UI puts modifier keys in the *keycode array*, not the modifier byte. The
+paste box sends Shift as `SendKeyboardPress(16)`, and
+`javaScriptKeycodeToHIDOpcode(16)` returns `0xE1`, which then occupies one of the
+six keycode slots while the modifier byte stays `0x00`:
+
+```js
+// paste-box.js
+if (needsShift) {
+    await controller.SendKeyboardPress(16);
+}
+```
+
+Full-OS HID stacks generally cope with modifier usages appearing in the array.
+Boot-protocol consumers do not — they read shift state from the modifier byte
+only. Forwarding this verbatim would mean every uppercase letter and shifted
+symbol pasted at a BIOS/UEFI prompt arrives unshifted, which defeats the point of
+the device.
+
+The firmware therefore folds any usage in `0xE0..0xE7` out of the keycode array
+and into the corresponding modifier bit. Hosts that already handled the array
+form see an equivalent report, so nothing regresses.
+
+Note that upstream maps JS keycode 18 (Alt) to `0xE6`, which is Right Alt;
+Left Alt is `0xE2`. The firmware folds whatever it is given rather than
+second-guessing it, so Alt still arrives as Right Alt.
+
+### Soft reset clears both pointer report IDs
+
+`0x0F` releases the keyboard *and* both pointer reports. Report IDs 1 and 2 are
+separate top-level Application collections, so hosts that instantiate one device
+per collection — Windows and macOS do — track their button state independently,
+and clearing only one would leave a button latched. The absolute release repeats
+the last known position so that unsticking a button does not fling the cursor to
+the corner.
+
+## 8. Where this contradicts the project brief
 
 Three assumptions in the original brief did not survive contact with the source:
 
@@ -196,7 +238,7 @@ Three assumptions in the original brief did not survive contact with the source:
    `534d:2109` / `345f:2109` (MS2109). The MS2130 enumerates as `534d:2130` and
    would not have been found. See [`local-kvm.js`](local-kvm.js).
 
-## 8. Reference
+## 9. Reference
 
 The test harness at [`tools/ch9329_test.py`](../tools/ch9329_test.py) emits
 byte-exact frames matching this document and validates the replies. Run it

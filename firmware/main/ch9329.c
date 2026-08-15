@@ -96,6 +96,7 @@ static void handle_get_info(uint8_t addr)
     uint8_t info[8] = {0};
     info[0] = CH9329_FW_VERSION;
     info[1] = kvm_hid_mounted() ? 0x01 : 0x00;
+    info[2] = kvm_hid_leds();
     send_frame(addr, CH9329_REPLY_OK(CH9329_CMD_GET_INFO), info, sizeof(info));
 }
 
@@ -154,11 +155,14 @@ static void dispatch(const parser_t *p)
     }
 
     /* Answer on acceptance, not on delivery: the UI blocks up to 300 ms per
-     * command and sends up to four per pasted character. */
+     * command and sends up to four per pasted character.
+     *
+     * A dropped event is still ACKed OK. sendPasteText() in paste-box.js has no
+     * try/catch, so an error reply escapes past its UI-restore code and leaves
+     * the paste box permanently disabled - worse than losing a keystroke, and
+     * inconsistent with the target-not-mounted path which also drops silently. */
     if (kvm_hid_post(&evt, CH9329_POST_TIMEOUT_MS) != ESP_OK) {
-        ESP_LOGW(TAG, "HID queue full, rejecting command 0x%02x", p->cmd);
-        reply_err(p->addr, p->cmd, CH9329_ERR_TIMEOUT);
-        return;
+        ESP_LOGW(TAG, "HID queue full, dropping command 0x%02x", p->cmd);
     }
     reply_ok(p->addr, p->cmd);
 }
@@ -252,7 +256,18 @@ static void ch9329_task(void *arg)
     ESP_LOGI(TAG, "listening on UART%d at %d 8N1", CH9329_UART_NUM, CH9329_BAUD_RATE);
 
     for (;;) {
-        int n = uart_read_bytes(CH9329_UART_NUM, chunk, sizeof(chunk), pdMS_TO_TICKS(20));
+        /* uart_read_bytes() keeps blocking until it has the full requested
+         * count, so asking for a whole chunk would add the entire timeout to
+         * every 11-13 byte frame. Read only what has already landed. */
+        size_t avail = 0;
+        if (uart_get_buffered_data_len(CH9329_UART_NUM, &avail) != ESP_OK || avail == 0) {
+            vTaskDelay(1);
+            continue;
+        }
+        if (avail > sizeof(chunk)) {
+            avail = sizeof(chunk);
+        }
+        int n = uart_read_bytes(CH9329_UART_NUM, chunk, avail, 0);
         for (int i = 0; i < n; i++) {
             parser_feed(&p, chunk[i]);
         }

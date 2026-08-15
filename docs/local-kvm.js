@@ -10,6 +10,10 @@
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
+
+    MODIFIED 2026-08-15 by Ben Meadors for cheap-web-kvm: added the MS2130
+    capture dongle to supportedVidPidPairs and a 1080p60 entry to MODE_LIST,
+    and made two MS2109-specific messages generic. See ../NOTICE.
 */
 
 /*

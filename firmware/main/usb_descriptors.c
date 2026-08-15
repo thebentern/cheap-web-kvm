@@ -150,7 +150,9 @@ static const tusb_desc_device_t s_device_desc = {
 #define KVM_CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + 2 * TUD_HID_DESC_LEN)
 
 static const uint8_t s_fs_config_desc[] = {
-    TUD_CONFIG_DESCRIPTOR(1, KVM_HID_ITF_COUNT, 0, KVM_CONFIG_TOTAL_LEN, 0x00, 100),
+    /* Remote wakeup: waking a sleeping target is the whole point of a KVM. */
+    TUD_CONFIG_DESCRIPTOR(1, KVM_HID_ITF_COUNT, 0, KVM_CONFIG_TOTAL_LEN,
+                          TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 100),
 
     /* Boot subclass + Keyboard protocol on interface 0, or the keyboard works
      * under Linux and does nothing in BIOS/UEFI/GRUB. */

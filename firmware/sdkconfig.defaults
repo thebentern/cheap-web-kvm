@@ -12,6 +12,16 @@ CONFIG_ESP_CONSOLE_UART_TX_GPIO=17
 CONFIG_ESP_CONSOLE_UART_RX_GPIO=18
 CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
 
+# The secondary console defaults to USB Serial/JTAG, which keeps the USJ pad
+# alive on the same GPIO19/20 the OTG peripheral needs. Disabling the module
+# outright also drops its startup clock; its built-in JTAG is unusable here
+# anyway, since those pins belong to USB-OTG.
+#
+# Regenerate after changing these: sdkconfig.defaults does not override an
+# existing firmware/sdkconfig. Delete it and rebuild.
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+CONFIG_USJ_ENABLE_USB_SERIAL_JTAG=n
+
 # Boot keyboard + pointer.
 CONFIG_TINYUSB_HID_COUNT=2
 

@@ -1,5 +1,9 @@
 
 <!-- This document is supposed to be loaded via AJAX into viewport.html -->
+<!-- Part of DezKVM-Go by tobychui, GPLv3.
+     MODIFIED 2026-08-15 by Ben Meadors for cheap-web-kvm: reworded the HID
+     Baudrate description and the About tab's supported-hardware list for
+     ESP32-S3 + MS2130. See ../NOTICE. -->
 <style>
 /* Settings Overlay Styles */
 #settings-overlay{
@@ -455,10 +459,10 @@
                 <b>Supported Hardware</b>
                 <div class="ui relaxed list">
                     <div class="item">
-                        <div class="content"><strong>MS2109</strong> HDMI capture card (video/audio)</div>
+                        <div class="content"><strong>MS2130</strong> HDMI capture card (video/audio, 1080p60) &mdash; <strong>MS2109</strong> also supported</div>
                     </div>
                     <div class="item">
-                        <div class="content"><strong>CH9329</strong> USB HID chip (keyboard/mouse)</div>
+                        <div class="content"><strong>ESP32-S3</strong> USB HID keyboard/mouse (CH9329-compatible firmware) &mdash; a real <strong>CH9329</strong> also works</div>
                     </div>
                 </div>
 

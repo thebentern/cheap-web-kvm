@@ -29,6 +29,9 @@ ABS_MAX = 4095
 
 MOD_LCTRL, MOD_LSHIFT, MOD_LALT, MOD_LGUI = 0x01, 0x02, 0x04, 0x08
 
+# The UI sends modifiers as array usages, not modifier bits. See PROTOCOL.md s7.
+HID_LSHIFT = 0xE1
+
 
 def checksum(data: bytes) -> int:
     """Sum of every byte, mod 256 - header included."""
@@ -176,6 +179,9 @@ GOLDEN = [
      "57 ab 00 02 08 02 00 04 00 00 00 00 00 12"),
     ("keyboard: all released", f_keyboard(),
      "57 ab 00 02 08 00 00 00 00 00 00 00 00 0c"),
+    ("keyboard: browser shift+A (0xE1 in the array, empty modifier byte)",
+     f_keyboard(0, [HID_LSHIFT, 0x04]),
+     "57 ab 00 02 08 00 00 e1 04 00 00 00 00 f1"),
     ("abs mouse: centre (2048,2048)", f_mouse_abs(0, 2048, 2048),
      "57 ab 00 04 07 02 00 00 08 00 08 00 1f"),
     ("rel mouse: dx=-1", f_mouse_rel(0, -1, 0, 0),
@@ -228,6 +234,8 @@ def do_reset(link):
 
 
 def do_type(link, text, delay):
+    """Mirrors paste-box.js: four frames per shifted character, Shift as an
+    array usage rather than a modifier bit."""
     print(f"Typing {len(text)} characters...")
     skipped = 0
     for ch in text:
@@ -236,10 +244,13 @@ def do_type(link, text, delay):
             skipped += 1
             continue
         modifier, code = mapped
-        link.send(f_keyboard(modifier, [code]), CMD_KEYBOARD)
-        time.sleep(delay)
-        link.send(f_keyboard(), CMD_KEYBOARD)
-        time.sleep(delay)
+        if modifier & MOD_LSHIFT:
+            seq = [[HID_LSHIFT], [HID_LSHIFT, code], [HID_LSHIFT, 0], []]
+        else:
+            seq = [[code], []]
+        for keys in seq:
+            link.send(f_keyboard(0, keys), CMD_KEYBOARD)
+            time.sleep(delay)
     print(f"  sent, {skipped} unsupported characters skipped")
 
 

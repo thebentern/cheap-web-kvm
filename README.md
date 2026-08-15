@@ -67,7 +67,10 @@ nothing to do with video.
 
 ## Firmware
 
-Needs [ESP-IDF v5.x](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/).
+Needs [ESP-IDF v5.3 or
+newer](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
+(that is where the `esp_driver_uart` component split landed). Built and verified
+against v5.4.
 
 ```bash
 cd firmware && idf.py set-target esp32s3 && idf.py build
@@ -93,11 +96,13 @@ adapter to read it. Set `CONFIG_ESP_CONSOLE_NONE` once you no longer need it.
 Web Serial requires a secure context, so the UI has to be served over HTTPS or
 from `localhost`.
 
-* **Hosted:** enable GitHub Pages on this repo (branch `main`, folder `/docs`)
-  and open the resulting URL.
-* **Offline:** `cd src && ./start.sh`, then visit `https://localhost:8443/` in
-  Chrome, Edge, or another Chromium browser. It generates a self-signed
-  certificate on first run.
+* **Offline (works today):** `cd src && ./start.sh`, then visit
+  `https://localhost:8443/` in Chrome, Edge, or another Chromium browser. It
+  generates a self-signed certificate on first run.
+* **Hosted:** Pages is enabled on `main` at folder `/`, so the UI is served from
+  `<pages-url>/docs/` rather than the site root. Point Pages at `/docs` instead
+  to move it to the root. Note that Web Serial needs a secure context — the
+  hosted route only works over HTTPS.
 
 Click the keyboard icon to pick the serial port, then click the video area. There
 is **no baud-rate configuration step** — unlike a stock CH9329, which defaults to

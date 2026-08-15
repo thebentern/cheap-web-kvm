@@ -2,5 +2,7 @@
 # Pinned to the 2.x API: 2.0 moved descriptors from Kconfig into tinyusb_config_t.
 
 dependencies:
-  idf: ">=5.0"
+  # 5.3 is the floor: esp_driver_uart (in main/CMakeLists.txt REQUIRES) only
+  # exists from the v5.3 driver split.
+  idf: ">=5.3"
   espressif/esp_tinyusb: ">=2.0.0,<3.0.0"

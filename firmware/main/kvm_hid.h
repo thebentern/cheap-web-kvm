@@ -69,6 +69,9 @@ esp_err_t kvm_hid_post(const kvm_event_t *evt, uint32_t timeout_ms);
 
 bool kvm_hid_mounted(void);
 
+/* Keyboard LED bitmap last pushed by the target (Num/Caps/Scroll Lock). */
+uint8_t kvm_hid_leds(void);
+
 #ifdef __cplusplus
 }
 #endif
