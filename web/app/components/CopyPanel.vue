@@ -400,6 +400,9 @@ function clampPanel(x: number, y: number) {
 
 function onPanelDown(e: PointerEvent) {
   if (e.button !== 0) return
+  // The close and re-select buttons live in the drag handle; capturing the
+  // pointer here would retarget their click.
+  if ((e.target as HTMLElement).closest('button')) return
   panelDragging = true
   dragOffX = e.clientX - pos.value.x
   dragOffY = e.clientY - pos.value.y

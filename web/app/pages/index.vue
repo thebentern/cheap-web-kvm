@@ -24,10 +24,14 @@ const toolbarHidden = ref(false)
 const isFullscreen = ref(false)
 
 const serialSupported = computed(() => kvm.link.supported.value)
-// Don't stack "no signal" behind the first-run prompt; the prompt already
-// explains that nothing is connected yet.
+// The card streams colour bars when the target is dark, so "no stream" is not
+// the same question as "no signal" — useCapture watches the pixels for that.
+// Don't stack this behind the first-run prompt, which already says as much.
 const showNoSignal = computed(
-  () => !capture.active.value && !panels.open.connectPrompt && serialSupported.value,
+  () =>
+    (!capture.active.value || capture.testPattern.value) &&
+    !panels.open.connectPrompt &&
+    serialSupported.value,
 )
 
 /* ------------------------------------------------------------------ capture */
@@ -225,8 +229,13 @@ watch(() => settings.invertScrollwheel, (v) => (kvm.config.invertScroll = v), { 
 watch(() => settings.scrollSensitivity, (v) => (kvm.config.scrollSensitivity = v), { immediate: true })
 watch(() => settings.ctrlCmdSwap, (v) => (kvm.config.ctrlCmdSwap = v), { immediate: true })
 
+let stopSignalWatch: (() => void) | null = null
+let stopDeviceWatch: (() => void) | null = null
+
 onMounted(() => {
   startAutosave()
+  stopSignalWatch = capture.watchSignal(() => videoEl.value)
+  stopDeviceWatch = capture.watchDevices(() => settings.enableAudio)
   if (!settings.skipConnectPrompt) panels.show('connectPrompt')
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('keyup', onKeyup)
@@ -237,6 +246,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('keyup', onKeyup)
   document.removeEventListener('fullscreenchange', syncFullscreen)
+  stopSignalWatch?.()
+  stopDeviceWatch?.()
   jiggler.dispose()
   capture.stop()
 })
