@@ -93,39 +93,49 @@ adapter to read it. Set `CONFIG_ESP_CONSOLE_NONE` once you no longer need it.
 
 ## Web UI
 
-Web Serial requires a secure context, so the UI has to be served over HTTPS or
-from `localhost`.
+A [Nuxt 4](https://nuxt.com) + Vue 3 + TypeScript app, styled with Tailwind CSS
+and statically generated. Web Serial requires a secure context, so it has to be
+served over HTTPS or from `localhost`.
 
-* **Hosted:** <https://thebentern.github.io/cheap-web-kvm/> — the app is served
-  from the repository root, and the documentation lives alongside it at
-  [`/docs/`](https://thebentern.github.io/cheap-web-kvm/docs/).
-* **Offline:** `cd src && ./start.sh`, then visit `https://localhost:8443/` in
-  Chrome, Edge, or another Chromium browser. It generates a self-signed
-  certificate on first run.
-
-The interface is styled with Tailwind CSS. The built stylesheet (`app.css`) is
-committed, so **running the app needs no build step and no network** — the
-original pulled Fomantic-UI from a CDN, which meant a KVM you could not use
-without internet. To change the styling:
+* **Hosted:** <https://thebentern.github.io/cheap-web-kvm/> — built and deployed
+  by [GitHub Actions](.github/workflows/deploy-pages.yml) on every push to
+  `main`. Documentation lives at
+  [`/docs`](https://thebentern.github.io/cheap-web-kvm/docs).
+* **Offline:** `cd src && ./sync_www.sh && ./start.sh`, then visit
+  `https://localhost:8443/` in Chrome, Edge, or another Chromium browser. It
+  generates a self-signed certificate on first run and serves a UI embedded in
+  the binary.
 
 ```bash
-npm install && npm run build:css
+cd web
+npm install
+npm run dev        # http://localhost:3000
+npm run test       # protocol golden-frame tests
+npm run generate   # static build into web/.output/public
 ```
 
-`ui-kit.js` supplies small jQuery-compatible `toast`/`checkbox`/`dropdown`/
-`progress`/`modal` shims so the inherited application logic keeps working
-unmodified against the new stylesheet.
+### It works with no internet
 
-> **Editing the UI:** roughly 90 element IDs and a dozen class names form a
-> contract with the application JavaScript, which reaches for them by name. Keep
-> them intact when changing markup. The one remaining network dependency is
-> Tesseract, lazy-loaded from a CDN by `copy-box.js` for the OCR copy feature —
-> everything else works air-gapped.
+Deliberately — this is a tool you use on-site, sometimes on an air-gapped
+machine. Everything including the OCR engine is vendored: Tesseract, its worker,
+the WASM core and the English training data live in `web/public/vendor/tesseract`.
+Only the other 19 OCR languages still fetch their training data at runtime, and
+the language picker says so.
 
-Click the keyboard icon to pick the serial port, then click the video area. There
-is **no baud-rate configuration step** — unlike a stock CH9329, which defaults to
-9600 and has to be reconfigured before first use, this firmware comes up at
-115200.
+### Layout
+
+| Path | What |
+|---|---|
+| `web/app/utils/ch9329.ts` | The wire protocol. Pure functions, no browser APIs. |
+| `web/app/composables/` | Serial transport, HID state, capture, settings, panels. |
+| `web/app/components/` | One component per panel. |
+| `web/app/pages/` | `index.vue` is the KVM; `docs/` is the documentation. |
+| `web/test/` | Golden-frame tests for the protocol. |
+
+> **`ch9329.ts` is the load-bearing file.** It is byte-verified against the
+> firmware on real hardware, and `npm run test` asserts the same golden frames
+> the Python harness uses. CI refuses to deploy if they fail. If a change makes
+> a test fail, the change is wrong.
 
 ## Verifying it works
 

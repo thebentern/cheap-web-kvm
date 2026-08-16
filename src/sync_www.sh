@@ -1,7 +1,9 @@
 #!/bin/bash
-# Copy the web UI from the repository root into src/www/ so the Go binary can
-# embed it. The root is the single source of truth: GitHub Pages serves it
-# directly, so nothing needs copying for the hosted build.
+# Build the Nuxt UI for the standalone Go server and drop it into src/www/,
+# which main.go embeds.
+#
+# The Pages deployment is built separately by CI with a /cheap-web-kvm/ base
+# URL; this build uses "/" because the Go server serves from the root.
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -11,21 +13,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DEST="$SCRIPT_DIR/www"
 
-echo "Syncing web UI: $ROOT -> $DEST"
+echo "Building the web UI for the offline server..."
+cd "$ROOT/web"
+[ -d node_modules ] || npm ci
+cp "$ROOT/docs/PROTOCOL.md" public/PROTOCOL.md
+NUXT_APP_BASE_URL=/ npm run generate
 
+echo "Copying into $DEST"
 rm -rf "$DEST"
 mkdir -p "$DEST"
+cp -R "$ROOT/web/.output/public/." "$DEST/"
 
-for f in index.html app.css ui-kit.js local-kvm.js favicon.png \
-         paste-box.html paste-box.js \
-         copy-box.html copy-box.js \
-         onscreen-keyboard.html onscreen-keyboard.js \
-         quick-access.html quick-access.js \
-         screen-recorder.html settings.html; do
-    cp "$ROOT/$f" "$DEST/$f"
-done
-
-
-cp -R "$ROOT/scripts" "$DEST/scripts"
-
-echo "Done. Now run: cd src && go build"
+echo
+echo "Done. Now run:  cd src && go build -o usbkvm . && ./usbkvm"

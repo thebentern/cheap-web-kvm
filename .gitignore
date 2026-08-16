@@ -158,4 +158,8 @@ src/usbkvm.exe
 
 # --- Web UI build tooling ---
 node_modules/
-package-lock.json
+web/.nuxt/
+web/.output/
+web/.data/
+web/dist/
+# Lock files ARE committed: CI runs `npm ci` for reproducible builds.

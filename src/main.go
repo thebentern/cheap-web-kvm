@@ -86,7 +86,7 @@ func generateSelfSignedCert(certPath, keyPath string) error {
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
-			Organization: []string{"RedesKVM"},
+			Organization: []string{"cheap-web-kvm"},
 		},
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().Add(365 * 24 * time.Hour),

@@ -47,34 +47,30 @@ Added
                               it, extracted from local-kvm.js. New work.
   NOTICE                      This file.
 
-Re-skinned
-  All UI markup was rewritten for a dark Tailwind CSS theme and rebranded as
-  cheap-web-kvm: index.html, settings.html, quick-access.html,
-  onscreen-keyboard.html, paste-box.html, copy-box.html, screen-recorder.html.
-  The Fomantic-UI CDN stylesheet and script were removed entirely - they made an
-  on-site tool depend on an internet connection. main.css and the upstream logo
-  in img/ went with them.
+Rewritten as a Nuxt/Vue application
+  The web front-end was rebuilt as a Nuxt 4 + Vue 3 + TypeScript app under web/,
+  replacing the inherited jQuery/DOM-driven implementation. It is styled with
+  Tailwind CSS and statically generated. The Fomantic-UI CDN dependency was
+  dropped -- it made an on-site tool require an internet connection -- along with
+  jQuery, main.css and the upstream logo.
 
-  The application JavaScript is otherwise upstream's and its logic was left
-  intact: every element id and every inline event handler was preserved, so the
-  rewrite is presentational only.
+  The behaviour of upstream's features was ported rather than reinvented: the
+  paste box, OCR copy box, on-screen keyboard, quick-access hotkeys, screen
+  recorder, stacked keys, mouse jiggler and settings all originate from
+  DezKVM-Go. web/app/utils/ch9329.ts is a faithful port of upstream's CH9329 byte
+  serialisation, including its quirks (JS keycode 18 maps to Right Alt; modifier
+  usages travel in the keycode array), and web/test/ asserts the same golden
+  frames the Python harness and the firmware were verified against.
 
-  New files supporting that:
-    tailwind.input.css  design tokens, component layer, and inlined SVG icon
-                        masks reimplementing the Fomantic icon names that the
-                        inherited JavaScript writes into the DOM.
-    app.css             committed Tailwind build output.
-    ui-kit.js           jQuery toast/checkbox/dropdown/progress/modal shims.
-    package.json        stylesheet build tooling; not needed to run the app.
-    docs/index.html     documentation landing page.
+  Tesseract is now vendored in web/public/vendor/tesseract (engine, worker, WASM
+  core and English training data) so OCR works with no network. The other OCR
+  languages still fetch their training data at runtime and are marked as such.
 
-Restructured
-  The web app moved from docs/ to the repository root so GitHub Pages serves it
-  at the site root, and docs/ now holds documentation. src/update_githubpage.sh
-  was replaced by src/sync_www.sh, which copies the root UI into src/www/ for the
-  Go binary to embed. The root is the single source of truth.
+  Deployment moved to GitHub Actions (.github/workflows/deploy-pages.yml), which
+  builds the site and publishes it to Pages. src/sync_www.sh builds a
+  root-relative copy for the Go server to embed.
 
-Changed
+Changed (applied to the inherited files before the rewrite above superseded them)
   local-kvm.js                Added the MS2130 capture dongle (534d:2130,
                               345f:2130) to supportedVidPidPairs, ahead of the
                               existing MS2109 entries which are retained. Added a
@@ -116,14 +112,14 @@ under its own terms.
 THIRD-PARTY COMPONENTS
 ================================================================================
 
-jQuery 3.7.1 (scripts/, src/www/scripts/)        MIT License
-    Copyright OpenJS Foundation and other contributors
-    Vendored by upstream; carried over unmodified.
+Tesseract.js 5 and tesseract.js-core (Apache-2.0), with Tesseract English
+training data (Apache-2.0), vendored in web/public/vendor/tesseract/ so optical
+character recognition works without a network connection.
 
-Tailwind CSS 4 (MIT) generates app.css at authoring time. It is a build-time
-dependency only; the committed stylesheet has no runtime dependency on it.
+Nuxt, Vue and Tailwind CSS (all MIT) are build-time dependencies pulled by npm;
+they are not vendored into this repository.
 
-Upstream's Fomantic-UI dependency was removed in this fork.
+Upstream's Fomantic-UI and jQuery dependencies were removed in this rewrite.
 
 The firmware pulls espressif/esp_tinyusb and espressif/tinyusb at build time via
 the ESP-IDF component manager; both are Apache-2.0 / MIT and are not vendored
