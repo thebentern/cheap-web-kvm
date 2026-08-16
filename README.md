@@ -96,13 +96,31 @@ adapter to read it. Set `CONFIG_ESP_CONSOLE_NONE` once you no longer need it.
 Web Serial requires a secure context, so the UI has to be served over HTTPS or
 from `localhost`.
 
-* **Offline (works today):** `cd src && ./start.sh`, then visit
-  `https://localhost:8443/` in Chrome, Edge, or another Chromium browser. It
-  generates a self-signed certificate on first run.
-* **Hosted:** Pages is enabled on `main` at folder `/`, so the UI is served from
-  `<pages-url>/docs/` rather than the site root. Point Pages at `/docs` instead
-  to move it to the root. Note that Web Serial needs a secure context — the
-  hosted route only works over HTTPS.
+* **Hosted:** <https://thebentern.github.io/cheap-web-kvm/> — the app is served
+  from the repository root, and the documentation lives alongside it at
+  [`/docs/`](https://thebentern.github.io/cheap-web-kvm/docs/).
+* **Offline:** `cd src && ./start.sh`, then visit `https://localhost:8443/` in
+  Chrome, Edge, or another Chromium browser. It generates a self-signed
+  certificate on first run.
+
+The interface is styled with Tailwind CSS. The built stylesheet (`app.css`) is
+committed, so **running the app needs no build step and no network** — the
+original pulled Fomantic-UI from a CDN, which meant a KVM you could not use
+without internet. To change the styling:
+
+```bash
+npm install && npm run build:css
+```
+
+`ui-kit.js` supplies small jQuery-compatible `toast`/`checkbox`/`dropdown`/
+`progress`/`modal` shims so the inherited application logic keeps working
+unmodified against the new stylesheet.
+
+> **Editing the UI:** roughly 90 element IDs and a dozen class names form a
+> contract with the application JavaScript, which reaches for them by name. Keep
+> them intact when changing markup. The one remaining network dependency is
+> Tesseract, lazy-loaded from a CDN by `copy-box.js` for the OCR copy feature —
+> everything else works air-gapped.
 
 Click the keyboard icon to pick the serial port, then click the video area. There
 is **no baud-rate configuration step** — unlike a stock CH9329, which defaults to

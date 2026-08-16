@@ -18,8 +18,8 @@ This project contains a modified copy of DezKVM-Go.
     https://github.com/tobychui/DezKVM-Go
     Licensed under the GNU General Public License v3.0
 
-The entire web front-end -- docs/ and src/www/ -- together with the Go HTTPS
-helper in src/ originates there. That includes the paste box, the OCR copy box,
+The entire web front-end, together with the Go HTTPS helper in src/,
+originates there. That includes the paste box, the OCR copy box,
 the on-screen keyboard, quick-access hotkeys and macros, the screen recorder,
 stacked keys, the mouse jiggler, the settings panel, and the CH9329 byte
 serialisation that this project's firmware was written to match.
@@ -44,35 +44,58 @@ Added
   tools/ch9329_test.py        Protocol test harness. New work, GPLv3.
   tools/verify_descriptors.py USB descriptor validator. New work, GPLv3.
   docs/PROTOCOL.md            The CH9329 wire protocol as the UI actually speaks
-                              it, extracted from docs/local-kvm.js. New work.
+                              it, extracted from local-kvm.js. New work.
   NOTICE                      This file.
 
+Re-skinned
+  All UI markup was rewritten for a dark Tailwind CSS theme and rebranded as
+  cheap-web-kvm: index.html, settings.html, quick-access.html,
+  onscreen-keyboard.html, paste-box.html, copy-box.html, screen-recorder.html.
+  The Fomantic-UI CDN stylesheet and script were removed entirely - they made an
+  on-site tool depend on an internet connection. main.css and the upstream logo
+  in img/ went with them.
+
+  The application JavaScript is otherwise upstream's and its logic was left
+  intact: every element id and every inline event handler was preserved, so the
+  rewrite is presentational only.
+
+  New files supporting that:
+    tailwind.input.css  design tokens, component layer, and inlined SVG icon
+                        masks reimplementing the Fomantic icon names that the
+                        inherited JavaScript writes into the DOM.
+    app.css             committed Tailwind build output.
+    ui-kit.js           jQuery toast/checkbox/dropdown/progress/modal shims.
+    package.json        stylesheet build tooling; not needed to run the app.
+    docs/index.html     documentation landing page.
+
+Restructured
+  The web app moved from docs/ to the repository root so GitHub Pages serves it
+  at the site root, and docs/ now holds documentation. src/update_githubpage.sh
+  was replaced by src/sync_www.sh, which copies the root UI into src/www/ for the
+  Go binary to embed. The root is the single source of truth.
+
 Changed
-  docs/local-kvm.js           Added the MS2130 capture dongle (534d:2130,
-  src/www/local-kvm.js        345f:2130) to supportedVidPidPairs, ahead of the
+  local-kvm.js                Added the MS2130 capture dongle (534d:2130,
+                              345f:2130) to supportedVidPidPairs, ahead of the
                               existing MS2109 entries which are retained. Added a
                               1080p60 entry to MODE_LIST for the MS2130. Reworded
                               two MS2109-specific console/toast messages to refer
                               to the capture device generically.
 
-  docs/settings.html          Reworded the HID Baudrate field description: this
-  src/www/settings.html       firmware always starts at 115200, so the CH9329
+  settings.html               Reworded the HID Baudrate field description: this
+                              firmware always starts at 115200, so the CH9329
                               9600-baud reconfiguration step does not apply. The
                               9600 option itself is retained for use with real
                               CH9329 hardware. Updated the About tab's supported
                               hardware list from MS2109 + CH9329 to MS2130 +
                               ESP32-S3, noting both older parts still work.
 
-  src/update_githubpage.sh    The clean step now preserves docs/PROTOCOL.md,
-                              which lives in docs/ but is not part of the served
-                              UI and would otherwise be deleted on every sync.
-
   README.md                   Rewritten for this hardware and setup flow.
 
 Removed
   PCB/                        Not copied. See below.
   3D Models/
-  img/                        Upstream product photography, not applicable here.
+  img/                        Upstream branding, replaced by this fork's own UI.
 
 
 ================================================================================
@@ -93,12 +116,14 @@ under its own terms.
 THIRD-PARTY COMPONENTS
 ================================================================================
 
-jQuery 3.7.1 (docs/scripts/, src/www/scripts/)   MIT License
+jQuery 3.7.1 (scripts/, src/www/scripts/)        MIT License
     Copyright OpenJS Foundation and other contributors
     Vendored by upstream; carried over unmodified.
 
-Fomantic-UI / Semantic-UI classes are referenced by the markup inherited from
-upstream.
+Tailwind CSS 4 (MIT) generates app.css at authoring time. It is a build-time
+dependency only; the committed stylesheet has no runtime dependency on it.
+
+Upstream's Fomantic-UI dependency was removed in this fork.
 
 The firmware pulls espressif/esp_tinyusb and espressif/tinyusb at build time via
 the ESP-IDF component manager; both are Apache-2.0 / MIT and are not vendored

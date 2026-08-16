@@ -155,3 +155,7 @@ src/cert.pem
 src/key.pem
 src/usbkvm
 src/usbkvm.exe
+
+# --- Web UI build tooling ---
+node_modules/
+package-lock.json

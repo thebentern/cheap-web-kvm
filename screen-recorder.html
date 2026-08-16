@@ -1,79 +1,83 @@
-<!-- Loaded via $.load() into #screenRecorder -->
+<!-- Screen recorder: captures the live feed to a WebM file entirely in the
+     browser, either the whole picture or a selected region.
+     Loaded via $.load() into #screenRecorder. -->
 <style>
-/*  Draggable control panel  */
+/* Only what utilities cannot express: the panel is dragged by JS (which writes
+   inline left/top), and the area selector is positioned per pixel. */
+
+/* ---------------------------------------------------------------- panel --- */
 #srPanel {
     position: fixed;
-    top: 70px;
-    right: 20px;
-    width: 272px;
-    background: rgba(26, 26, 26, 0.96);
-    border-radius: 8px;
+    top: 4.25rem;
+    right: 1.25rem;
+    width: 17rem;
     z-index: 1500;
     display: none;
     flex-direction: column;
-    box-shadow: 0 6px 28px rgba(0, 0, 0, 0.55);
-    color: #eee;
-    font-size: 13px;
     user-select: none;
 }
 
 .sr-drag-bar {
-    background: rgba(80, 80, 80, 0.6);
-    padding: 7px 10px;
-    border-radius: 8px 8px 0 0;
-    cursor: move;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    border-radius: calc(var(--radius-panel) - 1px) calc(var(--radius-panel) - 1px) 0 0;
+    background: color-mix(in oklab, var(--color-ink-800) 55%, transparent);
 }
 
-.sr-drag-title { color: #ccc; font-size: 12px; }
-
-.sr-body { padding: 12px; }
-
-/* Timer / size row – hidden when idle */
+/* Timer + accumulated size. srUI() flips this to `flex` while recording. */
 .sr-info-row {
     display: none;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
-    padding: 6px 8px;
-    background: rgba(0, 0, 0, 0.35);
-    border-radius: 5px;
-    font-family: monospace;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.55rem;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--color-ink-700);
+    border-radius: 0.55rem;
+    background: var(--color-ink-900);
+    font-family: var(--font-mono);
 }
-.sr-timer { color: #ff5555; font-weight: bold; font-size: 14px; }
-.sr-bytes { color: #aaa; font-size: 12px; }
+.sr-timer {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-alert-400);
+    font-variant-numeric: tabular-nums;
+}
+.sr-bytes {
+    font-size: 0.6875rem;
+    color: var(--color-mist-400);
+}
 
-/* Mode badge (full-video / area) */
+/* Mode readout ("● Area recording"). srUI() flips this to `block`. */
 .sr-mode-badge {
-    font-size: 11px;
-    color: #888;
-    margin-bottom: 8px;
     display: none;
+    margin-bottom: 0.55rem;
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-alert-400);
 }
 
-/* 2-column button grid */
-.sr-btn-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-}
-.sr-btn-grid .ui.button {
-    padding: 8px 4px;
-    font-size: 11.5px;
-    margin: 0;
-}
-
+/* Shown between Stop and blob-ready. srUI() flips this to `block`. */
 .sr-proc {
-    margin-top: 8px;
-    text-align: center;
-    font-size: 11px;
-    color: #aaa;
     display: none;
+    margin-top: 0.6rem;
+    text-align: center;
+    font-size: 0.6875rem;
+    color: var(--color-mist-400);
 }
 
-/*  Area-selection overlay  */
+/* Stop button: the one destructive-looking control in the panel. */
+.kvm-btn.sr-danger {
+    background: color-mix(in oklab, var(--color-alert-500) 16%, transparent);
+    border-color: color-mix(in oklab, var(--color-alert-500) 65%, transparent);
+    color: var(--color-alert-400);
+}
+.kvm-btn.sr-danger:hover:not(.disabled):not(:disabled) {
+    background: color-mix(in oklab, var(--color-alert-500) 26%, transparent);
+    border-color: var(--color-alert-500);
+    color: var(--color-alert-400);
+}
+
+/* ------------------------------------------------------- area selection --- */
 #srAreaOverlay {
     position: fixed;
     inset: 0;
@@ -82,10 +86,11 @@
     cursor: default;
 }
 
-/* Selection box */
 #srSelBox {
     position: absolute;
-    border: 2px solid #44aaff;
+    border: 2px solid var(--color-signal-400);
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.45), 0 0 30px -8px var(--color-signal-400);
     cursor: move;
     box-sizing: border-box;
 }
@@ -95,8 +100,8 @@
     position: absolute;
     width: 10px;
     height: 10px;
-    background: #fff;
-    border: 2px solid #44aaff;
+    background: var(--color-mist-100);
+    border: 2px solid var(--color-signal-400);
     border-radius: 2px;
     box-sizing: border-box;
     z-index: 1;
@@ -110,68 +115,113 @@
 .sr-handle[data-h="sw"] { bottom:0; left:0;  transform:translate(-50%,50%);  cursor:sw-resize; }
 .sr-handle[data-h="w"]  { top:50%; left:0;   transform:translate(-50%,-50%); cursor:w-resize;  }
 
-/* Floating toolbar (confirm / cancel) */
+/* Floating confirm / cancel bar, positioned next to the selection by JS. */
 #srAreaToolbar {
     position: absolute;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 7px 12px;
-    background: rgba(26, 26, 26, 0.94);
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    gap: 0.5rem;
+    padding: 0.4rem 0.5rem;
+    border-radius: 0.75rem;
     white-space: nowrap;
     z-index: 2;
 }
 #srAreaSizeLabel {
-    font-size: 11px;
-    color: #aaa;
-    font-family: monospace;
-    margin-right: 2px;
+    padding-left: 0.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-mist-400);
+}
+
+/* --------------------------------------------------------- warning modal ---
+   Built on demand by srWarn() and appended to <body>; it carries the inline
+   styles that function needs, so the dark treatment is applied from here.
+   Also honours the `open` class set by the .modal() shim in ui-kit.js. */
+#srWarnModal {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in oklab, var(--color-ink-950) 82%, transparent) !important;
+    backdrop-filter: blur(6px);
+}
+#srWarnModal.open {
+    display: flex;
+}
+#srWarnModal > div {
+    background: var(--color-ink-850) !important;
+    border: 1px solid var(--color-ink-600);
+    border-radius: var(--radius-panel) !important;
+    box-shadow: 0 18px 50px -12px rgb(0 0 0 / 0.75) !important;
+    color: var(--color-mist-100);
+}
+#srWarnModal h3 {
+    font-weight: 600;
+    color: var(--color-mist-100);
+}
+#srWarnModal p {
+    color: var(--color-mist-400) !important;
+}
+#srWarnModal strong {
+    color: var(--color-mist-200);
+    font-weight: 600;
+}
+#srWarnModal em {
+    color: var(--color-mist-100);
+    font-style: normal;
 }
 </style>
 
 <!--  Control panel  -->
-<div id="srPanel">
-    <div class="sr-drag-bar" id="srDragBar">
-        <span class="sr-drag-title"><i class="video camera icon"></i> Screen Recorder</span>
-        <button class="ui mini compact icon button"
+<div id="srPanel" class="kvm-panel">
+    <div class="sr-drag-bar kvm-drag flex items-center justify-between gap-2 border-b border-ink-700 px-3 py-2"
+         id="srDragBar">
+        <span class="flex items-center gap-2 text-[11px] font-semibold tracking-[0.12em] text-mist-400 uppercase">
+            <i class="film icon text-signal-400"></i> Screen recorder
+        </span>
+        <button class="kvm-btn kvm-btn-icon h-6 w-6 flex-none p-0 text-[11px]"
                 onclick="toggleScreenRecorder()"
-                style="padding:4px 6px;margin:0;"
                 title="Close">
             <i class="times icon"></i>
         </button>
     </div>
-    <div class="sr-body">
-        <!-- Timer / accumulated size -->
+
+    <div class="p-3">
+        <!-- Elapsed time and accumulated size, while recording -->
         <div class="sr-info-row" id="srInfoRow">
             <span class="sr-timer" id="srTimerVal">00:00:00</span>
             <span class="sr-bytes" id="srBytesVal">~0 KB</span>
         </div>
 
-        <!-- Active-recording mode badge -->
+        <!-- Which capture mode is running -->
         <div class="sr-mode-badge" id="srModeBadge"></div>
 
-        <!-- Action buttons -->
-        <div class="sr-btn-grid">
-            <button id="srBtnStart" class="ui mini green  button" onclick="srStartFull()">
+        <div class="grid grid-cols-2 gap-1.5">
+            <button id="srBtnStart" class="kvm-btn green px-2 text-[11.5px]" onclick="srStartFull()">
                 <i class="circle icon"></i> Record
             </button>
-            <button id="srBtnArea"  class="ui mini teal   button" onclick="srStartArea()">
-                <i class="crop icon"></i> Select Area
+            <button id="srBtnArea" class="kvm-btn px-2 text-[11.5px]" onclick="srStartArea()">
+                <i class="crop icon"></i> Select area
             </button>
-            <button id="srBtnStop"  class="ui mini red    button disabled" onclick="srStop()" disabled>
+            <button id="srBtnStop" class="kvm-btn sr-danger disabled px-2 text-[11.5px]" onclick="srStop()" disabled>
                 <i class="stop icon"></i> Stop
             </button>
-            <button id="srBtnSave"  class="ui mini blue   button disabled" onclick="srSave()" disabled>
+            <button id="srBtnSave" class="kvm-btn kvm-btn-primary disabled px-2 text-[11.5px]" onclick="srSave()" disabled>
                 <i class="download icon"></i> Save
             </button>
         </div>
 
-        <!-- Processing spinner (shown between Stop and blob-ready) -->
+        <!-- Between Stop and the finished blob -->
         <div class="sr-proc" id="srProcRow">
             <i class="spinner loading icon"></i> Processing recording…
         </div>
+
+        <p class="kvm-hint mt-2.5">
+            Encoded to WebM in the browser — nothing leaves this machine. Resizing the window ends the recording.
+        </p>
     </div>
 </div>
 
@@ -194,12 +244,12 @@
     </div>
 
     <!-- Toolbar pinned near the selection box -->
-    <div id="srAreaToolbar">
+    <div id="srAreaToolbar" class="kvm-panel">
         <span id="srAreaSizeLabel">0 × 0 px</span>
-        <button class="ui mini green button" onclick="srConfirmArea()">
-            <i class="check icon"></i> Record Area
+        <button class="kvm-btn green px-2 text-[11.5px]" onclick="srConfirmArea()">
+            <i class="check icon"></i> Record area
         </button>
-        <button class="ui mini icon button" onclick="srCancelArea()" title="Cancel">
+        <button class="kvm-btn kvm-btn-icon h-7 w-7 p-0 text-[11px]" onclick="srCancelArea()" title="Cancel">
             <i class="times icon"></i>
         </button>
     </div>
@@ -378,10 +428,10 @@ function srWarn() {
                   Avoid resizing until you click <em>Stop</em>.
                 </p>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
-                  <button class="ui green button" id="srWarnOK" style="font-size:13px;">
+                  <button class="kvm-btn green" id="srWarnOK" style="font-size:13px;">
                     <i class="video icon"></i> Start Recording
                   </button>
-                  <button class="ui button" id="srWarnNo" style="font-size:13px;">Cancel</button>
+                  <button class="kvm-btn" id="srWarnNo" style="font-size:13px;">Cancel</button>
                 </div>
               </div>`;
             document.body.appendChild(m);
