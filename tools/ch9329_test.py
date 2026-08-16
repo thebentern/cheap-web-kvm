@@ -105,9 +105,23 @@ def parse_reply(buf: bytes, cmd: int):
 
 
 class Link:
-    def __init__(self, port, baud=115200, timeout=0.3, verbose=False):
+    def __init__(self, port, baud=115200, timeout=0.3, verbose=False, settle=1.5):
         import serial  # lazy so --selftest works without pyserial
-        self.ser = serial.Serial(port, baud, timeout=0.02)
+        # Open without touching the modem lines: on ESP32 dev boards DTR/RTS
+        # drive the auto-reset circuit (EN and GPIO0), and pyserial asserts both
+        # by default, which holds the chip in reset or in the bootloader.
+        self.ser = serial.Serial(baudrate=baud, timeout=0.02)
+        self.ser.port = port
+        self.ser.dtr = False
+        self.ser.rts = False
+        self.ser.open()
+        self.ser.dtr = False
+        self.ser.rts = False
+        # Opening the port still pulses the auto-reset circuit on most boards,
+        # so the ESP32 reboots here. It needs ~0.5 s to reach the parser task;
+        # anything sent before that is answered by nobody.
+        time.sleep(settle)
+        self.ser.reset_input_buffer()
         self.timeout = timeout
         self.verbose = verbose
         self.stats = {"sent": 0, "acked": 0, "timeouts": 0, "errors": 0}
@@ -124,8 +138,14 @@ class Link:
         buf = b""
         deadline = time.monotonic() + self.timeout
         while time.monotonic() < deadline:
-            chunk = self.ser.read(64)
+            # read(n) blocks until it has n bytes or the timeout expires, and a
+            # reply is only 7 bytes, so asking for a big block would charge the
+            # full timeout to every command. Take one byte, then drain.
+            chunk = self.ser.read(1)
             if chunk:
+                waiting = self.ser.in_waiting
+                if waiting:
+                    chunk += self.ser.read(waiting)
                 buf += chunk
                 try:
                     payload, _ = parse_reply(buf, cmd)
@@ -307,6 +327,8 @@ def main():
     ap.add_argument("-t", "--timeout", type=float, default=0.3,
                     help="reply timeout in seconds (the web UI uses 0.3)")
     ap.add_argument("-v", "--verbose", action="store_true", help="dump every frame")
+    ap.add_argument("--settle", type=float, default=1.5,
+                    help="seconds to wait after opening the port for the board to boot")
     ap.add_argument("--selftest", action="store_true",
                     help="verify the frame builder against golden vectors, no hardware")
     ap.add_argument("--info", action="store_true", help="query device info")
@@ -327,7 +349,7 @@ def main():
     if not any([args.info, args.reset, args.type, args.mouse, args.soak]):
         ap.error("pick at least one action: --info --reset --type --mouse --soak")
 
-    link = Link(args.port, args.baud, args.timeout, args.verbose)
+    link = Link(args.port, args.baud, args.timeout, args.verbose, args.settle)
     try:
         if args.reset:
             do_reset(link)

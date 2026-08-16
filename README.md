@@ -135,13 +135,16 @@ python3 tools/ch9329_test.py -p /dev/tty.usbserial-XXXX --soak 2000
 
 | | Milestone | State |
 |---|---|---|
-| M1 | Boot-protocol HID keyboard + absolute mouse enumerate on the target | Descriptors verified from the compiled binary; **not yet confirmed on hardware** |
-| M2 | CH9329 frames on UART0 drive HID reports | Implemented, test harness ready; **not yet confirmed on hardware** |
-| M3 | Forked web UI drives the target end to end | Implemented; **not yet confirmed on hardware** |
-| M4 | Reconnect, power-cycle survival, sustained typing | Implemented; **not yet confirmed on hardware** |
+| M1 | Boot-protocol HID keyboard + absolute mouse enumerate on the target | Descriptors verified from the compiled binary, TinyUSB comes up on hardware; **enumeration on a target not yet confirmed** |
+| M2 | CH9329 frames on UART0 drive HID reports | **Verified on hardware.** All four commands ACK; 1000/1000 reports in a soak with 0 timeouts and 0 errors |
+| M3 | Forked web UI drives the target end to end | Implemented; **not yet confirmed** |
+| M4 | Reconnect, power-cycle survival, sustained typing | Sustained typing verified (soak above); power-cycle survival **not yet confirmed** |
 
-Everything above compiles clean and passes offline verification. Nothing has
-been run against a physical ESP32-S3 or a target machine yet.
+Flashed and exercised on an ESP32-S3-DevKitC-1-N8R8 (rev v0.2, 8 MB flash,
+8 MB PSRAM). The protocol layer is confirmed end to end from host serial to the
+HID event queue. What remains untested is the USB side against a real target:
+the native port had nothing attached during these runs, so `--info` correctly
+reports `USB enumerated: no`.
 
 ### Stretch goals
 

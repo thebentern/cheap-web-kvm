@@ -66,6 +66,7 @@ _Static_assert(sizeof(kvm_mouse_rel_report_t) == 4, "relative mouse report must 
 static kvm_kbd_report_t       s_last_kbd;
 static kvm_mouse_abs_report_t s_last_abs;
 static kvm_mouse_rel_report_t s_last_rel;
+static bool                   s_abs_valid;  /* an absolute position has been sent */
 
 bool kvm_hid_mounted(void)
 {
@@ -129,9 +130,14 @@ static void hid_release_all(void)
     memset(&s_last_kbd, 0, sizeof(s_last_kbd));
     hid_send(KVM_HID_ITF_KEYBOARD, 0, &s_last_kbd, sizeof(s_last_kbd));
 
-    s_last_abs.buttons = 0;
-    s_last_abs.wheel   = 0;
-    hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_ABS, &s_last_abs, sizeof(s_last_abs));
+    /* Only once a position is known: a zeroed absolute report is a move to
+     * (0,0), so releasing on first mount would fling the target's cursor into
+     * the top-left corner. */
+    if (s_abs_valid) {
+        s_last_abs.buttons = 0;
+        s_last_abs.wheel   = 0;
+        hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_ABS, &s_last_abs, sizeof(s_last_abs));
+    }
 
     memset(&s_last_rel, 0, sizeof(s_last_rel));
     hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_REL, &s_last_rel, sizeof(s_last_rel));
@@ -194,7 +200,8 @@ static void kvm_hid_task(void *arg)
                 .y       = y,
                 .wheel   = evt.abs.wheel,
             };
-            s_last_abs = report;
+            s_last_abs  = report;
+            s_abs_valid = true;
             hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_ABS, &report, sizeof(report));
             break;
         }

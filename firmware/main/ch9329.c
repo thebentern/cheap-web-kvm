@@ -12,6 +12,7 @@
 #include "driver/uart.h"
 #include "esp_check.h"
 #include "esp_log.h"
+#include "soc/uart_pins.h"
 
 #include "ch9329.h"
 #include "kvm_hid.h"
@@ -290,8 +291,10 @@ esp_err_t ch9329_start(void)
                         TAG, "uart_driver_install failed");
     ESP_RETURN_ON_ERROR(uart_param_config(CH9329_UART_NUM, &uart_cfg),
                         TAG, "uart_param_config failed");
-    /* ROM default pins keep the on-board USB-UART bridge wired to the laptop. */
-    ESP_RETURN_ON_ERROR(uart_set_pin(CH9329_UART_NUM, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE,
+    /* Set the pins explicitly rather than relying on UART_PIN_NO_CHANGE. When
+     * the console lives on another UART, nothing in the app ever routes UART0,
+     * and the ROM's routing does not survive to here - the port goes silent. */
+    ESP_RETURN_ON_ERROR(uart_set_pin(CH9329_UART_NUM, U0TXD_GPIO_NUM, U0RXD_GPIO_NUM,
                                      UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE),
                         TAG, "uart_set_pin failed");
 
