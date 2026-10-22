@@ -11,6 +11,7 @@ import { usePanels } from '~/composables/usePanels'
 import { useStackedKeys } from '~/composables/useStackedKeys'
 import { useJiggler } from '~/composables/useJiggler'
 import { useToasts } from '~/composables/useToasts'
+import { useWakeLock } from '~/composables/useWakeLock'
 
 const kvm = useKvm()
 const capture = useCapture()
@@ -29,23 +30,41 @@ const linkSupported = computed(() => kvm.link.supported.value)
 // The card streams colour bars when the target is dark, so "no stream" is not
 // the same question as "no signal" — useCapture watches the pixels for that.
 // Don't stack this behind the first-run prompt, which already says as much.
-const showNoSignal = computed(
-  () =>
-    (!capture.active.value || capture.testPattern.value) &&
-    !panels.open.connectPrompt &&
-    linkSupported.value,
-)
+// Capture trouble shows even without a HID link (Safari on iPad has none): its
+// overlay carries the only Restart button. Plain "no signal" keeps the old gate.
+const showNoSignal = computed(() => {
+  if (panels.open.connectPrompt) return false
+  const s = capture.status.value
+  if (s === 'paused' || s === 'reconnecting' || s === 'failed') return true
+  return (!capture.active.value || capture.testPattern.value) && linkSupported.value
+})
 
 /* ------------------------------------------------------------------ capture */
+// Immediate, so a page remounted onto a stream that is already live shows it.
 watch(
   () => capture.stream.value,
   (s) => {
     if (videoEl.value) videoEl.value.srcObject = s
   },
+  { immediate: true, flush: 'post' },
+)
+
+// Say when the picture drops and when it comes back; the overlay says why.
+watch(
+  () => capture.status.value,
+  (now, before) => {
+    if (now === 'reconnecting' && before !== 'reconnecting') toasts.warn('Video lost, reconnecting')
+    else if (now === 'live' && before === 'reconnecting') toasts.success('Video back')
+  },
 )
 
 async function startCapture() {
+  // WebKit grants a wake lock only inside a gesture, and this click is one.
+  wakeLock?.sync(true)
   const ok = await capture.start(settings.enableAudio)
+  wakeLock?.sync()
+  // Left the page while capture was opening: nothing here to report to.
+  if (unmounted) return
   panels.hide('connectPrompt')
   if (ok) {
     toasts.success(`Capture started — ${capture.deviceName.value}`)
@@ -461,11 +480,17 @@ watch(() => settings.ctrlCmdSwap, (v) => (kvm.config.ctrlCmdSwap = v), { immedia
 
 let stopSignalWatch: (() => void) | null = null
 let stopDeviceWatch: (() => void) | null = null
+let wakeLock: ReturnType<typeof useWakeLock> | null = null
+let unmounted = false
 
 onMounted(() => {
   startAutosave()
   stopSignalWatch = capture.watchSignal(() => videoEl.value)
   stopDeviceWatch = capture.watchDevices(() => settings.enableAudio)
+  wakeLock = useWakeLock(
+    () => ['live', 'paused', 'reconnecting'].includes(capture.status.value),
+    capture.note,
+  )
   if (!settings.skipConnectPrompt) panels.show('connectPrompt')
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('keyup', onKeyup)
@@ -474,12 +499,14 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  unmounted = true
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('keyup', onKeyup)
   window.removeEventListener('blur', onWindowBlur)
   document.removeEventListener('fullscreenchange', syncFullscreen)
   stopSignalWatch?.()
   stopDeviceWatch?.()
+  wakeLock?.dispose()
   jiggler.dispose()
   capture.stop()
 })
@@ -488,9 +515,21 @@ onBeforeUnmount(() => {
 <template>
   <ClientOnly>
     <div class="relative h-screen w-screen overflow-hidden bg-ink-950">
-      <video ref="videoEl" class="kvm-video" autoplay playsinline muted></video>
+      <video
+        ref="videoEl"
+        class="kvm-video"
+        autoplay
+        playsinline
+        muted
+        disablepictureinpicture
+      ></video>
 
-      <NoSignal v-if="showNoSignal" />
+      <NoSignal
+        v-if="showNoSignal"
+        :status="capture.status.value"
+        :error="capture.lastError.value"
+        @restart="void capture.restart()"
+      />
 
       <!-- Pointer surface, sitting over the picture -->
       <div

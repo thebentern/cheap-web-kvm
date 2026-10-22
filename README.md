@@ -176,6 +176,17 @@ Keyboard & mouse. Touch gestures:
   ([PROTOCOL.md §5](docs/PROTOCOL.md#5-timing)). The pointer updates less often
   than over a cable. Clicks and keystrokes are never merged.
 
+If the video drops, the page reconnects on its own and Settings → Display →
+Capture events shows why. Common causes on an iPad:
+
+* The screen locked. The page keeps the screen on once you have tapped it, but
+  Low Power Mode cuts auto-lock to 30 seconds.
+* A call, Siri or an alarm interrupted audio, which also pauses the camera. If
+  this keeps happening, turn off audio in Settings → Audio.
+* Split View, Slide Over, Stage Manager, or another app using the camera.
+
+If it does not come back, tap Restart video.
+
 ### Offline use
 
 Everything is vendored except OCR training data for languages other than

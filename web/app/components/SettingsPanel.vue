@@ -63,9 +63,30 @@ const captureRows = computed<CaptureRow[] | null>(() => {
     { label: 'Device', value: capture.deviceName.value ?? 'Unknown' },
     { label: 'Resolution', value: `${res.width} × ${res.height}` },
     { label: 'Frame rate', value: `${res.frameRate} fps` },
-    { label: 'Stream', value: capture.active.value ? 'Live' : 'Stopped' },
+    { label: 'Stream', value: STATUS_LABEL[capture.status.value] },
   ]
 })
+
+const STATUS_LABEL = {
+  idle: 'Stopped',
+  live: 'Live',
+  paused: 'Paused by the system',
+  reconnecting: 'Reconnecting',
+  failed: 'Stopped, needs a restart',
+} as const
+
+/** Newest first, so the last thing that happened is at the top. */
+const captureEvents = computed(() => [...capture.events.value].reverse())
+
+async function copyCaptureEvents() {
+  const text = capture.events.value.map((e) => `${e.at}  ${e.what}`).join('\n')
+  try {
+    await navigator.clipboard.writeText(text)
+    toasts.success('Capture events copied')
+  } catch {
+    toasts.error('The browser refused clipboard access')
+  }
+}
 
 /* --------------------------------------------------------------------- link */
 // `kvm` is a plain object of refs, so the template cannot auto-unwrap them.
@@ -287,6 +308,30 @@ onBeforeUnmount(() => {
                     </tbody>
                   </table>
                 </div>
+              </div>
+
+              <div>
+                <div class="kvm-label">Capture events</div>
+                <p class="kvm-hint mt-0.5">
+                  What happened to the video stream, newest first. If the picture keeps dropping,
+                  this says whether the system paused it, the device went away or frames stopped.
+                </p>
+                <div
+                  class="kvm-scroll mt-2 max-h-48 max-w-sm rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 font-mono text-[11px] leading-relaxed"
+                >
+                  <p v-if="!captureEvents.length" class="text-mist-400">Nothing yet.</p>
+                  <p v-for="(e, i) in captureEvents" :key="i" class="text-mist-200">
+                    <span class="text-mist-400">{{ e.at }}</span> {{ e.what }}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="kvm-btn mt-2"
+                  :disabled="!captureEvents.length"
+                  @click="copyCaptureEvents"
+                >
+                  <AppIcon name="copy" /> Copy events
+                </button>
               </div>
 
               <div>

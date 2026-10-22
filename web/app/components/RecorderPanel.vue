@@ -8,7 +8,7 @@
  * off-screen canvas every animation frame and records `canvas.captureStream(30)`,
  * so the output file is exactly the size of the selected area.
  */
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useCapture } from '~/composables/useCapture'
 import { usePanels } from '~/composables/usePanels'
 import { useToasts } from '~/composables/useToasts'
@@ -365,6 +365,18 @@ function onSelPointerUp(e: PointerEvent) {
 }
 
 /* ------------------------------------------------------------- recording --- */
+
+/* A dropout ends the stream the recorder is reading. Stop cleanly and say why,
+ * so the take up to the dropout is kept rather than silently cut short. */
+watch(
+  () => capture.status.value,
+  (now) => {
+    if (state.value === 'recording' && (now === 'reconnecting' || now === 'failed')) {
+      toasts.warn('The video dropped, so the recording stopped. The part before it is kept.', 6000)
+      stop()
+    }
+  },
+)
 function stopTimer() {
   if (timerId !== null) {
     clearInterval(timerId)

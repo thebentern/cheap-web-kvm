@@ -428,10 +428,14 @@
     background: var(--color-ink-600);
   }
 
+  /* Above the pointer stage (500) so its button can be tapped, but transparent
+     to pointer input everywhere else: a dark target is woken by input sent
+     through this overlay. */
   .kvm-nosignal {
     position: fixed;
     inset: 0;
-    z-index: 200;
+    z-index: 550;
+    pointer-events: none;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -442,6 +446,9 @@
         transparent 70%
       ),
       var(--color-ink-950);
+  }
+  .kvm-nosignal button {
+    pointer-events: auto;
   }
 
   .kvm-modal {
