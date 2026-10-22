@@ -40,6 +40,7 @@ const STROKED: Record<string, string> = {
   trash: '<polyline points="3 6 21 6"/><path d="M8 6V4.5a1.5 1.5 0 0 1 1.5-1.5h5A1.5 1.5 0 0 1 16 4.5V6"/><path d="M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
   terminal: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>',
+  bluetooth: '<polyline points="7 7 17 17 12 22 12 2 17 7 7 17"/>',
   usb: '<circle cx="12" cy="20" r="1.6"/><line x1="12" y1="18.4" x2="12" y2="6"/><path d="M12 12l4-3v-2"/><rect x="14.6" y="5" width="3" height="3" rx="0.6"/><path d="M12 15l-4-3v-2.5"/><circle cx="8" cy="8.5" r="1.4"/>',
   stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
   crop: '<path d="M6.5 2v15.5H22"/><path d="M2 6.5h15.5V22"/>',

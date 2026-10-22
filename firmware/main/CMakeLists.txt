@@ -5,10 +5,13 @@ idf_component_register(
         "main.c"
         "kvm_hid.c"
         "ch9329.c"
+        "kvm_ble.c"
         "usb_descriptors.c"
     INCLUDE_DIRS
         "."
     REQUIRES
+        bt
         esp_driver_uart
         esp_timer
+        nvs_flash
 )

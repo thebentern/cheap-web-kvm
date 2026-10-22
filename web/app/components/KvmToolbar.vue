@@ -5,6 +5,7 @@
 // no device state of its own.
 import { computed } from 'vue'
 import { useKvm } from '~/composables/useKvm'
+import type { LinkKind } from '~/composables/useLink'
 import { usePanels, type PanelName } from '~/composables/usePanels'
 import { useSettings } from '~/composables/useSettings'
 import { useToasts } from '~/composables/useToasts'
@@ -16,7 +17,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'toggle-serial': []
+  'toggle-link': [kind: LinkKind]
   screenshot: []
   'toggle-fullscreen': []
   hide: []
@@ -30,15 +31,53 @@ const { settings } = useSettings()
 const connected = kvm.link.connected
 const connecting = kvm.link.connecting
 const portLabel = kvm.link.portLabel
-const supported = kvm.link.supported
+const serialSupported = kvm.link.serialSupported
+const bleSupported = kvm.link.bleSupported
 
 /** Panels that can only do anything once the HID link is up. */
 const needsLink = computed(() => !connected.value)
 
-const serialTitle = computed(() => {
-  if (!supported.value) return 'Web Serial is not available in this browser'
-  if (connecting.value) return 'Opening the serial port…'
-  return connected.value ? 'Disconnect the KVM serial port' : 'Connect to the KVM serial port'
+interface LinkButton {
+  kind: LinkKind
+  icon: string
+  title: string
+  live: boolean
+  busy: boolean
+}
+
+/**
+ * One button per transport this browser has. With neither, the serial button
+ * stays, disabled, so the toolbar can still say why nothing works.
+ */
+const linkButtons = computed<LinkButton[]>(() => {
+  const out: LinkButton[] = []
+  const add = (kind: LinkKind, icon: string, idle: string, busy: string, live: string) => {
+    const mine = kvm.link.kind.value === kind
+    const isLive = mine && connected.value
+    const isBusy = mine && connecting.value
+    out.push({ kind, icon, live: isLive, busy: isBusy, title: isBusy ? busy : isLive ? live : idle })
+  }
+  if (serialSupported.value || !bleSupported.value) {
+    add(
+      'serial',
+      'usb',
+      serialSupported.value
+        ? 'Connect to the KVM serial port'
+        : 'Web Serial is not available in this browser',
+      'Opening the serial port…',
+      'Disconnect the KVM serial port',
+    )
+  }
+  if (bleSupported.value) {
+    add(
+      'ble',
+      'bluetooth',
+      'Connect to the KVM over Bluetooth',
+      'Connecting over Bluetooth — enter the passkey if asked',
+      'Disconnect Bluetooth',
+    )
+  }
+  return out
 })
 
 /** Open panels light their button up so the toolbar reflects what is on screen. */
@@ -64,26 +103,28 @@ function toggleCtrlCmdSwap() {
 
     <div class="kvm-divider" />
 
-    <!-- Serial link -->
+    <!-- HID link -->
     <button
+      v-for="b in linkButtons"
+      :key="b.kind"
       type="button"
       class="kvm-btn kvm-btn-icon"
-      :class="{ negative: connected }"
-      :disabled="!supported || connecting"
-      :title="serialTitle"
-      :aria-label="serialTitle"
-      @click="emit('toggle-serial')"
+      :class="{ negative: b.live }"
+      :disabled="connecting || (b.kind === 'serial' && !serialSupported)"
+      :title="b.title"
+      :aria-label="b.title"
+      @click="emit('toggle-link', b.kind)"
     >
       <AppIcon
-        v-if="connecting"
+        v-if="b.busy"
         name="refresh"
         class="animate-[kvm-spin_0.9s_linear_infinite]"
       />
-      <AppIcon v-else :name="connected ? 'unlink' : 'keyboard'" />
+      <AppIcon v-else :name="b.live ? 'unlink' : b.icon" />
     </button>
     <span
       class="flex items-center gap-1.5 px-1 font-mono text-[11px] whitespace-nowrap text-mist-400"
-      :title="connected ? 'Connected serial port' : 'No serial port open'"
+      :title="connected ? 'Connected KVM' : 'No HID link open'"
     >
       <span
         class="h-1.5 w-1.5 rounded-full"

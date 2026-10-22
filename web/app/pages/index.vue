@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ABS_MAX } from '~/utils/ch9329'
+import { createTouchRecognizer, type TouchIntent } from '~/utils/touchGestures'
 import { MOUSE_LEFT, MOUSE_MIDDLE, MOUSE_RIGHT, useKvm } from '~/composables/useKvm'
+import type { LinkKind } from '~/composables/useLink'
 import { useCapture } from '~/composables/useCapture'
 import { useSettings } from '~/composables/useSettings'
 import { usePanels } from '~/composables/usePanels'
@@ -23,7 +25,7 @@ const stageEl = ref<HTMLDivElement | null>(null)
 const toolbarHidden = ref(false)
 const isFullscreen = ref(false)
 
-const serialSupported = computed(() => kvm.link.supported.value)
+const linkSupported = computed(() => kvm.link.supported.value)
 // The card streams colour bars when the target is dark, so "no stream" is not
 // the same question as "no signal" — useCapture watches the pixels for that.
 // Don't stack this behind the first-run prompt, which already says as much.
@@ -31,7 +33,7 @@ const showNoSignal = computed(
   () =>
     (!capture.active.value || capture.testPattern.value) &&
     !panels.open.connectPrompt &&
-    serialSupported.value,
+    linkSupported.value,
 )
 
 /* ------------------------------------------------------------------ capture */
@@ -55,16 +57,17 @@ async function startCapture() {
   }
 }
 
-/* ------------------------------------------------------------------- serial */
-async function toggleSerial() {
-  if (kvm.link.connected.value) {
+/* --------------------------------------------------------------------- link */
+async function toggleLink(which: LinkKind) {
+  const name = which === 'ble' ? 'Bluetooth' : 'Serial'
+  if (kvm.link.connected.value && kvm.link.kind.value === which) {
     await kvm.link.disconnect()
-    toasts.info('Serial link closed')
+    toasts.info(`${name} link closed`)
     return
   }
-  const ok = await kvm.link.connect()
+  const ok = await kvm.link.connect(which)
   if (ok) {
-    toasts.success('Serial link established')
+    toasts.success(`${name} link established`)
     // Put the HID device into a known state, as the reference client does.
     setTimeout(() => void kvm.softReset(), 100)
   } else if (kvm.link.lastError.value) {
@@ -96,41 +99,254 @@ function stageMetrics() {
   return { w, h, offX, offY }
 }
 
-async function onPointerMove(e: MouseEvent) {
-  jiggler.noteActivity()
-  if (!kvm.link.connected.value) return
+/** Map a client position onto the picture. Outside it, clamp or give up. */
+function toAbs(clientX: number, clientY: number, clamp: boolean) {
+  const m = stageMetrics()
+  if (!m) return null
+  let nx = (clientX - m.offX) / m.w
+  let ny = (clientY - m.offY) / m.h
+  if (nx < 0 || nx > 1 || ny < 0 || ny > 1) {
+    if (!clamp) return null
+    nx = Math.min(1, Math.max(0, nx))
+    ny = Math.min(1, Math.max(0, ny))
+  }
+  return { x: nx * ABS_MAX, y: ny * ABS_MAX }
+}
 
-  if (kvm.config.absoluteMode) {
-    const m = stageMetrics()
-    if (!m) return
-    const nx = (e.clientX - m.offX) / m.w
-    const ny = (e.clientY - m.offY) / m.h
-    if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return
-    await kvm.mouseMoveAbsolute(nx * ABS_MAX, ny * ABS_MAX)
-  } else {
-    const dx = Math.round(e.movementX * settings.relativeMouseSensitivity)
-    const dy = Math.round(e.movementY * settings.relativeMouseSensitivity)
-    if (!dx && !dy) return
-    await kvm.mouseMoveRelative(dx, dy, 0)
+/**
+ * Absolute move. Returns false, sending nothing, if the point is off the
+ * picture. A move to where the pointer already is is skipped: the button
+ * report that usually follows carries the position anyway.
+ */
+function moveTo(clientX: number, clientY: number, clamp: boolean) {
+  const p = toAbs(clientX, clientY, clamp)
+  if (!p) return false
+  if (Math.round(p.x) !== kvm.hid.mouseX || Math.round(p.y) !== kvm.hid.mouseY) {
+    void kvm.mouseMoveAbsolute(p.x, p.y)
+  }
+  return true
+}
+
+/** Sub-count remainders, so slow or scaled-down movement is not rounded away. */
+let relRemX = 0
+let relRemY = 0
+
+/** Relative move, scaled by the sensitivity setting and split into ±127 reports. */
+function moveBy(dx: number, dy: number) {
+  // One NaN would poison the remainders and stop relative motion for good.
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return
+  relRemX += dx * settings.relativeMouseSensitivity
+  relRemY += dy * settings.relativeMouseSensitivity
+  let ix = Math.trunc(relRemX)
+  let iy = Math.trunc(relRemY)
+  relRemX -= ix
+  relRemY -= iy
+  while (ix || iy) {
+    const sx = Math.max(-127, Math.min(127, ix))
+    const sy = Math.max(-127, Math.min(127, iy))
+    void kvm.mouseMoveRelative(sx, sy, 0)
+    ix -= sx
+    iy -= sy
   }
 }
 
-function buttonMask(button: number) {
-  if (button === 0) return MOUSE_LEFT
-  if (button === 2) return MOUSE_RIGHT
-  if (button === 1) return MOUSE_MIDDLE
-  return 0
+/*
+ * Every call below is fired without awaiting. Each builds its frame
+ * synchronously and both transports send in call order, so a move-press-release
+ * stays in order without waiting on a round trip per step — and the Bluetooth
+ * queue can still merge moves that pile up.
+ */
+
+/* -------------------------------------------------------------- mouse & pen */
+const POINTER_BUTTONS = MOUSE_LEFT | MOUSE_RIGHT | MOUSE_MIDDLE
+
+/** Buttons the mouse or pen has pressed, so letting go releases only those. */
+let pointerHeld = 0
+/** Buttons pressed off the picture or off the stage, ignored until let go. */
+let pointerIgnored = 0
+/** Fallback for WebKit before 17, whose pointer events have no movementX. */
+let mouseLast: { x: number; y: number } | null = null
+/** The pointer type of the last press, so a touch tap never asks for pointer lock. */
+let lastPointerType = ''
+
+/** PointerEvent.buttons lays out left, right and middle exactly as the report does. */
+function syncButtons(buttons: number) {
+  const want = buttons & POINTER_BUTTONS
+  const press = want & ~pointerHeld
+  const release = pointerHeld & ~want
+  pointerHeld = want
+  if (release) void kvm.mouseButtonRelease(release)
+  if (press) void kvm.mouseButtonPress(press)
 }
 
-async function onPointerDown(e: MouseEvent) {
+/**
+ * Pointer events only report the first button down and the last one up, so the
+ * button state is read from `buttons` on every event instead.
+ */
+function onMouseOrPen(e: PointerEvent) {
+  let onPicture = true
+  if (kvm.config.absoluteMode) {
+    // Mid-drag, follow the pointer past the picture's edge rather than stop.
+    onPicture = moveTo(e.clientX, e.clientY, pointerHeld !== 0)
+  } else {
+    const fromLast = (axis: 'x' | 'y', client: number) =>
+      mouseLast ? client - mouseLast[axis] : 0
+    moveBy(
+      Number.isFinite(e.movementX) ? e.movementX : fromLast('x', e.clientX),
+      Number.isFinite(e.movementY) ? e.movementY : fromLast('y', e.clientY),
+    )
+  }
+  mouseLast = { x: e.clientX, y: e.clientY }
+
+  // Only the stage's own pointerdown may start a press. A button pressed over
+  // the toolbar and slid onto the picture would otherwise be pressed here and
+  // released over there, out of our sight; a press in the letterbox would click
+  // wherever the pointer last was. Adding a button mid-press is still fine.
+  const down = e.buttons & POINTER_BUTTONS
+  pointerIgnored &= down
+  if (!onPicture || (e.type !== 'pointerdown' && !pointerHeld)) {
+    pointerIgnored |= down & ~pointerHeld
+  }
+  syncButtons(down & ~pointerIgnored)
+}
+
+/* ------------------------------------------------------------ touch & pencil */
+/** Fingers, in whichever style the mouse mode calls for. */
+const fingers = createTouchRecognizer()
+/**
+ * The Pencil in relative mode works the screen like a finger on a trackpad.
+ * Its own recogniser, so a resting palm never pairs with it into a scroll.
+ */
+const pencil = createTouchRecognizer()
+
+function click(button: number) {
+  void kvm.mouseButtonPress(button)
+  void kvm.mouseButtonRelease(button)
+}
+
+function runTouch(intents: TouchIntent[]) {
+  for (const i of intents) {
+    switch (i.type) {
+      case 'tap':
+      case 'secondaryTap':
+        // Trackpad style clicks wherever the pointer already is.
+        if (kvm.config.absoluteMode && !moveTo(i.x, i.y, false)) break
+        click(i.type === 'tap' ? MOUSE_LEFT : MOUSE_RIGHT)
+        break
+      case 'dragStart':
+        moveTo(i.x, i.y, true)
+        void kvm.mouseButtonPress(MOUSE_LEFT)
+        break
+      case 'dragMove':
+        moveTo(i.x, i.y, true)
+        break
+      case 'dragEnd':
+        moveTo(i.x, i.y, true)
+        void kvm.mouseButtonRelease(MOUSE_LEFT)
+        break
+      case 'glide':
+        moveBy(i.dx, i.dy)
+        break
+      case 'scroll':
+        // The target scrolls whatever is under its pointer, so in direct style
+        // put the pointer under the fingers first.
+        if (kvm.config.absoluteMode) moveTo(i.x, i.y, true)
+        for (let n = 0; n < Math.abs(i.ticks); n++) void kvm.mouseScroll(Math.sign(i.ticks))
+        break
+    }
+  }
+}
+
+/* ----------------------------------------------------------- pointer events */
+/**
+ * Where each pointer that went down on the stage is sent, fixed at pointerdown
+ * so a gesture never changes path halfway. 'ignore' is a touch that landed off
+ * the picture, so a finger can rest in the letterbox without joining gestures.
+ */
+type Route = 'mouse' | 'fingers' | 'pencil' | 'ignore'
+const routes = new Map<number, Route>()
+
+function routeFor(e: PointerEvent): Route {
+  const relativePen = e.pointerType === 'pen' && !kvm.config.absoluteMode
+  if (e.pointerType !== 'touch' && !relativePen) return 'mouse'
+  if (!toAbs(e.clientX, e.clientY, false)) return 'ignore'
+  return relativePen ? 'pencil' : 'fingers'
+}
+
+/**
+ * A pointer with nothing down — mouse or Pencil hover — has no route yet. A
+ * hovering Pencil moves the pointer in absolute mode only: as a trackpad it
+ * acts on contact.
+ */
+function hoverRoute(e: PointerEvent): Route {
+  if (e.pointerType === 'mouse') return 'mouse'
+  return e.pointerType === 'pen' && kvm.config.absoluteMode ? 'mouse' : 'ignore'
+}
+
+function recognizer(route: Route) {
+  if (route === 'fingers') return fingers
+  return route === 'pencil' ? pencil : null
+}
+
+function onPointerDown(e: PointerEvent) {
   jiggler.noteActivity()
-  const mask = buttonMask(e.button)
-  if (mask) await kvm.mouseButtonPress(mask)
+  lastPointerType = e.pointerType
+  const route = routeFor(e)
+  routes.set(e.pointerId, route)
+
+  const g = recognizer(route)
+  if (g) {
+    const style = route === 'pencil' || !kvm.config.absoluteMode ? 'trackpad' : 'direct'
+    runTouch(g.down(e.pointerId, e.clientX, e.clientY, e.timeStamp, style))
+  } else if (route === 'mouse') {
+    // Keep the release coming here even if it happens over the toolbar or
+    // outside the window, so a button is never left held on the target.
+    try {
+      stageEl.value?.setPointerCapture(e.pointerId)
+    } catch {
+      // A pointer that is already gone cannot be captured; still send the press.
+    }
+    onMouseOrPen(e)
+  }
 }
 
-async function onPointerUp(e: MouseEvent) {
-  const mask = buttonMask(e.button)
-  if (mask) await kvm.mouseButtonRelease(mask)
+function onPointerMove(e: PointerEvent) {
+  jiggler.noteActivity()
+  const route = routes.get(e.pointerId) ?? hoverRoute(e)
+  const g = recognizer(route)
+  if (g) runTouch(g.move(e.pointerId, e.clientX, e.clientY, e.timeStamp))
+  else if (route === 'mouse') onMouseOrPen(e)
+}
+
+function onPointerUp(e: PointerEvent) {
+  const route = routes.get(e.pointerId) ?? hoverRoute(e)
+  routes.delete(e.pointerId)
+  const g = recognizer(route)
+  if (g) runTouch(g.up(e.pointerId, e.clientX, e.clientY, e.timeStamp))
+  else if (route === 'mouse') {
+    pointerIgnored &= e.buttons
+    syncButtons(e.buttons & ~pointerIgnored)
+  }
+}
+
+function onPointerCancel(e: PointerEvent) {
+  const route = routes.get(e.pointerId) ?? hoverRoute(e)
+  routes.delete(e.pointerId)
+  const g = recognizer(route)
+  if (g) runTouch(g.cancel(e.pointerId))
+  else if (route === 'mouse') {
+    pointerIgnored = 0
+    syncButtons(0)
+  }
+}
+
+/** Switching apps mid-drag delivers no pointerup; let go rather than stay held. */
+function onWindowBlur() {
+  routes.clear()
+  pointerIgnored = 0
+  mouseLast = null
+  syncButtons(0)
+  runTouch([...fingers.cancelAll(), ...pencil.cancelAll()])
 }
 
 async function onWheel(e: WheelEvent) {
@@ -140,6 +356,7 @@ async function onWheel(e: WheelEvent) {
 }
 
 function onStageClick() {
+  if (lastPointerType !== 'mouse') return
   if (!kvm.config.absoluteMode && document.pointerLockElement !== stageEl.value) {
     stageEl.value?.requestPointerLock()
   }
@@ -239,12 +456,14 @@ onMounted(() => {
   if (!settings.skipConnectPrompt) panels.show('connectPrompt')
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('keyup', onKeyup)
+  window.addEventListener('blur', onWindowBlur)
   document.addEventListener('fullscreenchange', syncFullscreen)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('keyup', onKeyup)
+  window.removeEventListener('blur', onWindowBlur)
   document.removeEventListener('fullscreenchange', syncFullscreen)
   stopSignalWatch?.()
   stopDeviceWatch?.()
@@ -265,9 +484,10 @@ onBeforeUnmount(() => {
         ref="stageEl"
         class="kvm-touch"
         :class="{ 'no-cursor': !settings.showLocalCursor }"
-        @mousemove="onPointerMove"
-        @mousedown="onPointerDown"
-        @mouseup="onPointerUp"
+        @pointerdown="onPointerDown"
+        @pointermove="onPointerMove"
+        @pointerup="onPointerUp"
+        @pointercancel="onPointerCancel"
         @wheel.prevent="onWheel"
         @click="onStageClick"
         @contextmenu.prevent
@@ -276,7 +496,7 @@ onBeforeUnmount(() => {
       <KvmToolbar
         :hidden="toolbarHidden"
         :fullscreen="isFullscreen"
-        @toggle-serial="toggleSerial"
+        @toggle-link="toggleLink"
         @screenshot="takeScreenshot"
         @toggle-fullscreen="toggleFullscreen"
         @hide="toolbarHidden = true"
@@ -300,7 +520,7 @@ onBeforeUnmount(() => {
       <SettingsPanel v-if="panels.open.settings" />
 
       <ConnectPrompt v-if="panels.open.connectPrompt" @start="startCapture" />
-      <BrowserWarning v-if="!serialSupported" />
+      <BrowserWarning v-if="!linkSupported" />
     </div>
   </ClientOnly>
 </template>

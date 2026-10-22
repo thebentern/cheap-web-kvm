@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Compatibility gate. Web Serial is Chromium-only, so on Firefox and Safari the
-// keyboard and mouse path cannot work at all — say so rather than failing
-// silently deeper in. Video capture still works, hence "Proceed anyway".
+// Compatibility gate. The keyboard and mouse need Web Serial or Web Bluetooth.
+// Firefox and Safari have neither, so the HID path cannot work at all there —
+// say so rather than failing silently deeper in. Video capture still works,
+// hence "Proceed anyway".
 import { onMounted, ref } from 'vue'
 
 /** Drives the `.kvm-modal` fade; raised a frame after mount so it animates. */
@@ -14,7 +15,7 @@ const dismissed = ref(false)
 // tab is hidden, which would leave the panel invisible until it is focused.
 onMounted(() => setTimeout(() => (visible.value = true), 16))
 
-const BROWSERS: string[] = ['Chrome', 'Edge', 'Opera', 'Brave']
+const BROWSERS: string[] = ['Chrome', 'Edge', 'Opera', 'Brave', 'Bluefy (iPad)']
 
 function proceed() {
   visible.value = false
@@ -43,8 +44,10 @@ function proceed() {
       </h2>
       <p class="mt-2 text-sm leading-relaxed text-mist-400">
         This app drives the KVM over the
-        <strong class="text-mist-200">Web Serial API</strong>, which your browser does not
-        implement. Use Chrome, Edge, or another Chromium-based browser.
+        <strong class="text-mist-200">Web Serial</strong> or
+        <strong class="text-mist-200">Web Bluetooth</strong> API, and your browser implements
+        neither. Use Chrome, Edge, or another Chromium-based browser. On an iPad, use a Web
+        Bluetooth browser such as Bluefy.
       </p>
 
       <div class="mt-4 flex flex-wrap justify-center gap-2">
@@ -56,7 +59,10 @@ function proceed() {
           {{ b }}
         </span>
       </div>
-      <p class="mt-3 text-xs text-mist-400">Firefox and Safari are not supported.</p>
+      <p class="mt-3 text-xs text-mist-400">
+        Firefox and Safari are not supported. Every iPad browser is Safari underneath, Chrome
+        included.
+      </p>
 
       <button class="kvm-btn mx-auto mt-5" @click="proceed">
         <AppIcon name="alert-triangle" class="text-warn-400" /> Proceed anyway

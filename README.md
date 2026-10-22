@@ -1,7 +1,7 @@
 # cheap-web-kvm
 
 A USB KVM dongle built from **one ESP32-S3 dev board** and an off-the-shelf HDMI
-capture stick. Control a headless server from a laptop browser — keyboard, mouse
+capture stick. Control a headless server from a laptop or iPad browser — keyboard, mouse
 and video — with no drivers and no software to install.
 
 > ### Built on [tobychui/DezKVM-Go](https://github.com/tobychui/DezKVM-Go)
@@ -27,8 +27,9 @@ a USB HID keyboard + absolute mouse on the other.
 
 The point is not cost — it is that the CH9329 is a fixed-function part and an MCU
 is not. An MCU in that slot can do USB mass storage (virtual media / ISO boot),
-USB-Ethernet, on-device macros, and Wi-Fi transport. None of that is built yet;
-see [Stretch goals](#stretch-goals).
+USB-Ethernet, on-device macros, and wireless transports. Bluetooth LE is built
+(see [Using an iPad](#using-an-ipad)); the rest is not yet — see [Stretch
+goals](#stretch-goals).
 
 Video is untouched: the capture stick is a standalone UVC device that plugs
 straight into the laptop. No ESP32 can do HDMI capture and the firmware has
@@ -48,6 +49,8 @@ nothing to do with video.
   target <──USB-C── [USB port: native OTG, GPIO19/20] ┘
 
   target ──HDMI──> MS2130 ──USB-A──> laptop     (independent, no firmware involvement)
+
+  iPad ···Bluetooth LE··· ESP32-S3              (instead of the UART cable)
 ```
 
 ### Check these before first bring-up
@@ -83,6 +86,20 @@ any app code runs, so this works regardless of what the app does with the pins):
 idf.py -p /dev/tty.usbserial-XXXX flash
 ```
 
+### Bluetooth passkey
+
+The Bluetooth transport only takes input from a paired host, and pairing needs
+a six-digit passkey that is fixed at build time. **The default is `123456`;
+change it**, since anyone in radio range who knows it can type into the target:
+
+```bash
+idf.py menuconfig    # cheap-web-kvm → Bluetooth pairing passkey
+```
+
+Turn Bluetooth off entirely with the `Bluetooth LE transport` option in the same
+menu. `sdkconfig.defaults` only seeds a fresh `firmware/sdkconfig`; if you built
+before Bluetooth existed, delete `firmware/sdkconfig` and rebuild to pick it up.
+
 ### The console caveat
 
 On the ESP32-S3, GPIO19/20 are muxed between the USB-OTG peripheral and the USB
@@ -94,8 +111,8 @@ adapter to read it. Set `CONFIG_ESP_CONSOLE_NONE` once you no longer need it.
 ## Web UI
 
 A [Nuxt 4](https://nuxt.com) + Vue 3 + TypeScript app, styled with Tailwind CSS
-and statically generated. Web Serial requires a secure context, so it has to be
-served over HTTPS or from `localhost`.
+and statically generated. Web Serial and Web Bluetooth both require a secure
+context, so it has to be served over HTTPS or from `localhost`.
 
 * **Hosted:** <https://thebentern.github.io/cheap-web-kvm/> — built and deployed
   by [GitHub Actions](.github/workflows/deploy-pages.yml) on every push to
@@ -113,6 +130,46 @@ npm run dev        # http://localhost:3000
 npm run test       # protocol golden-frame tests
 npm run generate   # static build into web/.output/public
 ```
+
+### Using an iPad
+
+iPads have no Web Serial, so the keyboard and mouse go over Bluetooth instead.
+Video needs nothing special: iPadOS 17 and later expose a USB camera to Safari's
+`getUserMedia`, and the capture stick is one.
+
+1. A USB-C iPad on iPadOS 17 or later. Plug the capture stick into it, through
+   a USB-C adapter for the MS2130's USB-A plug. Lightning iPads cannot use
+   external cameras.
+2. Install [Bluefy](https://apps.apple.com/app/id1492822055) or another Web
+   Bluetooth browser. Every iPad browser is Safari's engine underneath —
+   Chrome included — and Safari has no Web Bluetooth.
+3. Open the hosted UI in that browser, press the Bluetooth button in the
+   toolbar, pick `cheap-web-kvm-XXXX`, and enter the passkey when iPadOS asks.
+
+A trackpad or mouse works as it would on a laptop. On the touch screen itself:
+
+| Gesture | Absolute mouse mode (default) | Relative mouse mode |
+|---|---|---|
+| Tap | Click where you tapped | Quick tap: click where the pointer is |
+| One-finger drag | Drag with the left button held | Move the pointer, like a trackpad |
+| Two-finger drag | Scroll, under your fingers | Scroll |
+| Two-finger tap | Right-click where you tapped | Right-click where the pointer is |
+
+The Apple Pencil acts like a mouse in absolute mode (touching presses the left
+button; hovering, where the iPad supports it, moves the pointer) and like a
+finger in relative mode.
+
+A touch that starts in the black bars around the picture is ignored, so you can
+rest a finger there. A finger only becomes a click once it is clearly a tap or
+a drag, so the first finger of a two-finger scroll never clicks on its way down,
+and a pinch is not mistaken for a two-finger tap.
+
+Pointer moves and scroll ticks over Bluetooth are queued and merged rather than
+sent late (see [PROTOCOL.md §5](docs/PROTOCOL.md#5-timing)), so the pointer
+updates less often than over a cable. Clicks and keystrokes are never merged.
+
+Desktop Chrome and Edge have Web Bluetooth too, so the same works from a laptop
+with no UART cable.
 
 ### It works with no internet
 
@@ -167,6 +224,7 @@ python3 tools/ch9329_test.py -p /dev/tty.usbserial-XXXX --soak 2000
 | M2 | CH9329 frames on UART0 drive HID reports | **Verified on hardware.** All four commands ACK; 1000/1000 reports in a soak with 0 timeouts and 0 errors |
 | M3 | Forked web UI drives the target end to end | Implemented; **not yet confirmed** |
 | M4 | Reconnect, power-cycle survival, sustained typing | Sustained typing verified (soak above); power-cycle survival **not yet confirmed** |
+| M5 | Bluetooth LE transport, iPad support | Firmware builds and the UI's Bluetooth queue was exercised against a simulated device; **not yet run on hardware or an iPad** |
 
 Flashed and exercised on an ESP32-S3-DevKitC-1-N8R8 (rev v0.2, 8 MB flash,
 8 MB PSRAM). The protocol layer is confirmed end to end from host serial to the
@@ -181,7 +239,7 @@ reports `USB enumerated: no`.
   and flatly impossible with a CH9329. Watch UEFI behaviour when adding a third
   interface.
 * **Wi-Fi transport** — SoftAP + LittleFS-hosted UI + WebSocket, for when the
-  target is somewhere the laptop cable isn't. A second transport; Web Serial
+  target is somewhere the laptop cable isn't. A third transport; Web Serial
   stays the zero-config default.
 * **USB-Ethernet (RNDIS/ECM)** to the target.
 

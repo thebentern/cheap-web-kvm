@@ -66,10 +66,11 @@ const captureRows = computed<CaptureRow[] | null>(() => {
   ]
 })
 
-/* ------------------------------------------------------------------- serial */
+/* --------------------------------------------------------------------- link */
 // `kvm` is a plain object of refs, so the template cannot auto-unwrap them.
 const connected = computed(() => kvm.link.connected.value)
 const portLabel = computed(() => kvm.link.portLabel.value)
+const isBle = computed(() => kvm.link.kind.value === 'ble')
 
 /* --------------------------------------------------------------- fullscreen */
 const isFullscreen = ref(false)
@@ -318,7 +319,7 @@ onBeforeUnmount(() => {
               <AppIcon name="keyboard" class="text-signal-400" /> Keyboard &amp; mouse
             </h4>
             <p class="kvm-hint mt-1">
-              Input leaves over Web Serial and reaches the target as real USB HID.
+              Input leaves over Web Serial or Bluetooth and reaches the target as real USB HID.
             </p>
 
             <div class="mt-4 space-y-5">
@@ -328,7 +329,7 @@ onBeforeUnmount(() => {
                   Sends deltas instead of absolute coordinates, for games and 3D applications that
                   capture the pointer. Absolute is the default and works better through a laggy video
                   feed — the pointer lands where you clicked even if the picture is a few frames
-                  behind.
+                  behind. On a touch screen, relative mode turns the screen into a trackpad.
                 </p>
                 <label class="kvm-toggle mt-2">
                   <input v-model="settings.relativeMouseMode" type="checkbox" />
@@ -493,16 +494,20 @@ onBeforeUnmount(() => {
 
             <div class="mt-4 space-y-5">
               <div>
-                <div class="kvm-label">Serial link</div>
+                <div class="kvm-label">HID link</div>
                 <p class="kvm-hint mt-0.5">
-                  The firmware always comes up at 115200 baud, so there is nothing to choose here.
+                  Serial always runs at 115200 baud. Bluetooth asks for the firmware's passkey the
+                  first time this device pairs. Either way there is nothing to choose here.
                 </p>
                 <div class="mt-2 flex max-w-sm items-center gap-2 rounded-lg border border-ink-600 bg-ink-900 px-3 py-2">
-                  <AppIcon name="usb" :class="connected ? 'text-live-400' : 'text-mist-400'" />
+                  <AppIcon
+                    :name="isBle ? 'bluetooth' : 'usb'"
+                    :class="connected ? 'text-live-400' : 'text-mist-400'"
+                  />
                   <span class="text-[13px] text-mist-200">
-                    {{ connected ? portLabel || 'Serial port' : 'Not connected' }}
+                    {{ connected ? portLabel || (isBle ? 'Bluetooth' : 'Serial port') : 'Not connected' }}
                   </span>
-                  <span class="kvm-hint ml-auto font-mono">115200 8N1</span>
+                  <span class="kvm-hint ml-auto font-mono">{{ isBle ? 'BLE GATT' : '115200 8N1' }}</span>
                 </div>
               </div>
 
@@ -541,8 +546,8 @@ onBeforeUnmount(() => {
               <div>
                 <div class="kvm-label">Reset to defaults</div>
                 <p class="kvm-hint mt-0.5">
-                  Puts every setting on this panel back where it started. Does not touch the serial
-                  or capture connection.
+                  Puts every setting on this panel back where it started. Does not touch the HID
+                  link or the capture connection.
                 </p>
                 <button type="button" class="kvm-btn mt-2" @click="resetToDefaults">
                   <AppIcon name="undo" /> Reset to defaults
@@ -565,10 +570,10 @@ onBeforeUnmount(() => {
                 </div>
                 <p class="kvm-hint mt-1">
                   A browser-based USB KVM. Video and audio come in from a UVC capture card;
-                  keystrokes and pointer movement go out over Web Serial to a CH9329-compatible HID
-                  bridge, which the target sees as an ordinary USB keyboard and mouse. There is no
-                  server and nothing to reach on the network — it works on a bench with no internet
-                  at all.
+                  keystrokes and pointer movement go out over Web Serial or Bluetooth to a
+                  CH9329-compatible HID bridge, which the target sees as an ordinary USB keyboard and
+                  mouse. There is no server and nothing to reach on the network — it works on a bench
+                  with no internet at all.
                 </p>
               </div>
 

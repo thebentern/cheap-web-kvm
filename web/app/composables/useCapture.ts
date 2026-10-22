@@ -22,6 +22,18 @@ export const SUPPORTED_CAPTURE: CaptureCandidate[] = [
   { vid: '345f', pid: '2109', product: 'MS2109 (gen2)' },
 ]
 
+/**
+ * Cameras that ship inside the host. Safari labels devices by product name
+ * alone, so when nothing carries a USB id these are what to rule out.
+ */
+const BUILT_IN_CAMERA = /^(front|back) |facetime|macbook|built-?in|integrated|desk view|iphone|ipad|virtual/i
+
+/** How Chrome suffixes a USB device's label. Safari never does. */
+const LABEL_USB_ID = /\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i
+
+/** Microphone labels worth trusting as the stick's own audio. */
+const CAPTURE_AUDIO = /usb|hdmi|capture|ms21/i
+
 export const MODE_LIST = [
   { width: 1920, height: 1080, frameRate: 60 },
   { width: 1920, height: 1080, frameRate: 30 },
@@ -93,6 +105,24 @@ export function useCapture() {
         }
       }
 
+      // Safari: no vid:pid anywhere, and the sticks name themselves things like
+      // "USB3 Video". Take the first camera that is not built in. Its
+      // microphone must be grouped with it or look like capture audio — a
+      // guess could open the host's own microphone instead.
+      if (!video && !devices.some((d) => LABEL_USB_ID.test(d.label))) {
+        video =
+          devices.find((d) => d.kind === 'videoinput' && !BUILT_IN_CAMERA.test(d.label)) ?? null
+        if (video) {
+          const groupId = video.groupId
+          audio =
+            devices.find((d) => d.kind === 'audioinput' && !!groupId && d.groupId === groupId) ??
+            devices.find((d) => d.kind === 'audioinput' && CAPTURE_AUDIO.test(d.label)) ??
+            null
+          fuzzyMatch.value = true
+          deviceName.value = video.label || 'USB capture device'
+        }
+      }
+
       if (!video) {
         lastError.value = 'No HDMI capture device found (MS2130 / MS2109)'
         return false
@@ -116,6 +146,36 @@ export function useCapture() {
           return true
         } catch {
           // Try the next mode; MS2109 behind a hub often only manages 25 fps.
+        }
+      }
+
+      // Safari can refuse every exact mode, so let it choose the nearest and
+      // report what it chose. Audio is dropped on the last try rather than
+      // costing the picture.
+      const audioTries =
+        enableAudio && audio ? [{ deviceId: { exact: audio.deviceId } }, false] : [false]
+      for (const audioConstraint of audioTries) {
+        try {
+          const s = await navigator.mediaDevices.getUserMedia({
+            video: {
+              deviceId: { exact: video.deviceId },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+              frameRate: { ideal: 60 },
+            },
+            audio: audioConstraint,
+          })
+          const got = s.getVideoTracks()[0]?.getSettings() ?? {}
+          stream.value = s
+          active.value = true
+          resolution.value = {
+            width: got.width ?? 1920,
+            height: got.height ?? 1080,
+            frameRate: Math.round(got.frameRate ?? 30),
+          }
+          return true
+        } catch {
+          // Next: the same without audio.
         }
       }
 

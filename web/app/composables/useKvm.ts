@@ -11,7 +11,7 @@ import {
   mouseRelFrame,
   resetFrame,
 } from '~/utils/ch9329'
-import { useSerialLink } from '~/composables/useSerialLink'
+import { useLink } from '~/composables/useLink'
 
 /**
  * HID state and the actions that drive it.
@@ -45,7 +45,7 @@ const config = reactive({
 const busy = ref(false)
 
 export function useKvm() {
-  const link = useSerialLink()
+  const link = useLink()
 
   function swapCtrlCmd(keyCode: number) {
     if (!config.ctrlCmdSwap) return keyCode

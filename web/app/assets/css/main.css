@@ -381,6 +381,12 @@
     height: 100vh;
     z-index: 500;
     user-select: none;
+    -webkit-user-select: none;
+    /* Every touch belongs to the target: no browser pan, zoom, double-tap zoom
+       or long-press callout, or the pointer events behind gestures get
+       cancelled. */
+    touch-action: none;
+    -webkit-touch-callout: none;
   }
   .kvm-touch.no-cursor {
     cursor: none;

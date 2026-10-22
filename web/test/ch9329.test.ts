@@ -13,6 +13,7 @@ import {
   CMD,
   MOD,
   checksum,
+  coalesceMove,
   getInfoFrame,
   hex,
   jsKeycodeToHid,
@@ -120,6 +121,54 @@ describe('reply parsing', () => {
     const r = parseReply(noisy, CMD.MOUSE_ABS)
     expect(r).not.toBeNull()
     expect(r!.ok).toBe(true)
+  })
+})
+
+describe('pointer coalescing (Bluetooth queue)', () => {
+  it('keeps the newer absolute position', () => {
+    const newer = mouseAbsFrame(0, 300, 400)
+    expect(coalesceMove(mouseAbsFrame(0, 100, 200), newer)).toBe(newer)
+  })
+
+  it('adds relative deltas', () => {
+    expect(hex(coalesceMove(mouseRelFrame(0, 5, -3), mouseRelFrame(0, -6, 10))!)).toBe(
+      hex(mouseRelFrame(0, -1, 7)),
+    )
+  })
+
+  it('refuses a relative sum that would not fit a signed byte', () => {
+    expect(coalesceMove(mouseRelFrame(0, 100, 0), mouseRelFrame(0, 100, 0))).toBeNull()
+  })
+
+  it('never merges across a button change', () => {
+    expect(coalesceMove(mouseAbsFrame(0, 1, 1), mouseAbsFrame(0x01, 2, 2))).toBeNull()
+    expect(coalesceMove(mouseRelFrame(0x01, 1, 1), mouseRelFrame(0, 1, 1))).toBeNull()
+  })
+
+  it('never merges a scroll with a move', () => {
+    expect(coalesceMove(mouseRelFrame(0, 0, 0, 0x02), mouseRelFrame(0, 1, 0))).toBeNull()
+    expect(coalesceMove(mouseRelFrame(0, 1, 0), mouseRelFrame(0, 0, 0, 0x02))).toBeNull()
+    expect(coalesceMove(mouseAbsFrame(0, 1, 1), mouseAbsFrame(0, 2, 2, 0xfe))).toBeNull()
+  })
+
+  it('adds scroll ticks in the same direction', () => {
+    // 0xfd is -3, the down tick mouseScroll() sends at sensitivity 2.
+    expect(hex(coalesceMove(mouseRelFrame(0, 0, 0, 0xfd), mouseRelFrame(0, 0, 0, 0xfd))!)).toBe(
+      hex(mouseRelFrame(0, 0, 0, 0xfa)),
+    )
+    expect(hex(coalesceMove(mouseRelFrame(0, 0, 0, 2), mouseRelFrame(0, 0, 0, 2))!)).toBe(
+      hex(mouseRelFrame(0, 0, 0, 4)),
+    )
+  })
+
+  it('keeps opposite scroll directions apart, and stops before a signed byte overflows', () => {
+    expect(coalesceMove(mouseRelFrame(0, 0, 0, 2), mouseRelFrame(0, 0, 0, 0xfd))).toBeNull()
+    expect(coalesceMove(mouseRelFrame(0, 0, 0, 100), mouseRelFrame(0, 0, 0, 100))).toBeNull()
+  })
+
+  it('leaves keyboard frames and mixed kinds alone', () => {
+    expect(coalesceMove(keyboardFrame(0, [0x04]), keyboardFrame(0, []))).toBeNull()
+    expect(coalesceMove(mouseAbsFrame(0, 1, 1), mouseRelFrame(0, 1, 1))).toBeNull()
   })
 })
 

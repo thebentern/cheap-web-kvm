@@ -37,7 +37,30 @@ extern "C" {
 
 #define CH9329_MAX_PAYLOAD 64
 
+/* Writes one complete reply frame back to the host the request came from. */
+typedef void (*ch9329_tx_fn_t)(const uint8_t *frame, size_t len);
+
+/* One per transport. A parser holds partial-frame state, so two hosts feeding
+ * the same one would corrupt each other's frames. Fields are private. */
+typedef struct {
+    uint8_t        state;
+    uint8_t        addr;
+    uint8_t        cmd;
+    uint8_t        len;
+    uint8_t        data[CH9329_MAX_PAYLOAD];
+    uint8_t        received;
+    uint8_t        sum;
+    ch9329_tx_fn_t tx;
+} ch9329_parser_t;
+
+/* Starts the UART0 transport. */
 esp_err_t ch9329_start(void);
+
+void ch9329_parser_init(ch9329_parser_t *p, ch9329_tx_fn_t tx);
+
+/* Advances the state machine by one byte, dispatching and replying through
+ * p->tx when a frame completes. Call from one task per parser. */
+void ch9329_parser_feed(ch9329_parser_t *p, uint8_t byte);
 
 uint8_t ch9329_checksum(const uint8_t *data, size_t len);
 

@@ -19,7 +19,7 @@ const visible = ref(false)
 onMounted(() => setTimeout(() => (visible.value = true), 16))
 
 const STEPS: string[] = [
-  'Connect the UART port to this computer',
+  'Connect the UART port to this computer, or use Bluetooth instead',
   'Connect the native USB port and HDMI to the target',
   'Grant camera and audio access for the capture card',
 ]

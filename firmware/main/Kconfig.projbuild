@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+menu "cheap-web-kvm"
+
+    config KVM_BLE_ENABLED
+        bool "Bluetooth LE transport"
+        depends on BT_NIMBLE_ENABLED
+        default y
+        help
+            Accept CH9329 frames over a Bluetooth LE GATT service as well as
+            UART0, for hosts with no USB serial such as iPads. Writes need a
+            bonded, authenticated link (see KVM_BLE_PASSKEY).
+
+    config KVM_BLE_PASSKEY
+        int "Bluetooth pairing passkey"
+        depends on KVM_BLE_ENABLED
+        range 0 999999
+        default 123456
+        help
+            Six-digit passkey the host enters when it first pairs. Anyone who
+            knows it and is in radio range can pair and type into the target,
+            so change it from the default. Leading zeros are allowed: 4321 is
+            entered as 004321.
+
+endmenu

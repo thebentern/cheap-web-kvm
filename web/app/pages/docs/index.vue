@@ -59,21 +59,21 @@ interface Requirement {
 const requirements: Requirement[] = [
   {
     icon: 'monitor',
-    title: 'A Chromium-based browser',
+    title: 'A Chromium-based browser, or Bluefy on iPad',
     detail:
-      'Chrome, Edge, Brave or Opera. Web Serial is not implemented in Firefox or Safari, so the control half of the KVM cannot work there — video alone still would.',
+      'Chrome, Edge, Brave or Opera, over Web Serial or Web Bluetooth. Firefox and Safari have neither, so the control half of the KVM cannot work there — video alone still would. On an iPad, use a Web Bluetooth browser such as Bluefy; Safari there shows the capture stick fine on iPadOS 17 and later.',
   },
   {
     icon: 'lock',
     title: 'A secure context',
     detail:
-      'HTTPS, or http://localhost. Both Web Serial and getUserMedia refuse to hand out devices on a plain-HTTP origin.',
+      'HTTPS, or http://localhost. Web Serial, Web Bluetooth and getUserMedia all refuse to hand out devices on a plain-HTTP origin.',
   },
   {
     icon: 'usb',
     title: 'An ESP32-S3 running the CH9329-compatible firmware',
     detail:
-      'Serial at 115200 8N1, no flow control, over the board’s UART bridge port. A genuine CH9329 module works too, once it has been moved off its 9600 baud default.',
+      'Serial at 115200 8N1, no flow control, over the board’s UART bridge port — or Bluetooth LE, paired once with the passkey set at build time. A genuine CH9329 module works too over serial, once it has been moved off its 9600 baud default.',
   },
   {
     icon: 'film',
@@ -113,10 +113,10 @@ useHead({
         </h1>
         <p class="mt-4 text-sm leading-relaxed text-mist-400 sm:text-[15px]">
           A browser-based USB KVM for headless machines. Video and audio arrive from an ordinary
-          UVC capture stick; keystrokes and pointer movement leave over Web Serial to an ESP32-S3
-          speaking the CH9329 protocol, which the target sees as a plain USB keyboard and mouse.
-          There is no server, no agent on the target and nothing to reach over the network — it
-          works on a bench with no internet at all.
+          UVC capture stick; keystrokes and pointer movement leave over Web Serial or Bluetooth
+          to an ESP32-S3 speaking the CH9329 protocol, which the target sees as a plain USB
+          keyboard and mouse. There is no server, no agent on the target and nothing to reach
+          over the network — it works on a bench with no internet at all.
         </p>
       </header>
 

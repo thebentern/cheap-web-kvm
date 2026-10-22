@@ -21,6 +21,37 @@ reconfigured before first use. This firmware comes up at 115200 directly, so
 that step does not exist here. The UI still offers a 9600 option in Settings →
 HID Baudrate; leave it on 115200.
 
+### Bluetooth LE
+
+A second transport for hosts with no Web Serial — an iPad, through a Web
+Bluetooth browser such as Bluefy. It carries **the same frames, byte for byte**:
+nothing below this section changes. This is not part of the CH9329; it is
+specific to this firmware ([`kvm_ble.c`](../firmware/main/kvm_ble.c)).
+
+| | UUID | Properties |
+|---|---|---|
+| Service | `a1340001-d6af-4060-9ae5-7254073b70b8` | advertised |
+| RX (host → device) | `a1340002-d6af-4060-9ae5-7254073b70b8` | write, write without response |
+| TX (device → host) | `a1340003-d6af-4060-9ae5-7254073b70b8` | notify |
+
+* The board advertises the service UUID and puts its name,
+  `cheap-web-kvm-XXXX` (the end of its Bluetooth address), in the scan response.
+* RX is a byte pipe into its own parser, exactly like UART0. Frames may be split
+  across writes or packed several to one; keep each write to whole frames
+  anyway, because a write that does not fit the receive buffer is dropped whole.
+* Replies arrive as TX notifications. Subscribe before the first write.
+* **RX needs an authenticated, encrypted link.** Pairing is LE Secure
+  Connections passkey entry against the six-digit `KVM_BLE_PASSKEY` set in
+  menuconfig (default `123456` — change it), and the bond is stored, so it
+  happens once per host. Legacy pairing is disabled.
+* **The first write must be a write with response.** An unpaired write is
+  refused with Insufficient Authentication, and that error is what makes iOS,
+  iPadOS and macOS show the passkey prompt. A write without response on an
+  unpaired link is dropped with no error at all. The UI's first write is
+  `GET_INFO`, which also proves the far end is this firmware.
+* One connection at a time. The board asks for a 15–30 ms connection interval,
+  the shortest Apple's accessory guidelines allow.
+
 ## 2. Frame format
 
 Requests and replies share one framing:
@@ -169,6 +200,16 @@ frame is parsed and queued, not after the HID report reaches the target.
 In the other direction, keystroke injection toward the target is floored at one
 report per 10 ms; targets drop characters from the paste box otherwise,
 BIOS/UEFI especially.
+
+Over Bluetooth every round trip is one or two connection intervals rather than a
+millisecond, and GATT takes one write at a time. The UI therefore queues frames
+and sends them one by one, and a pointer move still waiting in the queue is
+merged with the next one instead of being sent late: absolute moves keep the
+newer position, relative moves add their deltas, and scroll-only frames add
+their wheel ticks when they scroll the same way. Nothing merges across a button
+change, a scroll never merges with a move, and nothing merges into a frame that
+changed the buttons, so a click arrives as a press and a release at the same
+spot. Keyboard frames are never merged.
 
 ## 6. Commands the firmware implements but the UI never sends
 

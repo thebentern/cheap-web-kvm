@@ -89,6 +89,44 @@ export function getInfoFrame(): Uint8Array {
   return frame(CMD.GET_INFO)
 }
 
+/**
+ * Merge a pointer frame still waiting to be sent with a newer one, or return
+ * null if both have to go. For transports that queue (Bluetooth): a stale
+ * position is worthless once a newer one exists, and sending it only adds lag.
+ *
+ * Absolute moves merge by keeping the newer position; relative moves by adding
+ * the deltas, and scroll-only frames by adding wheel ticks in the same
+ * direction, each while the sum still fits a signed byte. Nothing merges across
+ * a button change, and a scroll never merges with a move, so no click and no
+ * scroll distance is ever lost.
+ */
+export function coalesceMove(older: Uint8Array, newer: Uint8Array): Uint8Array | null {
+  const cmd = older[3]
+  if (cmd !== newer[3] || older[6] !== newer[6]) return null
+
+  if (cmd === CMD.MOUSE_ABS) {
+    return older[11] === 0 && newer[11] === 0 ? newer : null
+  }
+  if (cmd === CMD.MOUSE_REL) {
+    const signed = (b: number) => (b > 127 ? b - 256 : b)
+    const [dx0, dy0, w0] = [signed(older[7]!), signed(older[8]!), signed(older[9]!)]
+    const [dx1, dy1, w1] = [signed(newer[7]!), signed(newer[8]!), signed(newer[9]!)]
+
+    if (w0 === 0 && w1 === 0) {
+      const dx = dx0 + dx1
+      const dy = dy0 + dy1
+      if (Math.abs(dx) > 127 || Math.abs(dy) > 127) return null
+      return mouseRelFrame(newer[6]!, dx, dy, 0)
+    }
+
+    const scrollOnly = dx0 === 0 && dy0 === 0 && dx1 === 0 && dy1 === 0
+    const wheel = w0 + w1
+    if (!scrollOnly || Math.sign(w0) !== Math.sign(w1) || Math.abs(wheel) > 127) return null
+    return mouseRelFrame(newer[6]!, 0, 0, wheel)
+  }
+  return null
+}
+
 export interface ReplyMatch {
   ok: boolean
   payload: Uint8Array
