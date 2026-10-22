@@ -37,15 +37,41 @@ device plugged into the host.
 | Capture | MS2130 HDMI to USB dongle | 1080p60, cleaner UVC descriptors than the MS2109. The MS2109 also works. |
 | Cables | 2× USB-C, 1× HDMI | |
 
-```
-  laptop ──USB-C──> [UART port: CP2102N/CH340] ─UART0─┐
-                                                      ├── ESP32-S3
-  target <──USB-C── [USB port: native OTG, GPIO19/20] ┘
+![ESP32-S3 board and HDMI capture stick on a desk](docs/images/desk.png)
 
-  target ──HDMI──> MS2130 ──USB-A──> laptop     (separate, no firmware involved)
+```mermaid
+flowchart TB
+    subgraph host["Host: runs the web UI"]
+        laptop["Laptop<br/>Chrome or Edge"]
+        ipad["iPad<br/>Bluefy"]
+    end
 
-  iPad ···Bluetooth LE··· ESP32-S3              (instead of the UART cable)
+    subgraph board["ESP32-S3 dev board"]
+        uart["UART port<br/>CP2102N or CH340"]
+        mcu["ESP32-S3<br/>CH9329 protocol"]
+        otg["Native USB port<br/>GPIO19/20"]
+    end
+
+    capture["HDMI capture stick<br/>MS2130"]
+    target["Target machine"]
+
+    laptop ~~~ ipad
+    laptop -- "USB-C<br/>Web Serial" --> uart
+    uart -- "UART0" --> mcu
+    laptop -. "Bluetooth LE" .-> mcu
+    ipad -. "Bluetooth LE<br/>PIN pairing" .-> mcu
+    mcu --- otg
+    otg -- "USB-C<br/>HID keyboard and mouse" --> target
+    target -- "HDMI" --> capture
+    capture -- "USB video and audio" --> laptop
+    capture -- "USB video and audio<br/>via USB-C adapter" --> ipad
 ```
+
+Solid lines are cables, dotted lines are Bluetooth. A laptop can use either the
+UART cable or Bluetooth; an iPad uses Bluetooth. Both links can be connected at
+once, but each host sends the full key and button state, so type from one at a
+time. The capture stick plugs into whichever host shows the video, and the
+firmware never touches it.
 
 ### Before first power-up
 
