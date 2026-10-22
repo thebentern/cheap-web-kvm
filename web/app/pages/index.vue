@@ -76,15 +76,28 @@ async function toggleLink(which: LinkKind) {
 }
 
 /* -------------------------------------------------------------------- mouse */
+/**
+ * Where the picture is on screen. Measured from the video element, not the
+ * stage: CSS puts the video at the top of the stage, not in the middle, and
+ * assuming otherwise put every tap above the finger on a 4:3 iPad. The frame is
+ * then fitted inside the element in case object-fit letterboxes it. Before a
+ * stream arrives the video has no size, so fall back to the stage.
+ */
 function stageMetrics() {
-  const el = stageEl.value
+  const video = videoEl.value
+  const playing = !!video && video.videoWidth > 0 && video.videoHeight > 0
+  const el = playing ? video : stageEl.value
   if (!el) return null
   const rect = el.getBoundingClientRect()
+  if (!rect.width || !rect.height) return null
   const res = capture.resolution.value
-  const aspect = res ? res.width / res.height : 16 / 9
+  const aspect = playing
+    ? video!.videoWidth / video!.videoHeight
+    : res
+      ? res.width / res.height
+      : 16 / 9
 
-  // The video is letterboxed inside the stage; map only the picture area so the
-  // pointer lands where the user is actually looking.
+  // Map only the picture area so the pointer lands where the user is looking.
   let w = rect.width
   let h = rect.height
   let offX = rect.left
