@@ -40,38 +40,23 @@ device plugged into the host.
 ![ESP32-S3 board and HDMI capture stick on a desk](docs/images/desk.png)
 
 ```mermaid
-flowchart TB
-    subgraph host["Host: runs the web UI"]
-        laptop["Laptop<br/>Chrome or Edge"]
-        ipad["iPad<br/>Bluefy"]
-    end
+flowchart LR
+    host["Laptop or iPad"]
+    esp["ESP32-S3"]
+    target["Target"]
+    capture["HDMI capture stick"]
 
-    subgraph board["ESP32-S3 dev board"]
-        uart["UART port<br/>CP2102N or CH340"]
-        mcu["ESP32-S3<br/>CH9329 protocol"]
-        otg["Native USB port<br/>GPIO19/20"]
-    end
-
-    capture["HDMI capture stick<br/>MS2130"]
-    target["Target machine"]
-
-    laptop ~~~ ipad
-    laptop -- "USB-C<br/>Web Serial" --> uart
-    uart -- "UART0" --> mcu
-    laptop -. "Bluetooth LE" .-> mcu
-    ipad -. "Bluetooth LE<br/>PIN pairing" .-> mcu
-    mcu --- otg
-    otg -- "USB-C<br/>HID keyboard and mouse" --> target
+    host -- "USB serial" --> esp
+    host -. "Bluetooth" .-> esp
+    esp -- "USB HID" --> target
     target -- "HDMI" --> capture
-    capture -- "USB video and audio" --> laptop
-    capture -- "USB video and audio<br/>via USB-C adapter" --> ipad
+    capture -- "USB video" --> host
 ```
 
-Solid lines are cables, dotted lines are Bluetooth. A laptop can use either the
-UART cable or Bluetooth; an iPad uses Bluetooth. Both links can be connected at
-once, but each host sends the full key and button state, so type from one at a
-time. The capture stick plugs into whichever host shows the video, and the
-firmware never touches it.
+Solid lines are cables, the dotted line is Bluetooth. The target sees the ESP32-S3
+as a USB keyboard and mouse (USB HID). An iPad uses Bluetooth; a laptop can use
+either link. Both can be connected at once, but each sends the full key and
+button state, so type from one at a time.
 
 ### Before first power-up
 
