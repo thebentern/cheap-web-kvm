@@ -18,17 +18,23 @@ void app_main(void)
 
     /* USB first: the target may already be powered and waiting to enumerate. */
     ESP_ERROR_CHECK(kvm_hid_start());
-    ESP_ERROR_CHECK(ch9329_start());
 
 #if CONFIG_KVM_BLE_ENABLED
-    /* Bonds live in NVS. A partition written by an older layout is wiped
-     * rather than left to block startup; the only cost is re-pairing. */
+    /* Bonds and the passkey live in NVS, which must be up before UART0 can
+     * take a set-passkey command. A partition written by an older layout is
+     * wiped rather than left to block startup; the cost is re-pairing and the
+     * passkey falling back to the build's default. */
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         err = nvs_flash_init();
     }
     ESP_ERROR_CHECK(err);
+#endif
+
+    ESP_ERROR_CHECK(ch9329_start());
+
+#if CONFIG_KVM_BLE_ENABLED
     ESP_ERROR_CHECK(kvm_ble_start());
     ESP_LOGI(TAG, "ready - CH9329 on UART0 @ 115200 and Bluetooth LE, HID on native USB");
 #else

@@ -14,6 +14,7 @@ import {
   MOD,
   checksum,
   coalesceMove,
+  getBlePasskeyFrame,
   getInfoFrame,
   hex,
   jsKeycodeToHid,
@@ -21,8 +22,10 @@ import {
   modifierBit,
   mouseAbsFrame,
   mouseRelFrame,
+  parsePasskey,
   parseReply,
   resetFrame,
+  setBlePasskeyFrame,
 } from '../app/utils/ch9329'
 
 const HID_LSHIFT = 0xe1
@@ -58,6 +61,14 @@ describe('frame builder golden vectors', () => {
 
   it('get info', () => {
     expect(hex(getInfoFrame())).toBe('57 ab 00 01 00 03')
+  })
+
+  it('get Bluetooth passkey (vendor 0x30)', () => {
+    expect(hex(getBlePasskeyFrame())).toBe('57 ab 00 30 00 32')
+  })
+
+  it('set Bluetooth passkey 654321 (vendor 0x31), little-endian', () => {
+    expect(hex(setBlePasskeyFrame(654321))).toBe('57 ab 00 31 04 f1 fb 09 00 2c')
   })
 })
 
@@ -121,6 +132,25 @@ describe('reply parsing', () => {
     const r = parseReply(noisy, CMD.MOUSE_ABS)
     expect(r).not.toBeNull()
     expect(r!.ok).toBe(true)
+  })
+})
+
+describe('Bluetooth passkey', () => {
+  it('round-trips through a reply payload, leading zeros and all', () => {
+    for (const key of [0, 4321, 123456, 999999]) {
+      const payload = setBlePasskeyFrame(key).slice(5, 9)
+      expect(parsePasskey(payload)).toBe(key)
+    }
+  })
+
+  it('refuses anything that is not six digits', () => {
+    for (const bad of [-1, 1000000, 12.5, Number.NaN]) {
+      expect(() => setBlePasskeyFrame(bad)).toThrow(RangeError)
+    }
+  })
+
+  it('reads nothing from a short payload, such as a bare status byte', () => {
+    expect(parsePasskey(Uint8Array.from([0x00]))).toBeNull()
   })
 })
 

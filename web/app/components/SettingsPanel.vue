@@ -4,7 +4,8 @@
 // Settings overlay. Ported from the pre-Vue settings.html of cheap-web-kvm,
 // itself a re-skin of the settings panel in tobychui/DezKVM-Go (GPLv3).
 // Every control writes straight into useSettings(), which persists itself.
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { ERR_UNKNOWN_COMMAND, parsePasskey } from '~/utils/ch9329'
 import { useCapture } from '~/composables/useCapture'
 import { useKvm } from '~/composables/useKvm'
 import { usePanels } from '~/composables/usePanels'
@@ -71,6 +72,49 @@ const captureRows = computed<CaptureRow[] | null>(() => {
 const connected = computed(() => kvm.link.connected.value)
 const portLabel = computed(() => kvm.link.portLabel.value)
 const isBle = computed(() => kvm.link.kind.value === 'ble')
+
+/* -------------------------------------------------------- bluetooth passkey */
+// The board owns the PIN; this only reads and writes it, over whichever link is
+// up — so a laptop on the cable can set it before an iPad ever pairs.
+const passkey = ref('')
+const passkeyBusy = ref(false)
+/** The firmware answered "unknown command": built without Bluetooth, or older. */
+const passkeyUnsupported = ref(false)
+const passkeyValid = computed(() => /^\d{6}$/.test(passkey.value))
+
+async function loadPasskey() {
+  passkeyBusy.value = true
+  const r = await kvm.getBlePasskey()
+  passkeyBusy.value = false
+  const key = r?.ok ? parsePasskey(r.payload!) : null
+  if (key !== null) passkey.value = String(key).padStart(6, '0')
+  passkeyUnsupported.value = !r?.ok && r?.payload?.[0] === ERR_UNKNOWN_COMMAND
+}
+
+async function savePasskey() {
+  if (!kvm.link.connected.value) {
+    toasts.warn('Not connected — nothing to save the PIN to')
+    return
+  }
+  if (!passkeyValid.value) {
+    toasts.warn('The PIN is six digits')
+    return
+  }
+  passkeyBusy.value = true
+  const r = await kvm.setBlePasskey(Number(passkey.value))
+  passkeyBusy.value = false
+  if (r?.ok) toasts.success(`Bluetooth PIN saved on the board: ${passkey.value}`)
+  else if (r?.timeout) toasts.error('The board did not answer; the PIN is unchanged')
+  else toasts.error('The board refused the PIN; it is unchanged')
+}
+
+watch(
+  [tab, connected],
+  ([t, c]) => {
+    if (t === 'advanced' && c) void loadPasskey()
+  },
+  { immediate: true },
+)
 
 /* --------------------------------------------------------------- fullscreen */
 const isFullscreen = ref(false)
@@ -496,8 +540,8 @@ onBeforeUnmount(() => {
               <div>
                 <div class="kvm-label">HID link</div>
                 <p class="kvm-hint mt-0.5">
-                  Serial always runs at 115200 baud. Bluetooth asks for the firmware's passkey the
-                  first time this device pairs. Either way there is nothing to choose here.
+                  Serial always runs at 115200 baud. Bluetooth asks for the PIN below the first time
+                  this device pairs. Either way there is nothing to choose here.
                 </p>
                 <div class="mt-2 flex max-w-sm items-center gap-2 rounded-lg border border-ink-600 bg-ink-900 px-3 py-2">
                   <AppIcon
@@ -509,6 +553,37 @@ onBeforeUnmount(() => {
                   </span>
                   <span class="kvm-hint ml-auto font-mono">{{ isBle ? 'BLE GATT' : '115200 8N1' }}</span>
                 </div>
+              </div>
+
+              <div>
+                <div class="kvm-label">Bluetooth PIN</div>
+                <p class="kvm-hint mt-0.5">
+                  The six digits a device enters the first time it pairs over Bluetooth. Saved on the
+                  board, so it survives a power cycle. Devices already paired keep working; only new
+                  pairings need the new PIN.
+                </p>
+                <p v-if="passkeyUnsupported" class="kvm-hint mt-2 text-warn-400">
+                  This firmware was built without Bluetooth, or predates the setting.
+                </p>
+                <form v-else class="mt-2 flex max-w-sm items-center gap-2" @submit.prevent="savePasskey">
+                  <input
+                    v-model="passkey"
+                    class="kvm-input font-mono tracking-[0.3em]"
+                    inputmode="numeric"
+                    autocomplete="off"
+                    maxlength="6"
+                    aria-label="Bluetooth PIN"
+                    :placeholder="connected ? '' : 'Connect first'"
+                    :disabled="!connected || passkeyBusy"
+                  />
+                  <button
+                    type="submit"
+                    class="kvm-btn shrink-0"
+                    :disabled="!connected || !passkeyValid || passkeyBusy"
+                  >
+                    <AppIcon name="save" /> Save to board
+                  </button>
+                </form>
               </div>
 
               <div>

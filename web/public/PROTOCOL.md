@@ -41,8 +41,9 @@ specific to this firmware ([`kvm_ble.c`](../firmware/main/kvm_ble.c)).
   anyway, because a write that does not fit the receive buffer is dropped whole.
 * Replies arrive as TX notifications. Subscribe before the first write.
 * **RX needs an authenticated, encrypted link.** Pairing is LE Secure
-  Connections passkey entry against the six-digit `KVM_BLE_PASSKEY` set in
-  menuconfig (default `123456` — change it), and the bond is stored, so it
+  Connections passkey entry against a six-digit passkey: `KVM_BLE_PASSKEY` from
+  menuconfig (default `123456`) until a host sets another with the vendor
+  command in §6, which the board keeps in NVS. The bond is stored, so pairing
   happens once per host. Legacy pairing is disabled.
 * **The first write must be a write with response.** An unpaired write is
   refused with Insufficient Authentication, and that error is what makes iOS,
@@ -175,7 +176,7 @@ The worked example in the UI's own comments, for a reply to `0x04`:
 > payload of `0x00`.
 
 Error codes follow the real part: `0xE1` timeout, `0xE2` header, `0xE3` unknown
-command, `0xE4` checksum, `0xE5` bad parameter.
+command, `0xE4` checksum, `0xE5` bad parameter, `0xE6` operation failed.
 
 ## 5. Timing
 
@@ -211,13 +212,32 @@ change, a scroll never merges with a move, and nothing merges into a frame that
 changed the buttons, so a click arrives as a press and a release at the same
 spot. Keyboard frames are never merged.
 
-## 6. Commands the firmware implements but the UI never sends
+## 6. Commands beyond the four above
 
 `0x01` (get info) replies with an 8-byte payload: firmware version `0x30`, USB
 enumeration status (`0x01` when the target has enumerated us), the keyboard LED
 bitmap the target last pushed over `SET_REPORT`, then reserved zeros. It exists
-for compatibility with third-party CH9329 tooling. Nothing in the web UI calls
-it.
+for compatibility with third-party CH9329 tooling. The UI sends it only over
+Bluetooth, as the first write, to trigger pairing (§1).
+
+Two **vendor extensions** set the Bluetooth pairing passkey. They are not part of
+the CH9329 — a real one answers `0xE3` — and sit below `0x40` so that
+`CMD | 0x80` and `CMD | 0xC0` still tell a reply from an error. A build without
+Bluetooth also answers `0xE3`.
+
+| CMD | Name | LEN | Payload | Reply payload |
+|---|---|---|---|---|
+| `0x30` | Get Bluetooth passkey | `0x00` | — | passkey, `uint32` little-endian |
+| `0x31` | Set Bluetooth passkey | `0x04` | passkey, `uint32` little-endian | `0x00` status |
+
+```
+57 AB 00 31 04 F1 FB 09 00 2C      set 654321
+```
+
+The set command answers `0xE5` past `999999` and `0xE6` if NVS cannot be
+written. Bonds made under the old passkey survive the change. Either transport
+may send both: over UART the host holds the cable, and over Bluetooth only a
+host already paired gets as far as a write.
 
 ## 7. Deliberate deviations from byte-faithful emulation
 

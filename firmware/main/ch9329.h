@@ -22,6 +22,12 @@ extern "C" {
 #define CH9329_CMD_MOUSE_REL 0x05
 #define CH9329_CMD_RESET     0x0F
 
+/* Vendor extensions, not part of the CH9329. They sit below 0x40 so that
+ * CMD | 0x80 and CMD | 0xC0 still tell a reply from an error. See
+ * docs/PROTOCOL.md §6. */
+#define KVM_CMD_GET_BLE_PASSKEY 0x30
+#define KVM_CMD_SET_BLE_PASSKEY 0x31
+
 #define CH9329_REPLY_OK(cmd)  ((uint8_t)((cmd) | 0x80))
 #define CH9329_REPLY_ERR(cmd) ((uint8_t)((cmd) | 0xC0))
 
@@ -30,6 +36,7 @@ extern "C" {
 #define CH9329_ERR_COMMAND  0xE3
 #define CH9329_ERR_CHECKSUM 0xE4
 #define CH9329_ERR_PARAM    0xE5
+#define CH9329_ERR_OPERATE  0xE6
 
 #define CH9329_LEN_KEYBOARD  8
 #define CH9329_LEN_MOUSE_ABS 7

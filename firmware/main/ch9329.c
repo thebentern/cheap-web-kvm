@@ -18,6 +18,7 @@
 #include "soc/uart_pins.h"
 
 #include "ch9329.h"
+#include "kvm_ble.h"
 #include "kvm_hid.h"
 
 static const char *TAG = "ch9329";
@@ -95,6 +96,35 @@ static void handle_get_info(const ch9329_parser_t *p)
     send_frame(p, CH9329_REPLY_OK(CH9329_CMD_GET_INFO), info, sizeof(info));
 }
 
+#if CONFIG_KVM_BLE_ENABLED
+/* Over Bluetooth only a bonded host gets this far, and it already knows a
+ * passkey; over UART the host is holding the cable. Either may read it. */
+static void handle_get_ble_passkey(const ch9329_parser_t *p)
+{
+    const uint32_t key = kvm_ble_passkey();
+    const uint8_t  le[4] = {
+        (uint8_t)key, (uint8_t)(key >> 8), (uint8_t)(key >> 16), (uint8_t)(key >> 24),
+    };
+    send_frame(p, CH9329_REPLY_OK(p->cmd), le, sizeof(le));
+}
+
+static void handle_set_ble_passkey(const ch9329_parser_t *p)
+{
+    if (p->len != 4) {
+        reply_err(p, CH9329_ERR_PARAM);
+        return;
+    }
+    const uint32_t key = (uint32_t)p->data[0] | ((uint32_t)p->data[1] << 8) |
+                         ((uint32_t)p->data[2] << 16) | ((uint32_t)p->data[3] << 24);
+    const esp_err_t err = kvm_ble_set_passkey(key);
+    if (err == ESP_OK) {
+        reply_ok(p);
+    } else {
+        reply_err(p, err == ESP_ERR_INVALID_ARG ? CH9329_ERR_PARAM : CH9329_ERR_OPERATE);
+    }
+}
+#endif
+
 static void dispatch(const ch9329_parser_t *p)
 {
     kvm_event_t evt;
@@ -104,6 +134,16 @@ static void dispatch(const ch9329_parser_t *p)
     case CH9329_CMD_GET_INFO:
         handle_get_info(p);
         return;
+
+#if CONFIG_KVM_BLE_ENABLED
+    case KVM_CMD_GET_BLE_PASSKEY:
+        handle_get_ble_passkey(p);
+        return;
+
+    case KVM_CMD_SET_BLE_PASSKEY:
+        handle_set_ble_passkey(p);
+        return;
+#endif
 
     case CH9329_CMD_KEYBOARD:  /* [modifier, reserved, keycode x6] */
         if (p->len != CH9329_LEN_KEYBOARD) {

@@ -6,8 +6,9 @@
  * docs/PROTOCOL.md §1.
  *
  * Anyone in radio range could otherwise type into the target, so writes need an
- * authenticated, encrypted link: LE Secure Connections passkey pairing against
- * CONFIG_KVM_BLE_PASSKEY, bonded so it happens once per host. */
+ * authenticated, encrypted link: LE Secure Connections passkey pairing, bonded
+ * so it happens once per host. The passkey is CONFIG_KVM_BLE_PASSKEY until a
+ * host sets another (KVM_CMD_SET_BLE_PASSKEY), which is kept in NVS. */
 
 #include "sdkconfig.h"
 
@@ -23,6 +24,7 @@
 
 #include "esp_check.h"
 #include "esp_log.h"
+#include "nvs.h"
 
 #include "host/ble_hs.h"
 #include "host/util/util.h"
@@ -68,6 +70,10 @@ static const ble_uuid128_t KVM_BLE_TX_UUID = BLE_UUID128_INIT(
 /* Provided by NimBLE's store/config, with no header of its own. */
 void ble_store_config_init(void);
 
+#define KVM_BLE_PASSKEY_MAX 999999
+#define KVM_NVS_NAMESPACE   "kvm"
+#define KVM_NVS_PASSKEY_KEY "ble_passkey"
+
 static StreamBufferHandle_t s_rx;
 static uint16_t             s_tx_handle;
 static uint8_t              s_own_addr_type;
@@ -76,6 +82,10 @@ static uint8_t              s_own_addr_type;
  * (CONFIG_BT_NIMBLE_MAX_CONNECTIONS), so one handle is enough. */
 static volatile uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static volatile bool     s_subscribed;
+
+/* Set from the UART or Bluetooth parser task, read on the host task when a
+ * pairing asks for it. One aligned word, so no lock. */
+static volatile uint32_t s_passkey = CONFIG_KVM_BLE_PASSKEY;
 
 static void advertise(void);
 
@@ -218,11 +228,11 @@ static int gap_event(struct ble_gap_event *event, void *arg)
 
     case BLE_GAP_EVENT_PASSKEY_ACTION:
         /* We advertise DisplayOnly, so the host types and we "display". With no
-         * display the passkey is fixed at build time instead. */
+         * display, the passkey comes from NVS or the build instead. */
         if (event->passkey.params.action == BLE_SM_IOACT_DISP) {
             struct ble_sm_io io = {
                 .action  = BLE_SM_IOACT_DISP,
-                .passkey = CONFIG_KVM_BLE_PASSKEY,
+                .passkey = s_passkey,
             };
             ble_sm_inject_io(event->passkey.conn_handle, &io);
         }
@@ -302,15 +312,56 @@ static void on_sync(void)
     ble_svc_gap_device_name_set(name);
 
     ESP_LOGI(TAG, "advertising as %s", name);
-#if CONFIG_KVM_BLE_PASSKEY == 123456
-    ESP_LOGW(TAG, "using the default passkey; set KVM_BLE_PASSKEY in menuconfig");
-#endif
+    if (s_passkey == 123456) {
+        ESP_LOGW(TAG, "using the default passkey 123456; change it in the web UI's settings");
+    }
     advertise();
 }
 
 static void on_reset(int reason)
 {
     ESP_LOGW(TAG, "host reset; reason=%d", reason);
+}
+
+uint32_t kvm_ble_passkey(void)
+{
+    return s_passkey;
+}
+
+esp_err_t kvm_ble_set_passkey(uint32_t passkey)
+{
+    if (passkey > KVM_BLE_PASSKEY_MAX) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    nvs_handle_t nvs;
+    ESP_RETURN_ON_ERROR(nvs_open(KVM_NVS_NAMESPACE, NVS_READWRITE, &nvs), TAG, "nvs_open failed");
+    esp_err_t err = nvs_set_u32(nvs, KVM_NVS_PASSKEY_KEY, passkey);
+    if (err == ESP_OK) {
+        err = nvs_commit(nvs);
+    }
+    nvs_close(nvs);
+    ESP_RETURN_ON_ERROR(err, TAG, "saving the passkey failed");
+
+    s_passkey = passkey;
+    ESP_LOGI(TAG, "passkey changed; hosts already paired keep working");
+    return ESP_OK;
+}
+
+/* A stored passkey outranks the build's, so changing it from the UI survives
+ * a reflash of the same partition layout. */
+static void load_passkey(void)
+{
+    nvs_handle_t nvs;
+    uint32_t     stored = 0;
+    if (nvs_open(KVM_NVS_NAMESPACE, NVS_READONLY, &nvs) != ESP_OK) {
+        return;  /* Never written: the namespace does not exist yet. */
+    }
+    if (nvs_get_u32(nvs, KVM_NVS_PASSKEY_KEY, &stored) == ESP_OK &&
+        stored <= KVM_BLE_PASSKEY_MAX) {
+        s_passkey = stored;
+    }
+    nvs_close(nvs);
 }
 
 static void host_task(void *arg)
@@ -326,6 +377,7 @@ esp_err_t kvm_ble_start(void)
     if (s_rx == NULL) {
         return ESP_ERR_NO_MEM;
     }
+    load_passkey();
 
     ESP_RETURN_ON_ERROR(nimble_port_init(), TAG, "nimble_port_init failed");
 

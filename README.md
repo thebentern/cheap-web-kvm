@@ -86,19 +86,27 @@ any app code runs, so this works regardless of what the app does with the pins):
 idf.py -p /dev/tty.usbserial-XXXX flash
 ```
 
-### Bluetooth passkey
+### Bluetooth PIN
 
-The Bluetooth transport only takes input from a paired host, and pairing needs
-a six-digit passkey that is fixed at build time. **The default is `123456`;
-change it**, since anyone in radio range who knows it can type into the target:
+The Bluetooth transport only takes input from a paired host, and pairing needs a
+six-digit PIN. It starts as **`123456`**. Change it in the web UI under
+**Settings → Advanced → Bluetooth PIN**, over either link: the board saves it in
+NVS, so it survives power cycles and ordinary reflashing. Devices already paired
+keep working; only new pairings need the new PIN. Anyone in radio range who knows
+the PIN in use can pair and type into the target.
+
+The board prints a warning at boot while the PIN is still `123456`. To build
+with a different starting PIN, or with Bluetooth off entirely, use `idf.py
+menuconfig` → cheap-web-kvm. A PIN saved from the UI takes precedence over the
+build's. `sdkconfig.defaults` only seeds a fresh `firmware/sdkconfig`; if you
+built before Bluetooth existed, delete `firmware/sdkconfig` and rebuild to pick
+it up.
+
+Without a browser:
 
 ```bash
-idf.py menuconfig    # cheap-web-kvm → Bluetooth pairing passkey
+python3 tools/ch9329_test.py -p /dev/tty.usbserial-XXXX --set-passkey 654321
 ```
-
-Turn Bluetooth off entirely with the `Bluetooth LE transport` option in the same
-menu. `sdkconfig.defaults` only seeds a fresh `firmware/sdkconfig`; if you built
-before Bluetooth existed, delete `firmware/sdkconfig` and rebuild to pick it up.
 
 ### The console caveat
 
@@ -144,7 +152,8 @@ Video needs nothing special: iPadOS 17 and later expose a USB camera to Safari's
    Bluetooth browser. Every iPad browser is Safari's engine underneath —
    Chrome included — and Safari has no Web Bluetooth.
 3. Open the hosted UI in that browser, press the Bluetooth button in the
-   toolbar, pick `cheap-web-kvm-XXXX`, and enter the passkey when iPadOS asks.
+   toolbar, pick `cheap-web-kvm-XXXX`, and enter the PIN when iPadOS asks
+   (`123456` unless you have changed it).
 
 A trackpad or mouse works as it would on a laptop. On the touch screen itself:
 

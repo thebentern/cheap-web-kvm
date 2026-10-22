@@ -12,14 +12,15 @@ menu "cheap-web-kvm"
             bonded, authenticated link (see KVM_BLE_PASSKEY).
 
     config KVM_BLE_PASSKEY
-        int "Bluetooth pairing passkey"
+        int "Default Bluetooth pairing passkey"
         depends on KVM_BLE_ENABLED
         range 0 999999
         default 123456
         help
-            Six-digit passkey the host enters when it first pairs. Anyone who
-            knows it and is in radio range can pair and type into the target,
-            so change it from the default. Leading zeros are allowed: 4321 is
-            entered as 004321.
+            Six-digit passkey a host enters when it first pairs, until one is
+            set from the web UI (Settings, Advanced), which saves it in NVS and
+            takes precedence. Anyone who knows the passkey in use and is in
+            radio range can pair and type into the target. Leading zeros are
+            allowed: 4321 is entered as 004321.
 
 endmenu

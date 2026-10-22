@@ -8,6 +8,7 @@ Needs pyserial for anything touching hardware; --selftest does not.
     ./ch9329_test.py -p /dev/tty.usbserial-0001 --type "hello world"
     ./ch9329_test.py -p /dev/tty.usbserial-0001 --mouse
     ./ch9329_test.py -p /dev/tty.usbserial-0001 --soak 2000
+    ./ch9329_test.py -p /dev/tty.usbserial-0001 --set-passkey 654321
 
 SPDX-License-Identifier: GPL-3.0-or-later
 """
@@ -23,6 +24,10 @@ CMD_KEYBOARD = 0x02
 CMD_MOUSE_ABS = 0x04
 CMD_MOUSE_REL = 0x05
 CMD_RESET = 0x0F
+
+# Vendor extensions in this firmware, not the CH9329. See PROTOCOL.md s6.
+CMD_GET_BLE_PASSKEY = 0x30
+CMD_SET_BLE_PASSKEY = 0x31
 
 # Not 32767 - see docs/PROTOCOL.md.
 ABS_MAX = 4095
@@ -49,6 +54,15 @@ def f_reset() -> bytes:
 
 def f_get_info() -> bytes:
     return frame(CMD_GET_INFO)
+
+
+def f_get_ble_passkey() -> bytes:
+    return frame(CMD_GET_BLE_PASSKEY)
+
+
+def f_set_ble_passkey(passkey: int) -> bytes:
+    """Six-digit passkey as a little-endian uint32."""
+    return frame(CMD_SET_BLE_PASSKEY, passkey.to_bytes(4, "little"))
 
 
 def f_keyboard(modifier: int = 0, keys=()) -> bytes:
@@ -206,6 +220,9 @@ GOLDEN = [
      "57 ab 00 04 07 02 00 00 08 00 08 00 1f"),
     ("rel mouse: dx=-1", f_mouse_rel(0, -1, 0, 0),
      "57 ab 00 05 05 01 00 ff 00 00 0c"),
+    ("get BLE passkey (0x30)", f_get_ble_passkey(), "57 ab 00 30 00 32"),
+    ("set BLE passkey 654321 (0x31)", f_set_ble_passkey(654321),
+     "57 ab 00 31 04 f1 fb 09 00 2c"),
 ]
 
 
@@ -245,6 +262,18 @@ def do_info(link):
     print(f"  firmware version : 0x{payload[0]:02X}")
     print(f"  USB enumerated   : {'yes' if len(payload) > 1 and payload[1] else 'no'}")
     print(f"  raw              : {payload.hex(' ')}")
+
+
+def do_passkey(link, new):
+    if new is not None:
+        if not 0 <= new <= 999999:
+            raise ReplyError("the passkey is six digits, 0 to 999999")
+        print(f"Setting the Bluetooth passkey to {new:06d} (0x31)...")
+        link.send(f_set_ble_passkey(new), CMD_SET_BLE_PASSKEY)
+        print("  saved")
+    print("Reading the Bluetooth passkey (0x30)...")
+    payload = link.send(f_get_ble_passkey(), CMD_GET_BLE_PASSKEY)
+    print(f"  passkey : {int.from_bytes(payload[:4], 'little'):06d}")
 
 
 def do_reset(link):
@@ -336,6 +365,9 @@ def main():
     ap.add_argument("--type", metavar="TEXT", help="type TEXT on the target")
     ap.add_argument("--mouse", action="store_true", help="exercise both mouse modes")
     ap.add_argument("--soak", type=int, metavar="N", help="send N keystrokes back to back")
+    ap.add_argument("--passkey", action="store_true", help="read the Bluetooth pairing passkey")
+    ap.add_argument("--set-passkey", type=int, metavar="N",
+                    help="save a new six-digit Bluetooth pairing passkey")
     ap.add_argument("--delay", type=float, default=0.01,
                     help="delay between reports in seconds (default 0.01)")
     args = ap.parse_args()
@@ -346,8 +378,10 @@ def main():
     if not args.port:
         ap.error("--port is required for anything except --selftest")
 
-    if not any([args.info, args.reset, args.type, args.mouse, args.soak]):
-        ap.error("pick at least one action: --info --reset --type --mouse --soak")
+    if not any([args.info, args.reset, args.type, args.mouse, args.soak, args.passkey,
+                args.set_passkey is not None]):
+        ap.error("pick at least one action: --info --reset --type --mouse --soak "
+                 "--passkey --set-passkey")
 
     link = Link(args.port, args.baud, args.timeout, args.verbose, args.settle)
     try:
@@ -355,6 +389,8 @@ def main():
             do_reset(link)
         if args.info:
             do_info(link)
+        if args.passkey or args.set_passkey is not None:
+            do_passkey(link, args.set_passkey)
         if args.type:
             do_type(link, args.type, args.delay)
         if args.mouse:

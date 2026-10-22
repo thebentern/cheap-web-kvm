@@ -18,7 +18,16 @@ export const CMD = {
   MOUSE_ABS: 0x04,
   MOUSE_REL: 0x05,
   RESET: 0x0f,
+  /** Vendor extensions in this firmware, not the CH9329 (docs/PROTOCOL.md §6). */
+  GET_BLE_PASSKEY: 0x30,
+  SET_BLE_PASSKEY: 0x31,
 } as const
+
+/** The firmware's reply to a command it does not implement, e.g. an older build. */
+export const ERR_UNKNOWN_COMMAND = 0xe3
+
+/** Bluetooth pairing passkeys are six digits. */
+export const PASSKEY_MAX = 999999
 
 /** Absolute coordinate space. Not 32767 — see docs/PROTOCOL.md §3. */
 export const ABS_MAX = 4095
@@ -87,6 +96,29 @@ export function resetFrame(): Uint8Array {
 
 export function getInfoFrame(): Uint8Array {
   return frame(CMD.GET_INFO)
+}
+
+export function getBlePasskeyFrame(): Uint8Array {
+  return frame(CMD.GET_BLE_PASSKEY)
+}
+
+/** payload: the passkey as a little-endian uint32. */
+export function setBlePasskeyFrame(passkey: number): Uint8Array {
+  if (!Number.isInteger(passkey) || passkey < 0 || passkey > PASSKEY_MAX) {
+    throw new RangeError('A Bluetooth passkey is six digits, 0 to 999999')
+  }
+  return frame(CMD.SET_BLE_PASSKEY, [
+    passkey & 0xff,
+    (passkey >> 8) & 0xff,
+    (passkey >> 16) & 0xff,
+    (passkey >> 24) & 0xff,
+  ])
+}
+
+/** Read the passkey out of a GET_BLE_PASSKEY reply payload. */
+export function parsePasskey(payload: Uint8Array): number | null {
+  if (payload.length < 4) return null
+  return (payload[0]! | (payload[1]! << 8) | (payload[2]! << 16) | (payload[3]! << 24)) >>> 0
 }
 
 /**

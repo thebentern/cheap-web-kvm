@@ -3,6 +3,7 @@ import { reactive, ref } from 'vue'
 import {
   ABS_MAX,
   CMD,
+  getBlePasskeyFrame,
   getInfoFrame,
   jsKeycodeToHid,
   keyboardFrame,
@@ -10,6 +11,7 @@ import {
   mouseAbsFrame,
   mouseRelFrame,
   resetFrame,
+  setBlePasskeyFrame,
 } from '~/utils/ch9329'
 import { useLink } from '~/composables/useLink'
 
@@ -73,6 +75,14 @@ export function useKvm() {
 
   async function getInfo() {
     return send(getInfoFrame(), CMD.GET_INFO)
+  }
+
+  async function getBlePasskey() {
+    return send(getBlePasskeyFrame(), CMD.GET_BLE_PASSKEY)
+  }
+
+  async function setBlePasskey(passkey: number) {
+    return send(setBlePasskeyFrame(passkey), CMD.SET_BLE_PASSKEY)
   }
 
   async function sendKeyboardReport() {
@@ -179,6 +189,8 @@ export function useKvm() {
     link,
     softReset,
     getInfo,
+    getBlePasskey,
+    setBlePasskey,
     sendKeyboardReport,
     mouseMoveAbsolute,
     mouseMoveRelative,
