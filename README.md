@@ -1,46 +1,40 @@
 # cheap-web-kvm
 
-A USB KVM dongle built from **one ESP32-S3 dev board** and an off-the-shelf HDMI
-capture stick. Control a headless server from a laptop or iPad browser — keyboard, mouse
-and video — with no drivers and no software to install.
+A USB KVM made from an ESP32-S3 dev board and an HDMI capture stick. Control a
+headless machine's keyboard, mouse and video from a browser on a laptop or iPad.
+No drivers or software to install.
 
-> ### Built on [tobychui/DezKVM-Go](https://github.com/tobychui/DezKVM-Go)
->
-> This project exists because the DezKVM-Go reference design is good. The entire
-> web UI here — the paste box, on-screen keyboard, hotkeys and macros, screen
-> recorder, OCR copy box, stacked keys, mouse jiggler, the whole settings panel —
-> is tobychui's work, used under the GPLv3 and modified only where the different
-> hardware required it. See [NOTICE](NOTICE) for the change list.
->
-> **This is a hardware substitution, not a replacement.** If you want the
-> polished, purpose-built version, [build the real
-> thing](https://github.com/tobychui/DezKVM-Go) — it has a proper PCB, a case,
-> and costs under $20.
+![The KVM in a desktop browser](docs/images/kvm.png)
 
-## What changed, and why
+_Screenshots use a simulated target display._
 
-The reference design puts three fixed-function chips between the laptop and the
-target: an SL2.1A hub, a CH340C USB-serial bridge, and a CH9329 serial-to-HID
-chip. This replaces the CH340C + CH9329 pair with a single ESP32-S3 running
-custom firmware that speaks the CH9329 serial protocol on one side and presents
-a USB HID keyboard + absolute mouse on the other.
+Based on [tobychui/DezKVM-Go](https://github.com/tobychui/DezKVM-Go). The web UI
+(paste box, on-screen keyboard, hotkeys and macros, screen recorder, OCR copy
+box, stacked keys, mouse jiggler, settings) is tobychui's work under the GPLv3,
+ported to Nuxt and Vue, with Bluetooth and touch input added. See
+[NOTICE](NOTICE). For a finished device with a PCB and case for under $20, build
+[the original](https://github.com/tobychui/DezKVM-Go).
 
-The point is not cost — it is that the CH9329 is a fixed-function part and an MCU
-is not. An MCU in that slot can do USB mass storage (virtual media / ISO boot),
-USB-Ethernet, on-device macros, and wireless transports. Bluetooth LE is built
-(see [Using an iPad](#using-an-ipad)); the rest is not yet — see [Stretch
-goals](#stretch-goals).
+## How it differs from DezKVM-Go
 
-Video is untouched: the capture stick is a standalone UVC device that plugs
-straight into the laptop. No ESP32 can do HDMI capture and the firmware has
-nothing to do with video.
+DezKVM-Go uses an SL2.1A hub, a CH340C USB-serial bridge and a CH9329
+serial-to-HID chip. This project replaces the CH340C and CH9329 with one
+ESP32-S3. Its firmware speaks the CH9329 serial protocol to the host and
+presents a USB HID keyboard and absolute mouse to the target.
+
+Unlike the fixed-function CH9329, an MCU can add features. Bluetooth LE is
+implemented but not yet tested on hardware (see [iPad](#ipad)). USB mass
+storage, USB Ethernet and Wi-Fi are [stretch goals](#stretch-goals).
+
+Video does not pass through the ESP32. The capture stick is a separate UVC
+device plugged into the host.
 
 ## Hardware
 
 | Item | Part | Notes |
 |---|---|---|
 | MCU board | ESP32-S3-DevKitC-1-N8R8 | 8 MB flash. Clone boards are fine. |
-| Capture | MS2130 HDMI→USB dongle | 1080p60 and cleaner UVC descriptors than the MS2109. MS2109 still works. |
+| Capture | MS2130 HDMI to USB dongle | 1080p60, cleaner UVC descriptors than the MS2109. The MS2109 also works. |
 | Cables | 2× USB-C, 1× HDMI | |
 
 ```
@@ -48,229 +42,215 @@ nothing to do with video.
                                                       ├── ESP32-S3
   target <──USB-C── [USB port: native OTG, GPIO19/20] ┘
 
-  target ──HDMI──> MS2130 ──USB-A──> laptop     (independent, no firmware involvement)
+  target ──HDMI──> MS2130 ──USB-A──> laptop     (separate, no firmware involved)
 
   iPad ···Bluetooth LE··· ESP32-S3              (instead of the UART cable)
 ```
 
-### Check these before first bring-up
+### Before first power-up
 
-* **Port order is not guaranteed.** Official Espressif boards put the UART bridge
-  on the left and native USB on the right; plenty of clones reverse it. On a
-  blank board only the bridge port enumerates as a serial device — use that to
-  tell them apart.
-* **Leave the OTG solder jumper open.** Clone boards add a jumper shorting the
-  series diode in the native port's VBUS line. That diode needs to stay intact:
-  the target supplies VBUS on that port and the laptop supplies it on the other.
-  Same for the IN-OUT jumper on the 5 V header pin.
-* **Grounds are tied.** The laptop and target share ground through the board.
-  Fine on a bench; think about isolation if the target is on rack power.
-* **Verify the part matches the label** with `esptool.py flash_id`. These boards
-  ship mislabelled between N8R8 / N16R8 / N8R2.
+* Port order varies. Official Espressif boards have the UART bridge on the left
+  and native USB on the right. Many clones swap them. On a blank board, only the
+  bridge port shows up as a serial device.
+* Leave the OTG solder jumper open. On clones that have it, closing it shorts
+  the diode in the native port's VBUS line that keeps the target's and host's
+  5 V apart. Same for the IN-OUT jumper on the 5 V pin.
+* Host and target share ground through the board. Consider isolation if the
+  target is on rack power.
+* Check the module with `esptool.py flash_id`. Boards are often mislabelled
+  N8R8, N16R8 or N8R2.
 
 ## Firmware
 
-Needs [ESP-IDF v5.3 or
-newer](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
-(that is where the `esp_driver_uart` component split landed). Built and verified
-against v5.4.
+Requires [ESP-IDF 5.3 or newer](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
+for the `esp_driver_uart` component. Tested with 5.4.
 
 ```bash
 cd firmware && idf.py set-target esp32s3 && idf.py build
-```
-
-Flash over the **UART port** (esptool drives the ROM bootloader on UART0 before
-any app code runs, so this works regardless of what the app does with the pins):
-
-```bash
 idf.py -p /dev/tty.usbserial-XXXX flash
 ```
 
+Flash over the UART port. esptool uses the ROM bootloader on UART0, so this
+works whatever the app does with the pins.
+
+`sdkconfig.defaults` only applies to a new config. If you built before Bluetooth
+was added, delete `firmware/sdkconfig` and rebuild.
+
 ### Bluetooth PIN
 
-The Bluetooth transport only takes input from a paired host, and pairing needs a
-six-digit PIN. It starts as **`123456`**. Change it in the web UI under
-**Settings → Advanced → Bluetooth PIN**, over either link: the board saves it in
-NVS, so it survives power cycles and ordinary reflashing. Devices already paired
-keep working; only new pairings need the new PIN. Anyone in radio range who knows
-the PIN in use can pair and type into the target.
+Bluetooth only accepts input from a paired device. Pairing needs a six-digit
+PIN, `123456` by default.
 
-The board prints a warning at boot while the PIN is still `123456`. To build
-with a different starting PIN, or with Bluetooth off entirely, use `idf.py
-menuconfig` → cheap-web-kvm. A PIN saved from the UI takes precedence over the
-build's. `sdkconfig.defaults` only seeds a fresh `firmware/sdkconfig`; if you
-built before Bluetooth existed, delete `firmware/sdkconfig` and rebuild to pick
-it up.
+* Change it in the web UI under Settings → Advanced → Bluetooth PIN, over serial
+  or Bluetooth.
+* The PIN and pairings are stored in NVS. They survive power cycles and
+  reflashing but not `idf.py erase-flash`. After an erase, remove the board
+  from the host's Bluetooth settings and pair again.
+* Devices already paired keep working. New pairings need the new PIN.
+* The board logs a warning at boot while the PIN is `123456`.
+* `idf.py menuconfig` → cheap-web-kvm sets the default PIN or turns Bluetooth
+  off. A PIN saved from the UI overrides the default.
+* Anyone in radio range who knows the PIN can pair and send keystrokes.
 
-Without a browser:
+From the command line:
 
 ```bash
 python3 tools/ch9329_test.py -p /dev/tty.usbserial-XXXX --set-passkey 654321
 ```
 
-### The console caveat
+![Settings, Advanced tab](docs/images/settings.png)
 
-On the ESP32-S3, GPIO19/20 are muxed between the USB-OTG peripheral and the USB
-Serial/JTAG controller, so **you cannot have native USB HID and a USB console at
-the same time**. UART0 is taken by the host protocol. The console is therefore
-routed to **UART1 on GPIO17 (TX) / GPIO18 (RX)** — attach an external USB-serial
-adapter to read it. Set `CONFIG_ESP_CONSOLE_NONE` once you no longer need it.
+### Console
+
+The log console is on UART1: GPIO17 (TX), GPIO18 (RX). Read it with a separate
+USB-serial adapter, or set `CONFIG_ESP_CONSOLE_NONE` to turn it off. UART0
+carries the host protocol, and native USB cannot run a console alongside HID
+because USB-OTG and USB Serial/JTAG share GPIO19/20.
 
 ## Web UI
 
-A [Nuxt 4](https://nuxt.com) + Vue 3 + TypeScript app, styled with Tailwind CSS
-and statically generated. Web Serial and Web Bluetooth both require a secure
-context, so it has to be served over HTTPS or from `localhost`.
+Nuxt 4, Vue 3, TypeScript and Tailwind CSS, statically generated. Web Serial and
+Web Bluetooth need a secure context, so serve it over HTTPS or from `localhost`.
+Desktop Chrome and Edge have both, so a laptop can also use Bluetooth instead of
+the UART cable. On Linux, Web Bluetooth is behind a browser flag.
 
-* **Hosted:** <https://thebentern.github.io/cheap-web-kvm/> — built and deployed
-  by [GitHub Actions](.github/workflows/deploy-pages.yml) on every push to
-  `main`. Documentation lives at
-  [`/docs`](https://thebentern.github.io/cheap-web-kvm/docs).
-* **Offline:** `cd src && ./sync_www.sh && ./start.sh`, then visit
-  `https://localhost:8443/` in Chrome, Edge, or another Chromium browser. It
-  generates a self-signed certificate on first run and serves a UI embedded in
-  the binary.
+* Hosted: <https://thebentern.github.io/cheap-web-kvm/>, deployed by
+  [GitHub Actions](.github/workflows/deploy-pages.yml) on pushes to `main` that
+  change `web/` or `docs/PROTOCOL.md`.
+  Docs are at [`/docs`](https://thebentern.github.io/cheap-web-kvm/docs).
+* Offline: `cd src && ./sync_www.sh && ./start.sh`, then open
+  `https://localhost:8443/` in a Chromium browser. Needs Node.js and Go
+  1.24 or newer. The Go server serves `src/www/` and creates a self-signed
+  certificate on first run.
 
 ```bash
 cd web
 npm install
 npm run dev        # http://localhost:3000
-npm run test       # protocol golden-frame tests
+npm run test       # protocol and touch gesture tests
 npm run generate   # static build into web/.output/public
 ```
 
-### Using an iPad
+### iPad
 
-iPads have no Web Serial, so the keyboard and mouse go over Bluetooth instead.
-Video needs nothing special: iPadOS 17 and later expose a USB camera to Safari's
-`getUserMedia`, and the capture stick is one.
+iPads have no Web Serial, so the keyboard and mouse use Bluetooth.
 
-1. A USB-C iPad on iPadOS 17 or later. Plug the capture stick into it, through
-   a USB-C adapter for the MS2130's USB-A plug. Lightning iPads cannot use
-   external cameras.
-2. Install [Bluefy](https://apps.apple.com/app/id1492822055) or another Web
-   Bluetooth browser. Every iPad browser is Safari's engine underneath —
-   Chrome included — and Safari has no Web Bluetooth.
+1. Use a USB-C iPad on iPadOS 17 or later, which exposes USB cameras to
+   `getUserMedia`. Connect the capture stick with a USB-C to USB-A adapter.
+   Lightning iPads do not support external cameras.
+2. Install [Bluefy](https://apps.apple.com/app/id1492822055) or another browser
+   that adds Web Bluetooth. Safari and Chrome on iPad do not have it.
 3. Open the hosted UI in that browser, press the Bluetooth button in the
-   toolbar, pick `cheap-web-kvm-XXXX`, and enter the PIN when iPadOS asks
-   (`123456` unless you have changed it).
+   toolbar, pick `cheap-web-kvm-XXXX` and enter the PIN (`123456` by default).
 
-A trackpad or mouse works as it would on a laptop. On the touch screen itself:
+![On-screen keyboard at iPad size](docs/images/ipad.png)
+
+A trackpad or mouse works as usual. Relative mouse mode is under Settings →
+Keyboard & mouse. Touch gestures:
 
 | Gesture | Absolute mouse mode (default) | Relative mouse mode |
 |---|---|---|
 | Tap | Click where you tapped | Quick tap: click where the pointer is |
 | One-finger drag | Drag with the left button held | Move the pointer, like a trackpad |
-| Two-finger drag | Scroll, under your fingers | Scroll |
+| Two-finger drag | Scroll under your fingers | Scroll |
 | Two-finger tap | Right-click where you tapped | Right-click where the pointer is |
 
-The Apple Pencil acts like a mouse in absolute mode (touching presses the left
-button; hovering, where the iPad supports it, moves the pointer) and like a
-finger in relative mode.
+* Apple Pencil acts as a mouse in absolute mode (contact presses the left
+  button, hover moves the pointer where supported) and as a finger in relative
+  mode.
+* A touch that starts in the black bars around the picture is ignored.
+* A touch does not press a button until it is a tap or a drag, so the first
+  finger of a two-finger scroll or a pinch does not click.
+* Over Bluetooth, queued pointer moves and scroll ticks are merged
+  ([PROTOCOL.md §5](docs/PROTOCOL.md#5-timing)). The pointer updates less often
+  than over a cable. Clicks and keystrokes are never merged.
 
-A touch that starts in the black bars around the picture is ignored, so you can
-rest a finger there. A finger only becomes a click once it is clearly a tap or
-a drag, so the first finger of a two-finger scroll never clicks on its way down,
-and a pinch is not mistaken for a two-finger tap.
+### Offline use
 
-Pointer moves and scroll ticks over Bluetooth are queued and merged rather than
-sent late (see [PROTOCOL.md §5](docs/PROTOCOL.md#5-timing)), so the pointer
-updates less often than over a cable. Clicks and keystrokes are never merged.
-
-Desktop Chrome and Edge have Web Bluetooth too, so the same works from a laptop
-with no UART cable.
-
-### It works with no internet
-
-Deliberately — this is a tool you use on-site, sometimes on an air-gapped
-machine. Everything including the OCR engine is vendored: Tesseract, its worker,
-the WASM core and the English training data live in `web/public/vendor/tesseract`.
-Only the other 19 OCR languages still fetch their training data at runtime, and
-the language picker says so.
+Everything is vendored except OCR training data for languages other than
+English. Tesseract, its worker, the WASM core and the English data are in
+`web/public/vendor/tesseract`. The other 19 languages download when picked and
+are listed under "Downloaded on first use".
 
 ### Layout
 
 | Path | What |
 |---|---|
-| `web/app/utils/ch9329.ts` | The wire protocol. Pure functions, no browser APIs. |
-| `web/app/composables/` | Serial transport, HID state, capture, settings, panels. |
+| `web/app/utils/ch9329.ts` | Wire protocol. Pure functions, no browser APIs. |
+| `web/app/utils/touchGestures.ts` | Touch gesture recognizer. Pure, no DOM. |
+| `web/app/composables/` | Serial and Bluetooth transports, HID state, capture, settings, panels. |
 | `web/app/components/` | One component per panel. |
-| `web/app/pages/` | `index.vue` is the KVM; `docs/` is the documentation. |
-| `web/test/` | Golden-frame tests for the protocol. |
+| `web/app/pages/` | `index.vue` is the KVM, `docs/` is the documentation. |
+| `web/test/` | Protocol golden-frame tests and gesture tests. |
 
-> **`ch9329.ts` is the load-bearing file.** It is byte-verified against the
-> firmware on real hardware, and `npm run test` asserts the same golden frames
-> the Python harness uses. CI refuses to deploy if they fail. If a change makes
-> a test fail, the change is wrong.
+`npm run test` checks `ch9329.ts` against the same golden frames as
+`tools/ch9329_test.py`, which were verified against the firmware on hardware.
+CI does not deploy if they fail. Do not edit the golden frames to make a test
+pass.
 
-## Verifying it works
+## Testing
 
-Neither of these needs the target machine connected.
+No hardware needed:
 
 ```bash
-# Validate the compiled USB descriptors straight out of the ELF:
-# boot-protocol keyboard on interface 0, absolute axes with a 4095 logical max.
+# USB descriptors in the built ELF: boot keyboard on interface 0,
+# absolute axes with a 4095 logical maximum. Run after idf.py build, in the
+# ESP-IDF environment (it uses xtensa-esp32s3-elf-nm and objdump).
 python3 tools/verify_descriptors.py
 
-# Validate the protocol frame builder against golden vectors, no hardware:
+# Frame builder against the golden frames.
 python3 tools/ch9329_test.py --selftest
 ```
 
-With the board attached, drive it directly without a browser:
+With the board on the UART port, no browser:
 
 ```bash
 python3 tools/ch9329_test.py -p /dev/tty.usbserial-XXXX --info
 python3 tools/ch9329_test.py -p /dev/tty.usbserial-XXXX --type "hello world"
 python3 tools/ch9329_test.py -p /dev/tty.usbserial-XXXX --mouse
 python3 tools/ch9329_test.py -p /dev/tty.usbserial-XXXX --soak 2000
+python3 tools/ch9329_test.py -p /dev/tty.usbserial-XXXX --passkey
 ```
 
 ## Status
 
 | | Milestone | State |
 |---|---|---|
-| M1 | Boot-protocol HID keyboard + absolute mouse enumerate on the target | Descriptors verified from the compiled binary, TinyUSB comes up on hardware; **enumeration on a target not yet confirmed** |
-| M2 | CH9329 frames on UART0 drive HID reports | **Verified on hardware.** All four commands ACK; 1000/1000 reports in a soak with 0 timeouts and 0 errors |
-| M3 | Forked web UI drives the target end to end | Implemented; **not yet confirmed** |
-| M4 | Reconnect, power-cycle survival, sustained typing | Sustained typing verified (soak above); power-cycle survival **not yet confirmed** |
-| M5 | Bluetooth LE transport, iPad support | Firmware builds and the UI's Bluetooth queue was exercised against a simulated device; **not yet run on hardware or an iPad** |
+| M1 | Boot keyboard and absolute mouse enumerate on the target | Descriptors verified in the binary and TinyUSB starts on hardware. Enumeration on a target not yet confirmed. |
+| M2 | CH9329 frames on UART0 drive HID reports | Verified on hardware. All four commands ACK; 1000/1000 reports in a soak with no timeouts or errors. |
+| M3 | Web UI drives the target end to end | Implemented, not yet confirmed. |
+| M4 | Reconnect, power-cycle survival, sustained typing | Sustained typing verified (soak above). Power-cycle survival not yet confirmed. |
+| M5 | Bluetooth LE transport and iPad support | Bluetooth PIN read and change over UART verified on hardware. The UI's Bluetooth queue tested against a simulated device. Bluetooth pairing, the iPad and touch input not yet confirmed. |
 
-Flashed and exercised on an ESP32-S3-DevKitC-1-N8R8 (rev v0.2, 8 MB flash,
-8 MB PSRAM). The protocol layer is confirmed end to end from host serial to the
-HID event queue. What remains untested is the USB side against a real target:
-the native port had nothing attached during these runs, so `--info` correctly
-reports `USB enumerated: no`.
+Tested on an ESP32-S3-DevKitC-1-N8R8 (rev v0.2, 8 MB flash, 8 MB PSRAM) with
+nothing on the native port, so `--info` reports `USB enumerated: no`.
 
 ### Stretch goals
 
-* **USB MSC virtual media** — expose an SD card or flash partition as mass
-  storage so an ISO can be mounted and booted on a headless target. PiKVM-class,
-  and flatly impossible with a CH9329. Watch UEFI behaviour when adding a third
-  interface.
-* **Wi-Fi transport** — SoftAP + LittleFS-hosted UI + WebSocket, for when the
-  target is somewhere the laptop cable isn't. A third transport; Web Serial
-  stays the zero-config default.
-* **USB-Ethernet (RNDIS/ECM)** to the target.
+* USB MSC virtual media: expose an SD card or flash partition as mass storage to
+  boot an ISO on the target. Not possible with a CH9329. Watch UEFI behaviour
+  when adding a third USB interface.
+* Wi-Fi transport: SoftAP, a LittleFS-hosted UI and WebSocket, for targets out of
+  cable reach. Web Serial stays the default.
+* USB Ethernet (RNDIS/ECM) to the target.
 
-### Not goals
+### Not planned
 
-Video capture in firmware (impossible), a custom PCB (dev board plus a dongle is
-the point), and reimplementing [DezKVM](https://github.com/tobychui/DezKVM), which
-is a separate IP-KVM project with a different architecture.
+* Video capture in firmware. The ESP32-S3 cannot do it.
+* A custom PCB. The point is a dev board and a stock capture stick.
+* Reimplementing [DezKVM](https://github.com/tobychui/DezKVM), a separate IP-KVM
+  project with a different design.
 
 ## Documentation
 
-* [docs/PROTOCOL.md](docs/PROTOCOL.md) — the CH9329 wire protocol as the web UI
-  actually speaks it, extracted from the JavaScript rather than from a datasheet.
-  Read this before touching the parser.
-* [NOTICE](NOTICE) — attribution and the list of modifications to upstream.
+* [docs/PROTOCOL.md](docs/PROTOCOL.md): the wire protocol as the web UI sends
+  it, including the Bluetooth transport. Read it before changing the parser.
+* [NOTICE](NOTICE): attribution and the changes made to upstream.
 
 ## License
 
 GPLv3, matching upstream. See [LICENSE](LICENSE).
 
-The upstream hardware assets (`PCB/`, `3D Models/`) are licensed CC BY-NC-ND —
-no derivatives, non-commercial — and are **deliberately not included here**. This
-project uses a stock dev board and an off-the-shelf capture dongle instead. If
-you want the reference hardware, get it from
-[upstream](https://github.com/tobychui/DezKVM-Go) under its own terms.
+Upstream's hardware files (`PCB/`, `3D Models/`) are CC BY-NC-ND
+(non-commercial, no derivatives) and are not included. Get them from
+[upstream](https://github.com/tobychui/DezKVM-Go) under those terms.
