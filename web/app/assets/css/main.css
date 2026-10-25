@@ -840,11 +840,11 @@
   .setup-footer a { font-size: 13px; text-decoration: underline; text-underline-offset: 3px; color: var(--color-signal-400); }
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1150px) {
   .kvm-dock-status { display: none; }
 }
 
-@media (max-width: 860px) {
+@media (max-width: 900px) {
   .kvm-dock-tools { display: none; }
   .kvm-tools-toggle { display: inline-flex; }
   .kvm-tools { display: flex; }

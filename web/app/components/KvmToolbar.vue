@@ -11,6 +11,8 @@ import { usePanels, type PanelName } from '~/composables/usePanels'
 import { useSettings } from '~/composables/useSettings'
 import { useToasts } from '~/composables/useToasts'
 
+const REPO = 'https://github.com/thebentern/cheap-web-kvm'
+
 const props = defineProps<{
   /** Slides the toolbar out of the way; the page keeps a "show" button. */
   hidden: boolean
@@ -188,6 +190,7 @@ function toggleCtrlCmdSwap() {
           <AppIcon name="exchange" />
         </button>
         <NuxtLink to="/docs" class="kvm-btn kvm-btn-icon" title="Documentation" aria-label="Documentation"><AppIcon name="info" /></NuxtLink>
+        <a :href="REPO" class="kvm-btn kvm-btn-icon" title="GitHub repository" aria-label="GitHub repository" target="_blank" rel="noopener noreferrer"><AppIcon name="github" /></a>
       </nav>
       <button ref="toolsToggle" type="button" class="kvm-btn kvm-tools-toggle" :aria-expanded="toolsOpen" aria-controls="console-tools" @click="toolsOpen = !toolsOpen" @keydown.esc.stop.prevent="closeTools">Tools</button>
       <button type="button" class="kvm-btn kvm-btn-icon kvm-dock-secondary" :aria-pressed="panels.open.settings" title="Settings" aria-label="Settings" @click="panels.toggle('settings')">
@@ -219,6 +222,7 @@ function toggleCtrlCmdSwap() {
         <button type="button" class="kvm-btn" :aria-pressed="settings.ctrlCmdSwap" @click="toggleCtrlCmdSwap"><AppIcon name="exchange" /> Ctrl / Cmd</button>
         <button type="button" class="kvm-btn" @click="panels.toggle('settings')"><AppIcon name="cog" /> Settings</button>
         <NuxtLink to="/docs" class="kvm-btn"><AppIcon name="info" /> Setup guide</NuxtLink>
+        <a :href="REPO" class="kvm-btn" target="_blank" rel="noopener noreferrer"><AppIcon name="github" /> GitHub</a>
         <button type="button" class="kvm-btn" @click="emit('hide')"><AppIcon name="chevron-up" /> Hide toolbar</button>
       </div>
     </nav>
