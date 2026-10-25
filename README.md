@@ -6,7 +6,7 @@ No drivers or software to install.
 
 ![The KVM in a desktop browser](docs/images/kvm.png)
 
-_Screenshots use a simulated target display._
+_Screenshots use a simulated target display and Bluetooth KVM connection._
 
 Based on [tobychui/DezKVM-Go](https://github.com/tobychui/DezKVM-Go). The web UI
 (paste box, on-screen keyboard, hotkeys and macros, screen recorder, OCR copy

@@ -8,7 +8,6 @@ import { useHead } from '#imports'
 const REPO = 'https://github.com/thebentern/cheap-web-kvm'
 
 interface DocLink {
-  icon: string
   title: string
   blurb: string
   href: string
@@ -17,7 +16,6 @@ interface DocLink {
 
 const links: DocLink[] = [
   {
-    icon: 'terminal',
     title: 'CH9329 wire protocol',
     blurb:
       'Frame format, checksums, the four commands this UI actually emits, and how replies are parsed. Written from the bytes on the wire rather than from the datasheet — the firmware parser is written against it.',
@@ -25,7 +23,6 @@ const links: DocLink[] = [
     cta: 'docs/PROTOCOL.md',
   },
   {
-    icon: 'wrench',
     title: 'Hardware and setup',
     blurb:
       'Parts list, port wiring, the bring-up checks worth doing before you plug anything into the target, and how to build and flash the ESP32-S3 firmware with ESP-IDF.',
@@ -33,7 +30,6 @@ const links: DocLink[] = [
     cta: 'README',
   },
   {
-    icon: 'github',
     title: 'Source repository',
     blurb:
       'The complete corresponding source for this interface and the firmware, plus the change list against the upstream DezKVM-Go project.',
@@ -51,32 +47,27 @@ const topology = `  laptop ──USB-C──> [UART port: CP2102N/CH340] ─UART
   target ──HDMI──> MS2130 ──USB-A──> laptop     (independent, no firmware involvement)`
 
 interface Requirement {
-  icon: string
   title: string
   detail: string
 }
 
 const requirements: Requirement[] = [
   {
-    icon: 'monitor',
     title: 'A Chromium-based browser, or Bluefy on iPad',
     detail:
       'Chrome, Edge, Brave or Opera, over Web Serial or Web Bluetooth. Firefox and Safari have neither, so the control half of the KVM cannot work there — video alone still would. On an iPad, use a Web Bluetooth browser such as Bluefy; Safari there shows the capture stick fine on iPadOS 17 and later.',
   },
   {
-    icon: 'lock',
     title: 'A secure context',
     detail:
       'HTTPS, or http://localhost. Web Serial, Web Bluetooth and getUserMedia all refuse to hand out devices on a plain-HTTP origin.',
   },
   {
-    icon: 'usb',
     title: 'An ESP32-S3 running the CH9329-compatible firmware',
     detail:
       'Serial at 115200 8N1, no flow control, over the board’s UART bridge port — or Bluetooth LE, paired once with a six-digit PIN you can change under Settings → Advanced. A genuine CH9329 module works too over serial, once it has been moved off its 9600 baud default.',
   },
   {
-    icon: 'film',
     title: 'An MS2130 HDMI capture stick',
     detail:
       '1080p60 with audio, and cleaner UVC descriptors than the alternative. An MS2109 also works, at 1080p30 — or 25 fps behind a hub.',
@@ -84,8 +75,11 @@ const requirements: Requirement[] = [
 ]
 
 useHead({
-  title: 'cheap-web-kvm — docs',
+  title: '$KVM — Documentation',
+  htmlAttrs: { 'data-theme': 'light' },
   meta: [
+    { name: 'color-scheme', content: 'light' },
+    { name: 'theme-color', content: '#f7f1e8' },
     {
       name: 'description',
       content:
@@ -100,180 +94,331 @@ useHead({
 </script>
 
 <template>
-  <div class="min-h-screen bg-ink-950 text-mist-200">
-    <div class="mx-auto w-full max-w-3xl px-5 py-10 sm:px-8 sm:py-14">
-      <NuxtLink to="/" class="kvm-btn">
-        <AppIcon name="chevron-left" />
-        Open the KVM app
-      </NuxtLink>
+  <div class="site-page docs-page" data-theme="light">
+    <header class="site-header">
+      <NuxtLink to="/" aria-label="$KVM console" class="docs-brand"><BrandLogo /></NuxtLink>
+      <nav class="site-nav" aria-label="Main navigation">
+        <NuxtLink to="/">Console</NuxtLink>
+        <NuxtLink to="/docs" aria-current="page">Docs</NuxtLink>
+        <a :href="REPO" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </nav>
+    </header>
 
-      <header class="mt-8">
-        <h1 class="text-3xl font-semibold tracking-tight text-mist-100 sm:text-4xl">
-          cheap<span class="text-signal-400">-web-</span>kvm
-        </h1>
-        <p class="mt-4 text-sm leading-relaxed text-mist-400 sm:text-[15px]">
-          A browser-based USB KVM for headless machines. Video and audio arrive from an ordinary
-          UVC capture stick; keystrokes and pointer movement leave over Web Serial or Bluetooth
-          to an ESP32-S3 speaking the CH9329 protocol, which the target sees as a plain USB
-          keyboard and mouse. There is no server, no agent on the target and nothing to reach
-          over the network — it works on a bench with no internet at all.
+    <main class="site-content docs-content">
+      <header class="docs-intro">
+        <p class="docs-eyebrow">Documentation</p>
+        <h1>Using $KVM</h1>
+        <p class="docs-lead">Keyboard, mouse and video from your browser.</p>
+        <p>
+          Video and audio arrive from a USB capture stick. Keystrokes and pointer movement
+          travel over Web Serial or Bluetooth to an ESP32-S3, which the target sees as a
+          USB keyboard and mouse. It works without a server, software on the target, or
+          an internet connection.
         </p>
       </header>
 
-      <!-- Reference material -->
-      <section class="mt-12">
-        <h2 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-signal-400">
-          <AppIcon name="list" />
-          Reference
-        </h2>
-
-        <div class="mt-4 grid gap-3">
+      <section class="docs-section" aria-labelledby="reference-title">
+        <h2 id="reference-title">Reference</h2>
+        <div class="docs-references">
           <a
             v-for="link in links"
             :key="link.href"
-            class="group flex gap-3.5 rounded-xl border border-ink-600 bg-ink-900 p-4 transition-colors hover:border-signal-600 hover:bg-ink-850"
+            class="docs-reference"
             :href="link.href"
             target="_blank"
             rel="noopener noreferrer"
           >
-            <span
-              class="mt-0.5 flex size-8 flex-none items-center justify-center rounded-lg border border-ink-600 bg-ink-800 text-signal-400"
-            >
-              <AppIcon :name="link.icon" size="1.05rem" />
+            <span class="docs-reference-title">
+              {{ link.title }}
+              <AppIcon name="chevron-right" aria-hidden="true" />
             </span>
-            <span class="min-w-0 flex-1">
-              <span class="flex items-center gap-1.5 text-[13px] font-semibold text-mist-100">
-                {{ link.title }}
-                <AppIcon
-                  name="chevron-right"
-                  class="text-mist-400 transition-transform group-hover:translate-x-0.5 group-hover:text-signal-400"
-                />
-              </span>
-              <span class="kvm-hint mt-1 block">{{ link.blurb }}</span>
-              <span class="mt-2 block truncate font-mono text-[11px] text-mist-400">{{ link.cta }}</span>
-            </span>
+            <span class="docs-reference-description">{{ link.blurb }}</span>
+            <span class="docs-path">{{ link.cta }}</span>
           </a>
         </div>
       </section>
 
-      <!-- Topology -->
-      <section class="mt-12">
-        <h2 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-signal-400">
-          <AppIcon name="usb" />
-          Topology
-        </h2>
-        <p class="kvm-hint mt-2">
-          Two independent paths. Control goes laptop → UART → ESP32-S3 → target USB; video goes
-          target HDMI → capture stick → laptop, with no firmware involvement at all.
+      <section class="docs-section" aria-labelledby="wiring-title">
+        <h2 id="wiring-title">How it connects</h2>
+        <p>
+          Control and video take separate paths. Control goes from the laptop through the
+          ESP32-S3 to the target’s USB port. Video goes from the target’s HDMI port through
+          the capture stick to the laptop.
         </p>
-
-        <div class="kvm-panel mt-4 overflow-x-auto p-4">
-          <pre class="w-max font-mono text-[11px] leading-relaxed text-mist-200 sm:text-xs">{{ topology }}</pre>
+        <div class="docs-topology" tabindex="0" role="region" aria-label="Connection diagram">
+          <pre>{{ topology }}</pre>
         </div>
-
-        <p class="kvm-hint mt-3">
-          Port order is not guaranteed between board revisions: on a blank ESP32-S3 only the UART
-          bridge enumerates as a serial device, which is the reliable way to tell the two USB-C
-          ports apart.
+        <p class="docs-note">
+          Port order varies between board revisions. On a blank ESP32-S3, only the UART
+          bridge appears as a serial device; use that to identify the two USB-C ports.
         </p>
       </section>
 
-      <!-- Requirements -->
-      <section class="mt-12">
-        <h2 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-signal-400">
-          <AppIcon name="check-circle" />
-          Requirements
-        </h2>
-
-        <ul class="mt-4 space-y-2">
-          <li
-            v-for="req in requirements"
-            :key="req.title"
-            class="flex gap-3 rounded-lg border border-ink-600 bg-ink-900 p-3.5"
-          >
-            <AppIcon :name="req.icon" size="1.05rem" class="mt-0.5 flex-none text-signal-400" />
-            <div class="min-w-0">
-              <div class="text-[13px] font-semibold text-mist-100">{{ req.title }}</div>
-              <p class="kvm-hint mt-1">{{ req.detail }}</p>
-            </div>
-          </li>
-        </ul>
+      <section class="docs-section" aria-labelledby="requirements-title">
+        <h2 id="requirements-title">What you need</h2>
+        <dl class="docs-requirements">
+          <div v-for="req in requirements" :key="req.title">
+            <dt>{{ req.title }}</dt>
+            <dd>{{ req.detail }}</dd>
+          </div>
+        </dl>
       </section>
 
-      <!-- Attribution and licence -->
-      <footer class="mt-14 border-t border-ink-700 pt-8">
+      <section class="docs-section" aria-labelledby="credits-title">
+        <h2 id="credits-title">Heavily inspired by DezKVM-Go</h2>
         <!-- The web interface is tobychui's work; see NOTICE in the repository. -->
-        <div class="rounded-lg border border-ink-600 bg-ink-900 p-4">
-          <div class="flex items-center gap-2 text-[13px] font-semibold text-mist-100">
-            <AppIcon name="github" />
-            A fork of DezKVM-Go
-          </div>
-          <p class="kvm-hint mt-2">
-            cheap-web-kvm is a fork of
-            <strong class="font-medium text-mist-200">DezKVM-Go</strong>, by tobychui. The entire
-            web interface originates from that project — the settings panel, the paste box, the OCR
-            copy box, the on-screen keyboard, quick access, the screen recorder, stacked keys and
-            the CH9329 byte serialisation. This fork adds the ESP32-S3 firmware, MS2130 capture
-            support and the current theme.
-          </p>
-          <a
-            class="kvm-btn mt-3"
-            href="https://github.com/tobychui/DezKVM-Go"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <AppIcon name="github" />
-            tobychui/DezKVM-Go
-          </a>
-        </div>
+        <p>
+          cheap-web-kvm is a fork of
+          <a href="https://github.com/tobychui/DezKVM-Go" target="_blank" rel="noopener noreferrer">DezKVM-Go</a>,
+          by tobychui. The web interface originates from that project: settings, the paste
+          box, OCR copy, the on-screen keyboard, quick access, screen recording, stacked
+          keys and CH9329 byte serialisation. This fork adds ESP32-S3 firmware, MS2130
+          capture support and the current theme.
+        </p>
+      </section>
 
-        <!-- GPLv3 section 5(d): Appropriate Legal Notices. -->
-        <div class="mt-3 rounded-lg border border-ink-600 bg-ink-950 p-4">
-          <div class="flex items-center gap-2 text-[13px] font-semibold text-mist-100">
-            <AppIcon name="lock" />
-            Licence
-          </div>
-          <div class="mt-2.5 space-y-2 font-mono text-[11px] leading-relaxed text-mist-400">
-            <p>cheap-web-kvm — Copyright (C) 2026 Ben Meadors</p>
-            <p>DezKVM-Go — Copyright (C) tobychui</p>
-            <p>
-              This program is free software: you can redistribute it and/or modify it under the
-              terms of the GNU General Public License as published by the Free Software Foundation,
-              either version 3 of the License, or (at your option) any later version.
-            </p>
-            <p>
-              This program is distributed in the hope that it will be useful, but WITHOUT ANY
-              WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-              PARTICULAR PURPOSE. See the GNU General Public License for more details.
-            </p>
-          </div>
-          <div class="mt-3.5 flex flex-wrap gap-2">
-            <a class="kvm-btn" :href="REPO" target="_blank" rel="noopener noreferrer">
-              <AppIcon name="github" />
-              Source code
-            </a>
-            <a
-              class="kvm-btn"
-              href="https://www.gnu.org/licenses/gpl-3.0.html"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <AppIcon name="folder" />
-              Full GPLv3 text
-            </a>
-          </div>
-          <p class="kvm-hint mt-3">
-            The complete corresponding source for this interface, including the modifications made
-            to DezKVM-Go, is at the link above. Hardware designs inherited from the upstream project
-            remain under CC BY-NC-ND 4.0.
-          </p>
-        </div>
+      <!-- GPLv3 section 5(d): Appropriate Legal Notices. -->
+      <section class="docs-section docs-licence" aria-labelledby="licence-title">
+        <h2 id="licence-title">Licence</h2>
+        <p class="docs-copyright">cheap-web-kvm — Copyright (C) 2026 Ben Meadors<br />DezKVM-Go — Copyright (C) tobychui</p>
+        <p>
+          This program is free software: you can redistribute it and/or modify it under the
+          terms of the GNU General Public License as published by the Free Software Foundation,
+          either version 3 of the License, or (at your option) any later version.
+        </p>
+        <p>
+          This program is distributed in the hope that it will be useful, but WITHOUT ANY
+          WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+          PARTICULAR PURPOSE. See the GNU General Public License for more details.
+        </p>
+        <p class="docs-legal-links">
+          <a :href="REPO" target="_blank" rel="noopener noreferrer">Source code</a>
+          <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener noreferrer">Full GPLv3 text</a>
+        </p>
+        <p class="docs-note">
+          The complete corresponding source for this interface, including the modifications
+          to DezKVM-Go, is linked above. Hardware designs inherited from the upstream project
+          remain under CC BY-NC-ND 4.0.
+        </p>
+      </section>
+    </main>
 
-        <NuxtLink to="/" class="kvm-btn kvm-btn-primary mt-8">
-          <AppIcon name="monitor" />
-          Open the KVM app
-        </NuxtLink>
-      </footer>
-    </div>
+    <footer class="site-footer docs-footer">
+      <span>$KVM <span class="docs-footer-project">/ cheap-web-kvm</span></span>
+      <NuxtLink to="/">Open console <span aria-hidden="true">→</span></NuxtLink>
+    </footer>
   </div>
 </template>
+
+<style scoped>
+.docs-brand {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+
+.docs-content {
+  width: min(100% - 48px, 760px);
+  margin-inline: auto;
+  padding-block: 64px 72px;
+}
+
+.docs-intro {
+  margin-bottom: 48px;
+}
+
+.docs-eyebrow {
+  margin: 0 0 16px;
+  color: var(--color-mist-400);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.docs-intro h1 {
+  margin: 0;
+  color: var(--color-mist-100);
+  font-size: 36px;
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+}
+
+.docs-content p,
+.docs-requirements dd {
+  max-width: 68ch;
+  margin: 16px 0 0;
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.docs-intro .docs-lead {
+  margin-top: 20px;
+  color: var(--color-mist-100);
+  font-size: 19px;
+  line-height: 1.5;
+}
+
+.docs-content .docs-eyebrow {
+  margin-top: 0;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.docs-section {
+  margin-top: 40px;
+  border-top: 1px solid var(--color-ink-600);
+  padding-top: 28px;
+}
+
+.docs-section h2 {
+  margin: 0 0 20px;
+  color: var(--color-mist-100);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+}
+
+.docs-content a,
+.docs-footer a {
+  color: var(--color-signal-400);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.docs-content a:hover,
+.docs-footer a:hover {
+  text-decoration-thickness: 2px;
+}
+
+.docs-references {
+  display: grid;
+}
+
+.docs-content .docs-reference {
+  display: grid;
+  gap: 7px;
+  padding-block: 19px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.docs-reference + .docs-reference {
+  border-top: 1px solid var(--color-ink-700);
+}
+
+.docs-reference:first-child {
+  padding-top: 0;
+}
+
+.docs-reference-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--color-signal-400);
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.docs-reference:hover .docs-reference-title {
+  text-decoration-thickness: 2px;
+}
+
+.docs-reference-description {
+  max-width: 68ch;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.docs-path {
+  color: var(--color-mist-400);
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.docs-topology {
+  overflow-x: auto;
+  margin-top: 24px;
+  border: 1px solid var(--color-ink-600);
+  border-radius: 8px;
+  background: var(--color-ink-900);
+  padding: 24px 20px;
+}
+
+.docs-topology pre {
+  width: max-content;
+  margin: 0;
+  color: var(--color-mist-100);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.docs-content .docs-note {
+  color: var(--color-mist-400);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.docs-requirements {
+  display: grid;
+  gap: 24px;
+  margin: 0;
+}
+
+.docs-requirements dt {
+  color: var(--color-mist-100);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.docs-requirements dd {
+  margin-top: 6px;
+  font-size: 15px;
+}
+
+.docs-licence p {
+  font-size: 14px;
+}
+
+.docs-licence .docs-copyright {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.docs-legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.docs-footer-project {
+  color: var(--color-mist-400);
+}
+
+@media (max-width: 600px) {
+  .docs-content {
+    width: calc(100% - 40px);
+    padding-block: 40px 48px;
+  }
+
+  .docs-intro h1 {
+    font-size: 32px;
+  }
+
+  .docs-intro {
+    margin-bottom: 36px;
+  }
+
+  .docs-section {
+    margin-top: 32px;
+    padding-top: 24px;
+  }
+}
+</style>

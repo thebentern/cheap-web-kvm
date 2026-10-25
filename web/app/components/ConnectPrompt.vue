@@ -1,79 +1,52 @@
 <script setup lang="ts">
 // SPDX-License-Identifier: GPL-3.0-or-later
-// First-run prompt: walk the user through plugging the dongle in before we ask
-// the browser for camera and microphone permission. Emits `start`; the page
-// owns both the capture call and hiding this panel.
 import { onMounted, ref } from 'vue'
 import { useSettings } from '~/composables/useSettings'
 import { usePanels } from '~/composables/usePanels'
+import { useDialogFocus } from '~/composables/useDialogFocus'
 
+defineProps<{ busy: boolean }>()
 const emit = defineEmits<{ start: [] }>()
-
 const { settings } = useSettings()
 const panels = usePanels()
-
-/** Drives the `.kvm-modal` fade; raised a frame after mount so it animates. */
+const dialogEl = ref<HTMLElement | null>(null)
 const visible = ref(false)
-// setTimeout rather than requestAnimationFrame: rAF does not fire while the
-// tab is hidden, which would leave the panel invisible until it is focused.
+useDialogFocus(dialogEl, () => panels.hide('connectPrompt'))
 onMounted(() => setTimeout(() => (visible.value = true), 16))
 
-const STEPS: string[] = [
-  'Connect the UART port to this computer, or use Bluetooth instead',
-  'Connect the native USB port and HDMI to the target',
-  'Grant camera and audio access for the capture card',
+const steps = [
+  { title: 'Control to this computer', detail: 'Connect the board’s UART port to this computer. You can also connect control over Bluetooth from the toolbar.' },
+  { title: 'USB and HDMI to the target', detail: 'Connect the board’s native USB port to the target. Run HDMI from the target through the capture stick to this computer.' },
+  { title: 'Start the video', detail: 'Allow camera access for the capture stick, plus microphone access if audio is enabled. Then connect control from the toolbar.' },
 ]
 </script>
 
 <template>
-  <div
-    class="kvm-modal"
-    :class="{ 'is-visible': visible }"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="connect-prompt-title"
-  >
-    <div class="kvm-panel relative w-full max-w-md p-7">
-      <button
-        class="kvm-btn kvm-btn-icon absolute right-3 top-3"
-        title="Dismiss"
-        aria-label="Dismiss"
-        @click="panels.hide('connectPrompt')"
-      >
+  <div ref="dialogEl" class="kvm-modal" :class="{ 'is-visible': visible }" role="dialog" aria-modal="true" aria-labelledby="connect-prompt-title" tabindex="-1">
+    <div class="kvm-panel setup-panel relative" data-theme="light">
+      <button type="button" class="kvm-btn kvm-btn-icon absolute right-4 top-4" title="Close setup" aria-label="Close setup" @click="panels.hide('connectPrompt')">
         <AppIcon name="x" />
       </button>
-
-      <div
-        class="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-signal-500/10 text-xl text-signal-400"
-      >
-        <AppIcon name="usb" />
-      </div>
-
-      <h2 id="connect-prompt-title" class="text-lg font-semibold text-mist-100">
-        Connect your KVM
-      </h2>
-      <p class="mt-1.5 text-sm text-mist-400">Plug the dongle in before starting capture.</p>
-
-      <ol class="mt-5 space-y-3">
-        <li v-for="(step, i) in STEPS" :key="i" class="flex gap-3">
-          <span
-            class="mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-full bg-ink-700 text-[11px] font-semibold text-mist-200"
-          >
-            {{ i + 1 }}
-          </span>
-          <span class="text-sm text-mist-200">{{ step }}</span>
+      <BrandLogo class="mb-7" />
+      <h2 id="connect-prompt-title">Set up your KVM</h2>
+      <p class="mt-3 text-sm leading-relaxed text-mist-400">Two connections: one for control, one for video.</p>
+      <ol class="setup-steps">
+        <li v-for="(step, i) in steps" :key="step.title">
+          <span class="setup-step-number">0{{ i + 1 }}</span>
+          <div><strong>{{ step.title }}</strong><p>{{ step.detail }}</p></div>
         </li>
       </ol>
-
-      <div class="mt-6 flex flex-col gap-3">
-        <button class="kvm-btn kvm-btn-primary w-full py-2.5" @click="emit('start')">
-          <AppIcon name="film" /> Start capture
-        </button>
-        <label class="kvm-toggle self-center">
+      <button type="button" class="kvm-btn kvm-btn-primary mt-6 w-full" :disabled="busy" @click="emit('start')">
+        <AppIcon :name="busy ? 'refresh' : 'film'" :class="{ 'animate-[kvm-spin_0.9s_linear_infinite]': busy }" />
+        {{ busy ? 'Starting video…' : 'Start video' }}
+      </button>
+      <div class="setup-footer">
+        <label class="kvm-toggle">
           <input v-model="settings.skipConnectPrompt" type="checkbox" />
           <span class="kvm-toggle-track"></span>
-          <span class="kvm-toggle-text">Don't show this again</span>
+          <span class="kvm-toggle-text">Skip next time</span>
         </label>
+        <NuxtLink to="/docs">Setup guide</NuxtLink>
       </div>
     </div>
   </div>
