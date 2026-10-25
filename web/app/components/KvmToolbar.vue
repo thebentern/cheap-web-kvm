@@ -203,6 +203,7 @@ function toggleCtrlCmdSwap() {
           <AppIcon name="exchange" />
         </button>
         <button type="button" class="kvm-btn kvm-btn-icon" title="Status LED legend" aria-label="Status LED legend" aria-haspopup="dialog" @click="showLedLegend"><AppIcon name="record" /></button>
+        <NuxtLink to="/flash" class="kvm-btn kvm-btn-icon" title="Install firmware" aria-label="Install firmware"><AppIcon name="download" /></NuxtLink>
         <NuxtLink to="/docs" class="kvm-btn kvm-btn-icon" title="Documentation" aria-label="Documentation"><AppIcon name="info" /></NuxtLink>
         <a :href="REPO" class="kvm-btn kvm-btn-icon" title="GitHub repository" aria-label="GitHub repository" target="_blank" rel="noopener noreferrer"><AppIcon name="github" /></a>
       </nav>
@@ -236,6 +237,7 @@ function toggleCtrlCmdSwap() {
         <button type="button" class="kvm-btn" :aria-pressed="settings.ctrlCmdSwap" @click="toggleCtrlCmdSwap"><AppIcon name="exchange" /> Ctrl / Cmd</button>
         <button type="button" class="kvm-btn" @click="panels.toggle('settings')"><AppIcon name="cog" /> Settings</button>
         <button type="button" class="kvm-btn" aria-haspopup="dialog" @click.stop="showLedLegend"><AppIcon name="record" /> Status LED legend</button>
+        <NuxtLink to="/flash" class="kvm-btn"><AppIcon name="download" /> Install firmware</NuxtLink>
         <NuxtLink to="/docs" class="kvm-btn"><AppIcon name="info" /> Setup guide</NuxtLink>
         <a :href="REPO" class="kvm-btn" target="_blank" rel="noopener noreferrer"><AppIcon name="github" /> GitHub</a>
         <button type="button" class="kvm-btn" @click="emit('hide')"><AppIcon name="chevron-up" /> Hide toolbar</button>

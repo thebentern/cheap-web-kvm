@@ -120,6 +120,11 @@ useHead({
       <section class="docs-section" aria-labelledby="reference-title">
         <h2 id="reference-title">Reference</h2>
         <div class="docs-references">
+          <NuxtLink to="/flash" class="docs-reference">
+            <span class="docs-reference-title">Install firmware<AppIcon name="chevron-right" aria-hidden="true" /></span>
+            <span class="docs-reference-description">Flash the packaged $KVM firmware on an ESP32-S3-DevKitC-1-N8R8 from desktop Chrome or Edge, using its UART USB port. Existing Bluetooth PIN and pairings are preserved.</span>
+            <span class="docs-path">Browser installer</span>
+          </NuxtLink>
           <a
             v-for="link in links"
             :key="link.href"

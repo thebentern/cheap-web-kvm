@@ -78,6 +78,32 @@ button state, so type from one at a time.
 
 ## Firmware
 
+### Install from the browser
+
+Use desktop Chrome or Edge and open the [hosted installer](https://thebentern.github.io/cheap-web-kvm/flash).
+You can also select **Install firmware** from the console toolbar or its
+**Tools** menu. Web Serial requires HTTPS or `localhost`.
+
+1. Connect the ESP32-S3 board's **USB-UART bridge port** to the laptop. Close
+   any active KVM serial connection or serial monitor using that port.
+2. In the installer, connect to the board's UART serial port and install the
+   bundled firmware. The build is for the **ESP32-S3-DevKitC-1-N8R8 with 8 MB
+   flash**. The native USB port is for the target keyboard and mouse.
+3. Keep the cable connected until the installer finishes. Reset the board if
+   it does not restart automatically, then return to the console.
+
+If automatic bootloader entry fails, hold **BOOT**, tap **RESET/EN**, then
+release **BOOT** and retry. This uses the ESP32's ROM bootloader and works even
+when the installed application is not responding.
+
+The installer writes three separate binaries: bootloader, partition table and
+application. It leaves the NVS region containing your Bluetooth PIN and pairings
+intact and does not erase the whole chip. The hosted site bundles firmware from
+the same Git commit as the web app. Its default LED pin is GPIO48; see
+[RGB status LED](#rgb-status-led) for GPIO38 boards and custom builds.
+
+### Build and flash locally
+
 Requires [ESP-IDF 5.3 or newer](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
 for the `esp_driver_uart` component. Tested with 5.4.
 
@@ -91,6 +117,17 @@ works whatever the app does with the pins.
 
 `sdkconfig.defaults` only applies to a new config. If you built before Bluetooth
 was added, delete `firmware/sdkconfig` and rebuild.
+
+To include a local build in the web installer, run this from the repository
+root after `idf.py build`, before starting or generating the web app:
+
+```bash
+python3 tools/package_firmware.py
+```
+
+This validates `firmware/build/flasher_args.json` and the partition layout,
+then creates `web/public/firmware/manifest.json` and the three binaries with
+sizes and SHA-256 checksums. Generated firmware files are ignored by Git.
 
 ### RGB status LED
 
@@ -163,7 +200,8 @@ the UART cable. On Linux, Web Bluetooth is behind a browser flag.
 
 * Hosted: <https://thebentern.github.io/cheap-web-kvm/>, deployed by
   [GitHub Actions](.github/workflows/deploy-pages.yml) on pushes to `main` that
-  change `web/` or `docs/PROTOCOL.md`.
+  change the web app, firmware, firmware packaging tools or protocol docs.
+  The workflow builds and publishes matching web and firmware artifacts together.
   Docs are at [`/docs`](https://thebentern.github.io/cheap-web-kvm/docs).
 * Offline: `cd src && ./sync_www.sh && ./start.sh`, then open
   `https://localhost:8443/` in a Chromium browser. Needs Node.js and Go
@@ -261,6 +299,9 @@ python3 tools/ch9329_test.py --selftest
 
 # LED colors, timing, brightness and status priority (needs a host C compiler).
 python3 tools/test_led_pattern.py
+
+# Firmware manifest, hashes, layout validation and NVS preservation bounds.
+python3 tools/test_package_firmware.py
 ```
 
 With the board on the UART port, no browser:

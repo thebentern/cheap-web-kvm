@@ -48,6 +48,7 @@ const steps = [
         </label>
         <NuxtLink to="/docs">Setup guide</NuxtLink>
       </div>
+      <p class="mt-5 text-sm text-mist-400">Blank board? <NuxtLink to="/flash" class="text-signal-400 underline underline-offset-4">Install the firmware</NuxtLink> first.</p>
     </div>
   </div>
 </template>

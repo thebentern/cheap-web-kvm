@@ -1,4 +1,4 @@
-# Build the Nuxt UI and publish it to GitHub Pages.
+# Build matching ESP32-S3 firmware and Nuxt UI, then publish them together.
 # SPDX-License-Identifier: GPL-3.0-or-later
 name: Deploy web UI to Pages
 
@@ -7,6 +7,11 @@ on:
     branches: [main]
     paths:
       - 'web/**'
+      - 'firmware/**'
+      - 'tools/package_firmware.py'
+      - 'tools/test_package_firmware.py'
+      - 'tools/test_led_pattern.py'
+      - 'tools/verify_descriptors.py'
       - 'docs/PROTOCOL.md'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
@@ -29,6 +34,26 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
+
+      - name: Test firmware packaging and LED patterns
+        working-directory: .
+        run: |
+          python3 tools/test_package_firmware.py
+          python3 tools/test_led_pattern.py
+
+      # Official Espressif action, pinned to the reviewed v1 commit. The v5.4
+      # image matches the toolchain used to validate this firmware locally.
+      - name: Build ESP32-S3 firmware and verify USB descriptors
+        uses: espressif/esp-idf-ci-action@9d38657f3d789ca759b2b37aaf5ceffbc42c4f0d
+        with:
+          esp_idf_version: v5.4
+          target: esp32s3
+          path: firmware
+          command: idf.py build && python ../tools/verify_descriptors.py
+
+      - name: Bundle firmware for the browser flasher
+        working-directory: .
+        run: python3 tools/package_firmware.py
 
       - uses: actions/setup-node@v4
         with:
