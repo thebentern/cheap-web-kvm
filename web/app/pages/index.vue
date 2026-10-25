@@ -26,7 +26,6 @@ const stageEl = ref<HTMLDivElement | null>(null)
 const toolbarHidden = ref(false)
 const isFullscreen = ref(false)
 const startingCapture = ref(false)
-const toolbarHeight = ref(118)
 
 const linkSupported = computed(() => kvm.link.supported.value)
 // The card streams colour bars when the target is dark, so "no stream" is not
@@ -525,7 +524,7 @@ onBeforeUnmount(() => {
 
 <template>
   <ClientOnly>
-    <div class="relative h-dvh w-screen overflow-hidden bg-ink-950" :style="{ '--toolbar-height': `${toolbarHidden ? 0 : toolbarHeight}px` }">
+    <div class="relative h-dvh w-screen overflow-hidden bg-ink-950">
       <video
         ref="videoEl"
         class="kvm-video"
@@ -564,7 +563,6 @@ onBeforeUnmount(() => {
         :hidden="toolbarHidden"
         :fullscreen="isFullscreen"
         :capture-busy="startingCapture"
-        @height-change="toolbarHeight = $event"
         @toggle-link="toggleLink"
         @start-capture="startCapture"
         @screenshot="takeScreenshot"
