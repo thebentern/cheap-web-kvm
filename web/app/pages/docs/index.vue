@@ -165,7 +165,7 @@ useHead({
       </section>
 
       <section class="docs-section" aria-labelledby="credits-title">
-        <h2 id="credits-title">Built on DezKVM-Go</h2>
+        <h2 id="credits-title">Heavily inspired by DezKVM-Go</h2>
         <!-- The web interface is tobychui's work; see NOTICE in the repository. -->
         <p>
           cheap-web-kvm is a fork of
