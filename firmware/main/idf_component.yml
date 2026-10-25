@@ -6,3 +6,4 @@ dependencies:
   # exists from the v5.3 driver split.
   idf: ">=5.3"
   espressif/esp_tinyusb: ">=2.0.0,<3.0.0"
+  espressif/led_strip: ">=3.0.0,<4.0.0"

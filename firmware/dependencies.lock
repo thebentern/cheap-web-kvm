@@ -19,6 +19,16 @@ dependencies:
     - esp32h4
     - esp32s31
     version: 2.2.1
+  espressif/led_strip:
+    component_hash: 027f68f2b57b0dca1d68dff6cc1139d9093825aa808c2bc3ca42bb2ce530fce9
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.2'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 3.1.1
   espressif/tinyusb:
     component_hash: a72b7d67472914ab76309340fd50d578b31e310963d45ad0f81144bde3314752
     dependencies:
@@ -41,7 +51,8 @@ dependencies:
     version: 5.4.0
 direct_dependencies:
 - espressif/esp_tinyusb
+- espressif/led_strip
 - idf
-manifest_hash: 942cba8fcaab2916b51c2ffb33c1a095cfe80e9c7d5b235d7efd6d12bf494006
+manifest_hash: c6d5fb4eb45abf0e9cc131346d7ef1d8b3c8e577ba846686aeb3a3bfe726dc1e
 target: esp32s3
 version: 2.0.0

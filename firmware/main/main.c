@@ -9,6 +9,7 @@
 #include "ch9329.h"
 #include "kvm_ble.h"
 #include "kvm_hid.h"
+#include "kvm_led.h"
 
 static const char *TAG = "kvm";
 
@@ -18,6 +19,7 @@ void app_main(void)
 
     /* USB first: the target may already be powered and waiting to enumerate. */
     ESP_ERROR_CHECK(kvm_hid_start());
+    kvm_led_start();
 
 #if CONFIG_KVM_BLE_ENABLED
     /* Bonds and the passkey live in NVS, which must be up before UART0 can

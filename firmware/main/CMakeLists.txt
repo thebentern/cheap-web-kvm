@@ -6,6 +6,8 @@ idf_component_register(
         "kvm_hid.c"
         "ch9329.c"
         "kvm_ble.c"
+        "kvm_led.c"
+        "kvm_led_pattern.c"
         "usb_descriptors.c"
     INCLUDE_DIRS
         "."

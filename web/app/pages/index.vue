@@ -24,6 +24,7 @@ const { settings, startAutosave } = useSettings()
 const videoEl = ref<HTMLVideoElement | null>(null)
 const stageEl = ref<HTMLDivElement | null>(null)
 const toolbarHidden = ref(false)
+const ledLegendOpener = ref<HTMLElement | null>(null)
 const isFullscreen = ref(false)
 const startingCapture = ref(false)
 
@@ -328,6 +329,7 @@ function recognizer(route: Route) {
 }
 
 function onPointerDown(e: PointerEvent) {
+  if (panels.open.ledLegend) return
   stageEl.value?.focus({ preventScroll: true })
   jiggler.noteActivity()
   lastPointerType = e.pointerType
@@ -351,6 +353,7 @@ function onPointerDown(e: PointerEvent) {
 }
 
 function onPointerMove(e: PointerEvent) {
+  if (panels.open.ledLegend) return
   jiggler.noteActivity()
   const route = routes.get(e.pointerId) ?? hoverRoute(e)
   const g = recognizer(route)
@@ -359,6 +362,7 @@ function onPointerMove(e: PointerEvent) {
 }
 
 function onPointerUp(e: PointerEvent) {
+  if (panels.open.ledLegend) return
   const route = routes.get(e.pointerId) ?? hoverRoute(e)
   routes.delete(e.pointerId)
   const g = recognizer(route)
@@ -370,6 +374,7 @@ function onPointerUp(e: PointerEvent) {
 }
 
 function onPointerCancel(e: PointerEvent) {
+  if (panels.open.ledLegend) return
   const route = routes.get(e.pointerId) ?? hoverRoute(e)
   routes.delete(e.pointerId)
   const g = recognizer(route)
@@ -390,12 +395,14 @@ function onWindowBlur() {
 }
 
 async function onWheel(e: WheelEvent) {
+  if (panels.open.ledLegend) return
   e.preventDefault()
   jiggler.noteActivity()
   await kvm.mouseScroll(e.deltaY > 0 ? settings.scrollSensitivity : -settings.scrollSensitivity)
 }
 
 function onStageClick() {
+  if (panels.open.ledLegend) return
   if (lastPointerType !== 'mouse') return
   if (!kvm.config.absoluteMode && document.pointerLockElement !== stageEl.value) {
     stageEl.value?.requestPointerLock()
@@ -419,7 +426,7 @@ function typingInField(e: KeyboardEvent) {
 const MODIFIER_KEYS = new Set(['Control', 'Shift', 'Alt', 'Meta'])
 
 async function onKeydown(e: KeyboardEvent) {
-  if (typingInField(e)) return
+  if (panels.open.ledLegend || typingInField(e)) return
   jiggler.noteActivity()
   if (stacked.onKeydown(e)) return
   // Let the browser's own paste event through so the paste box can read it.
@@ -432,7 +439,7 @@ async function onKeydown(e: KeyboardEvent) {
 }
 
 async function onKeyup(e: KeyboardEvent) {
-  if (typingInField(e)) return
+  if (panels.open.ledLegend || typingInField(e)) return
   if (stacked.onKeyup(e)) return
   if ((e.ctrlKey || e.metaKey) && e.key === 'v') return
 
@@ -488,6 +495,20 @@ watch(() => settings.invertScrollwheel, (v) => (kvm.config.invertScroll = v), { 
 watch(() => settings.scrollSensitivity, (v) => (kvm.config.scrollSensitivity = v), { immediate: true })
 watch(() => settings.ctrlCmdSwap, (v) => (kvm.config.ctrlCmdSwap = v), { immediate: true })
 
+function showLedLegend(opener: HTMLElement | null) {
+  ledLegendOpener.value = opener
+  panels.show('ledLegend')
+}
+
+watch(() => panels.open.ledLegend, (open) => {
+  if (!open) return
+  // Keyup and pointerup now belong to the dialog, so release anything the
+  // target was holding before focus moves away from the remote surface.
+  onWindowBlur()
+  if (kvm.link.connected.value) void kvm.releaseAll()
+  if (document.pointerLockElement) document.exitPointerLock()
+})
+
 let stopSignalWatch: (() => void) | null = null
 let stopDeviceWatch: (() => void) | null = null
 let wakeLock: ReturnType<typeof useWakeLock> | null = null
@@ -525,6 +546,7 @@ onBeforeUnmount(() => {
 <template>
   <ClientOnly>
     <div class="relative h-dvh w-screen overflow-hidden bg-ink-950">
+      <div :inert="panels.open.ledLegend || undefined">
       <video
         ref="videoEl"
         class="kvm-video"
@@ -567,6 +589,7 @@ onBeforeUnmount(() => {
         @start-capture="startCapture"
         @screenshot="takeScreenshot"
         @toggle-fullscreen="toggleFullscreen"
+        @show-led-legend="showLedLegend"
         @hide="toolbarHidden = true"
       />
       <button
@@ -589,6 +612,8 @@ onBeforeUnmount(() => {
 
       <ConnectPrompt v-if="panels.open.connectPrompt" :busy="startingCapture" @start="startCapture" />
       <BrowserWarning v-if="!linkSupported" />
+      </div>
+      <LedLegendModal v-if="panels.open.ledLegend" :return-focus="ledLegendOpener" />
     </div>
   </ClientOnly>
 </template>

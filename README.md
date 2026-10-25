@@ -92,6 +92,37 @@ works whatever the app does with the pins.
 `sdkconfig.defaults` only applies to a new config. If you built before Bluetooth
 was added, delete `firmware/sdkconfig` and rebuild.
 
+### RGB status LED
+
+The onboard NeoPixel uses the **Quiet status** scheme. It stays dim during
+normal use, with brief brighter pulses for input.
+
+| State | Color | Pattern |
+|---|---|---|
+| Starting | White | One 700 ms fade. |
+| Waiting for the USB target | Amber | Slow 3-second breath. |
+| Target has enumerated the keyboard and mouse | Green | Dim, steady. |
+| Bluetooth pairing | Blue | Two 120 ms pulses, 400 ms apart, every 2.4 seconds. |
+| Keyboard or mouse input sent to USB | Green | One 80 ms brightness lift. Continuous input is coalesced. |
+| Input dropped | Red | One 180 ms flash, then return to the current status. |
+
+Pairing takes precedence over the target status; a dropped-input warning
+briefly overrides both. After pairing ends, the light returns to the USB target
+status. Green activity means the USB stack accepted an input report for
+transmission; it cannot confirm the target processed it. The LED does not
+indicate HDMI/video health or whether a browser has opened the serial port.
+
+Open **Status LED legend** in the console toolbar or its **Tools** menu for the same
+reference, including when disconnected.
+
+`idf.py menuconfig` → **cheap-web-kvm** lets you disable the LED, select its
+GPIO, and adjust its brightness cap. The default cap is 10%, with steady green
+at half that level. The default GPIO is **48**, used by the original DevKitC-1
+and many clones. Official **v1.1 boards use GPIO38**; check your board revision
+and select the appropriate pin ([Espressif board guide](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/esp32-s3-devkitc-1/user_guide_v1.1.html)).
+Boards without an addressable LED can disable it. An LED initialization failure
+is logged and leaves keyboard, mouse, and Bluetooth operation available.
+
 ### Bluetooth PIN
 
 Bluetooth only accepts input from a paired device. Pairing needs a six-digit
@@ -227,6 +258,9 @@ python3 tools/verify_descriptors.py
 
 # Frame builder against the golden frames.
 python3 tools/ch9329_test.py --selftest
+
+# LED colors, timing, brightness and status priority (needs a host C compiler).
+python3 tools/test_led_pattern.py
 ```
 
 With the board on the UART port, no browser:

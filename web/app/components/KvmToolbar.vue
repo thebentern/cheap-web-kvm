@@ -3,7 +3,7 @@
 // Floating dock and compact tool menu. Everything here is
 // either a panel toggle or an event for the page to act on — the toolbar owns
 // no device state of its own.
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { useCapture } from '~/composables/useCapture'
 import { useKvm } from '~/composables/useKvm'
 import type { LinkKind } from '~/composables/useLink'
@@ -25,6 +25,7 @@ const emit = defineEmits<{
   screenshot: []
   'start-capture': []
   'toggle-fullscreen': []
+  'show-led-legend': [opener: HTMLElement | null]
   hide: []
 }>()
 
@@ -39,6 +40,18 @@ const toolsToggle = ref<HTMLButtonElement | null>(null)
 function closeTools() {
   toolsOpen.value = false
   toolsToggle.value?.focus()
+}
+
+async function showLedLegend(event: MouseEvent) {
+  let opener = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
+  if (toolsOpen.value) {
+    // The menu entry disappears on close. Let the dialog remember the visible
+    // Tools toggle, so Escape can return focus to a usable control on mobile.
+    closeTools()
+    await nextTick()
+    opener = toolsToggle.value
+  }
+  emit('show-led-legend', opener)
 }
 
 const connected = kvm.link.connected
@@ -189,6 +202,7 @@ function toggleCtrlCmdSwap() {
         <button type="button" class="kvm-btn kvm-btn-icon" :aria-pressed="settings.ctrlCmdSwap" title="Swap Ctrl and Cmd" aria-label="Swap Ctrl and Cmd" @click="toggleCtrlCmdSwap">
           <AppIcon name="exchange" />
         </button>
+        <button type="button" class="kvm-btn kvm-btn-icon" title="Status LED legend" aria-label="Status LED legend" aria-haspopup="dialog" @click="showLedLegend"><AppIcon name="record" /></button>
         <NuxtLink to="/docs" class="kvm-btn kvm-btn-icon" title="Documentation" aria-label="Documentation"><AppIcon name="info" /></NuxtLink>
         <a :href="REPO" class="kvm-btn kvm-btn-icon" title="GitHub repository" aria-label="GitHub repository" target="_blank" rel="noopener noreferrer"><AppIcon name="github" /></a>
       </nav>
@@ -221,6 +235,7 @@ function toggleCtrlCmdSwap() {
       <div class="kvm-tool-group">
         <button type="button" class="kvm-btn" :aria-pressed="settings.ctrlCmdSwap" @click="toggleCtrlCmdSwap"><AppIcon name="exchange" /> Ctrl / Cmd</button>
         <button type="button" class="kvm-btn" @click="panels.toggle('settings')"><AppIcon name="cog" /> Settings</button>
+        <button type="button" class="kvm-btn" aria-haspopup="dialog" @click.stop="showLedLegend"><AppIcon name="record" /> Status LED legend</button>
         <NuxtLink to="/docs" class="kvm-btn"><AppIcon name="info" /> Setup guide</NuxtLink>
         <a :href="REPO" class="kvm-btn" target="_blank" rel="noopener noreferrer"><AppIcon name="github" /> GitHub</a>
         <button type="button" class="kvm-btn" @click="emit('hide')"><AppIcon name="chevron-up" /> Hide toolbar</button>
