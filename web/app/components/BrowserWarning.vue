@@ -5,6 +5,10 @@
 // say so rather than failing silently deeper in. Video capture still works,
 // hence "Proceed anyway".
 import { onMounted, ref } from 'vue'
+import { useDialogFocus } from '~/composables/useDialogFocus'
+
+const rootEl = ref<HTMLElement | null>(null)
+useDialogFocus(rootEl, proceed)
 
 /** Drives the `.kvm-modal` fade; raised a frame after mount so it animates. */
 const visible = ref(false)
@@ -26,6 +30,7 @@ function proceed() {
 <template>
   <div
     v-if="!dismissed"
+    ref="rootEl"
     class="kvm-modal"
     :class="{ 'is-visible': visible }"
     role="alertdialog"

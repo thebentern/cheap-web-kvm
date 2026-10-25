@@ -25,6 +25,8 @@ const videoEl = ref<HTMLVideoElement | null>(null)
 const stageEl = ref<HTMLDivElement | null>(null)
 const toolbarHidden = ref(false)
 const isFullscreen = ref(false)
+const startingCapture = ref(false)
+const toolbarHeight = ref(118)
 
 const linkSupported = computed(() => kvm.link.supported.value)
 // The card streams colour bars when the target is dark, so "no stream" is not
@@ -59,20 +61,26 @@ watch(
 )
 
 async function startCapture() {
-  // WebKit grants a wake lock only inside a gesture, and this click is one.
-  wakeLock?.sync(true)
-  const ok = await capture.start(settings.enableAudio)
-  wakeLock?.sync()
-  // Left the page while capture was opening: nothing here to report to.
-  if (unmounted) return
-  panels.hide('connectPrompt')
-  if (ok) {
-    toasts.success(`Capture started — ${capture.deviceName.value}`)
-    if (capture.fuzzyMatch.value) {
-      toasts.warn('Capture device VID:PID could not be confirmed; it may be the wrong device')
+  if (startingCapture.value) return
+  startingCapture.value = true
+  try {
+    // WebKit grants a wake lock only inside a gesture, and this click is one.
+    wakeLock?.sync(true)
+    const ok = await capture.start(settings.enableAudio)
+    wakeLock?.sync()
+    // Left the page while capture was opening: nothing here to report to.
+    if (unmounted) return
+    panels.hide('connectPrompt')
+    if (ok) {
+      toasts.success(`Capture started — ${capture.deviceName.value}`)
+      if (capture.fuzzyMatch.value) {
+        toasts.warn('Capture device VID:PID could not be confirmed; it may be the wrong device')
+      }
+    } else {
+      toasts.error(capture.lastError.value ?? 'Could not start capture')
     }
-  } else {
-    toasts.error(capture.lastError.value ?? 'Could not start capture')
+  } finally {
+    startingCapture.value = false
   }
 }
 
@@ -321,6 +329,7 @@ function recognizer(route: Route) {
 }
 
 function onPointerDown(e: PointerEvent) {
+  stageEl.value?.focus({ preventScroll: true })
   jiggler.noteActivity()
   lastPointerType = e.pointerType
   const route = routeFor(e)
@@ -402,7 +411,9 @@ function typingInField(e: KeyboardEvent) {
     t.tagName === 'INPUT' ||
     t.tagName === 'TEXTAREA' ||
     t.tagName === 'SELECT' ||
-    t.isContentEditable
+    t.isContentEditable ||
+    !!t.closest('button, a, [role="dialog"], [role="alertdialog"]') ||
+    (e.key === 'Tab' && t !== stageEl.value)
   )
 }
 
@@ -514,7 +525,7 @@ onBeforeUnmount(() => {
 
 <template>
   <ClientOnly>
-    <div class="relative h-screen w-screen overflow-hidden bg-ink-950">
+    <div class="relative h-dvh w-screen overflow-hidden bg-ink-950" :style="{ '--toolbar-height': `${toolbarHidden ? 0 : toolbarHeight}px` }">
       <video
         ref="videoEl"
         class="kvm-video"
@@ -528,6 +539,8 @@ onBeforeUnmount(() => {
         v-if="showNoSignal"
         :status="capture.status.value"
         :error="capture.lastError.value"
+        :busy="startingCapture"
+        @start="startCapture"
         @restart="void capture.restart()"
       />
 
@@ -535,6 +548,8 @@ onBeforeUnmount(() => {
       <div
         ref="stageEl"
         class="kvm-touch"
+        tabindex="-1"
+        aria-label="Remote keyboard and pointer surface"
         :class="{ 'no-cursor': !settings.showLocalCursor }"
         @pointerdown="onPointerDown"
         @pointermove="onPointerMove"
@@ -548,7 +563,10 @@ onBeforeUnmount(() => {
       <KvmToolbar
         :hidden="toolbarHidden"
         :fullscreen="isFullscreen"
+        :capture-busy="startingCapture"
+        @height-change="toolbarHeight = $event"
         @toggle-link="toggleLink"
+        @start-capture="startCapture"
         @screenshot="takeScreenshot"
         @toggle-fullscreen="toggleFullscreen"
         @hide="toolbarHidden = true"
@@ -571,7 +589,7 @@ onBeforeUnmount(() => {
       <RecorderPanel v-if="panels.open.recorder" :video="videoEl" />
       <SettingsPanel v-if="panels.open.settings" />
 
-      <ConnectPrompt v-if="panels.open.connectPrompt" @start="startCapture" />
+      <ConnectPrompt v-if="panels.open.connectPrompt" :busy="startingCapture" @start="startCapture" />
       <BrowserWarning v-if="!linkSupported" />
     </div>
   </ClientOnly>

@@ -5,10 +5,17 @@
 import { computed } from 'vue'
 import type { CaptureStatus } from '~/composables/useCapture'
 
-const props = defineProps<{ status?: CaptureStatus; error?: string | null }>()
-defineEmits<{ restart: [] }>()
+const props = defineProps<{ status?: CaptureStatus; error?: string | null; busy?: boolean }>()
+defineEmits<{ restart: []; start: [] }>()
 
 const copy = computed(() => {
+  if (!props.status || props.status === 'idle') {
+    return {
+      icon: 'monitor',
+      title: 'Video is not started',
+      detail: 'Connect the HDMI capture stick to this computer, then start video. Keyboard and mouse connect separately from the toolbar.',
+    }
+  }
   if (props.status === 'reconnecting') {
     return {
       icon: 'refresh',
@@ -44,16 +51,17 @@ const copy = computed(() => {
 <template>
   <div class="kvm-nosignal" role="status">
     <div class="flex flex-col items-center gap-3 px-6 text-center">
-      <div
-        class="flex h-14 w-14 items-center justify-center rounded-2xl border border-ink-600 bg-ink-800 text-2xl text-mist-400"
-      >
+      <div class="mb-2 text-3xl text-mist-400">
         <AppIcon
           :name="copy.icon"
           :class="{ 'animate-[kvm-spin_0.9s_linear_infinite]': status === 'reconnecting' }"
         />
       </div>
-      <p class="text-sm font-medium text-mist-200">{{ copy.title }}</p>
-      <p class="max-w-sm text-xs leading-relaxed text-mist-400">{{ copy.detail }}</p>
+      <p class="text-2xl font-medium tracking-tight text-mist-100">{{ copy.title }}</p>
+      <p class="max-w-sm text-sm leading-relaxed text-mist-400">{{ copy.detail }}</p>
+      <button v-if="!status || status === 'idle'" type="button" class="kvm-btn kvm-btn-primary mt-3" :disabled="busy" @click="$emit('start')">
+        <AppIcon name="film" /> {{ busy ? 'Starting…' : 'Start video' }}
+      </button>
       <!-- The only part of the overlay that takes pointer input (main.css). -->
       <button
         v-if="status === 'paused' || status === 'reconnecting' || status === 'failed'"

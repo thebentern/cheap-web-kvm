@@ -11,6 +11,7 @@ import { useKvm } from '~/composables/useKvm'
 import { usePanels } from '~/composables/usePanels'
 import { useSettings } from '~/composables/useSettings'
 import { useToasts } from '~/composables/useToasts'
+import { useDialogFocus } from '~/composables/useDialogFocus'
 
 const capture = useCapture()
 const kvm = useKvm()
@@ -49,6 +50,8 @@ const rootEl = ref<HTMLElement | null>(null)
 function close() {
   panels.hide('settings')
 }
+
+useDialogFocus(rootEl, close)
 
 /* ------------------------------------------------------------------ capture */
 interface CaptureRow {
@@ -187,36 +190,13 @@ function resetToDefaults() {
   toasts.info('Settings restored to defaults')
 }
 
-/* ------------------------------------------------------------------ keyboard */
-// The page-level handler in index.vue forwards keystrokes to the target. While
-// this overlay is up, swallow anything aimed at it so typing here cannot leak
-// through, and take Escape as the close gesture.
-function onKeydownCapture(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
-    e.preventDefault()
-    e.stopPropagation()
-    close()
-    return
-  }
-  stopIfInside(e)
-}
-
-function stopIfInside(e: KeyboardEvent) {
-  const target = e.target as Node | null
-  if (target && rootEl.value?.contains(target)) e.stopPropagation()
-}
-
 onMounted(() => {
   syncFullscreen()
   document.addEventListener('fullscreenchange', syncFullscreen)
-  window.addEventListener('keydown', onKeydownCapture, true)
-  window.addEventListener('keyup', stopIfInside, true)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('fullscreenchange', syncFullscreen)
-  window.removeEventListener('keydown', onKeydownCapture, true)
-  window.removeEventListener('keyup', stopIfInside, true)
 })
 </script>
 

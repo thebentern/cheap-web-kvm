@@ -149,7 +149,7 @@ function paint() {
   if (!c || !ctx) return
 
   ctx.clearRect(0, 0, c.width, c.height)
-  ctx.fillStyle = 'rgba(7, 9, 12, 0.55)'
+  ctx.fillStyle = 'rgba(33, 28, 24, 0.55)'
   ctx.fillRect(0, 0, c.width, c.height)
   if (!hasRect.value) return
 
@@ -158,7 +158,7 @@ function paint() {
 
   // Punch the selection out of the mask so the live picture shows through.
   ctx.clearRect(r.x, r.y, r.w, r.h)
-  ctx.strokeStyle = '#22d3ee'
+  ctx.strokeStyle = '#e59258'
   ctx.lineWidth = 2
   ctx.setLineDash([6, 3])
   ctx.strokeRect(r.x, r.y, r.w, r.h)
@@ -169,9 +169,9 @@ function paint() {
   const tw = ctx.measureText(label).width
   const bx = Math.max(4, Math.min(r.x, c.width - tw - 16))
   const by = r.y > 26 ? r.y - 8 : Math.min(c.height - 6, r.y + r.h + 20)
-  ctx.fillStyle = 'rgba(7, 9, 12, 0.85)'
+  ctx.fillStyle = 'rgba(33, 28, 24, 0.95)'
   ctx.fillRect(bx - 5, by - 13, tw + 10, 18)
-  ctx.fillStyle = '#22d3ee'
+  ctx.fillStyle = '#e59258'
   ctx.fillText(label, bx, by)
 }
 

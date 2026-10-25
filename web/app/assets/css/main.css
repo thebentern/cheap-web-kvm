@@ -10,36 +10,70 @@
 @source "../../";
 
 @theme {
-  --color-ink-950: #07090c;
-  --color-ink-900: #0b0f14;
-  --color-ink-850: #10161d;
-  --color-ink-800: #151b23;
-  --color-ink-700: #1c242e;
-  --color-ink-600: #263140;
-  --color-ink-500: #36445a;
-  --color-mist-400: #8b98a5;
-  --color-mist-200: #c9d3de;
-  --color-mist-100: #e6edf3;
+  --color-ink-950: #211c18;
+  --color-ink-900: #241e1a;
+  --color-ink-850: #2b2420;
+  --color-ink-800: #332d29;
+  --color-ink-700: #40362e;
+  --color-ink-600: #594c42;
+  --color-ink-500: #9b8b7d;
+  --color-mist-400: #c8b9ab;
+  --color-mist-200: #e4d8cc;
+  --color-mist-100: #f7f1e8;
 
-  --color-signal-400: #22d3ee;
-  --color-signal-500: #06b6d4;
-  --color-signal-600: #0891b2;
+  --color-signal-400: #e59258;
+  --color-signal-500: #e59258;
+  --color-signal-600: #b65c22;
 
-  --color-live-400: #34d399;
-  --color-live-500: #10b981;
-  --color-warn-400: #fbbf24;
-  --color-alert-400: #fb7185;
-  --color-alert-500: #f43f5e;
+  --color-live-400: #8dc6a1;
+  --color-live-500: #77b58c;
+  --color-warn-400: #e4bb73;
+  --color-alert-400: #f29b8d;
+  --color-alert-500: #e38070;
 
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
 
-  --radius-panel: 0.875rem;
+  --radius-panel: 0.75rem;
 }
 
 @layer base {
+  :root, [data-theme="dark"] {
+    color-scheme: dark;
+    --primary: #e59258;
+    --on-primary: #211c18;
+    --primary-hover: #f0a773;
+    --control-border: #9b8b7d;
+  }
+
+  [data-theme="light"] {
+    color-scheme: light;
+    --color-ink-950: #f7f1e8;
+    --color-ink-900: #fffcf7;
+    --color-ink-850: #fffcf7;
+    --color-ink-800: #f0e8dc;
+    --color-ink-700: #e9dfd1;
+    --color-ink-600: #d6c9b9;
+    --color-ink-500: #8b7d70;
+    --color-mist-100: #332d29;
+    --color-mist-200: #54483e;
+    --color-mist-400: #73675c;
+    --color-signal-400: #9d4b19;
+    --color-signal-500: #b65c22;
+    --color-signal-600: #b65c22;
+    --color-live-400: #286441;
+    --color-live-500: #286441;
+    --color-warn-400: #8b5d16;
+    --color-alert-400: #b43c2e;
+    --color-alert-500: #b43c2e;
+    --primary: #b65c22;
+    --on-primary: #ffffff;
+    --primary-hover: #9d4b19;
+    --control-border: #8b7d70;
+  }
+
   html,
   body {
     height: 100%;
@@ -71,7 +105,7 @@
 
   :focus-visible {
     outline: 2px solid var(--color-signal-500);
-    outline-offset: 2px;
+    outline-offset: 3px;
   }
 }
 
@@ -91,11 +125,12 @@
     justify-content: center;
     gap: 0.45rem;
     padding: 0.45rem 0.75rem;
-    border-radius: 0.6rem;
-    border: 1px solid var(--color-ink-600);
-    background: color-mix(in oklab, var(--color-ink-800) 85%, transparent);
+    min-height: 2.25rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--control-border);
+    background: var(--color-ink-850);
     color: var(--color-mist-200);
-    font-size: 0.8125rem;
+    font-size: 0.875rem;
     font-weight: 500;
     line-height: 1;
     cursor: pointer;
@@ -119,19 +154,19 @@
   }
   .kvm-btn-icon {
     padding: 0.45rem;
-    width: 2.1rem;
-    height: 2.1rem;
+    width: 2.25rem;
+    height: 2.25rem;
   }
   .kvm-btn-primary {
-    background: var(--color-signal-600);
-    border-color: var(--color-signal-500);
-    color: #041016;
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--on-primary);
     font-weight: 600;
   }
   .kvm-btn-primary:hover:not(.disabled):not(:disabled) {
-    background: var(--color-signal-500);
-    border-color: var(--color-signal-400);
-    color: #041016;
+    background: var(--primary-hover);
+    border-color: var(--primary-hover);
+    color: var(--on-primary);
   }
   /* `negative` is toggled by local-kvm.js to mark the serial link as live -
    * click again to disconnect. */
@@ -151,17 +186,16 @@
     color: var(--color-live-400);
   }
   .kvm-btn.grey {
-    background: color-mix(in oklab, var(--color-ink-800) 85%, transparent);
+    background: var(--color-ink-850);
     border-color: var(--color-ink-600);
     color: var(--color-mist-400);
   }
 
   .kvm-panel {
-    background: color-mix(in oklab, var(--color-ink-850) 96%, transparent);
+    background: var(--color-ink-850);
     border: 1px solid var(--color-ink-600);
     border-radius: var(--radius-panel);
-    box-shadow: 0 18px 50px -12px rgb(0 0 0 / 0.75);
-    backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px -16px rgb(0 0 0 / 0.45);
   }
 
   .kvm-input,
@@ -169,8 +203,8 @@
   .kvm-select {
     width: 100%;
     background: var(--color-ink-900);
-    border: 1px solid var(--color-ink-600);
-    border-radius: 0.55rem;
+    border: 1px solid var(--control-border);
+    border-radius: 0.5rem;
     color: var(--color-mist-100);
     padding: 0.5rem 0.7rem;
     font-size: 0.875rem;
@@ -183,7 +217,8 @@
   .kvm-textarea:focus,
   .kvm-select:focus {
     border-color: var(--color-signal-500);
-    outline: none;
+    outline: 2px solid var(--color-signal-500);
+    outline-offset: 3px;
   }
 
   .kvm-label {
@@ -259,7 +294,11 @@
   }
   .kvm-toggle input:checked + .kvm-toggle-track::after {
     transform: translateY(-50%) translateX(1.02rem);
-    background: #04121a;
+    background: var(--on-primary);
+  }
+  .kvm-toggle input:focus-visible + .kvm-toggle-track {
+    outline: 2px solid var(--color-signal-500);
+    outline-offset: 3px;
   }
   .kvm-toggle input:disabled + .kvm-toggle-track {
     opacity: 0.45;
@@ -291,7 +330,7 @@
     gap: 0.6rem;
     padding: 0.65rem 0.85rem;
     border-radius: 0.7rem;
-    background: color-mix(in oklab, var(--color-ink-800) 96%, transparent);
+    background: var(--color-ink-850);
     border: 1px solid var(--color-ink-600);
     border-left: 3px solid var(--color-signal-500);
     color: var(--color-mist-100);
@@ -302,7 +341,6 @@
     opacity: 0;
     transform: translateY(6px);
     transition: opacity 160ms ease, transform 160ms ease;
-    backdrop-filter: blur(12px);
   }
   .kvm-toast.kvm-toast-in {
     opacity: 1;
@@ -337,27 +375,23 @@
     height: 100%;
     width: 0%;
     border-radius: 999px;
-    background: linear-gradient(
-      90deg,
-      var(--color-signal-600),
-      var(--color-signal-400)
-    );
+    background: var(--color-signal-400);
     transition: width 160ms ease;
   }
 }
 
 /* ---------------------------------------------------------------------------
- * Application layout. IDs here are referenced by the application JavaScript
- * and must not be renamed - see the DOM contract note in README.
+ * Console layout. Chrome stays opaque; captured pixels keep their own colors.
  * ------------------------------------------------------------------------ */
 @layer components {
   .kvm-video {
     max-width: 100vw;
-    max-height: 100vh;
+    max-height: calc(100dvh - var(--toolbar-height, 0px));
     width: auto;
     height: auto;
     display: block;
     margin: auto;
+    margin-top: var(--toolbar-height, 0px);
     object-fit: contain;
     z-index: 0;
   }
@@ -375,10 +409,10 @@
 
   .kvm-touch {
     position: fixed;
-    top: 0;
+    top: var(--toolbar-height, 0px);
     left: 0;
     width: 100vw;
-    height: 100vh;
+    height: calc(100dvh - var(--toolbar-height, 0px));
     z-index: 500;
     user-select: none;
     -webkit-user-select: none;
@@ -394,31 +428,70 @@
 
   .kvm-toolbar {
     position: fixed;
-    top: 0.5rem;
-    left: 50%;
-    transform: translateX(-50%);
+    top: 0;
+    left: 0;
+    right: 0;
     z-index: 1000;
-    /* left:50% makes the containing block only half the viewport, so without
-     * max-content the toolbar wraps long before it needs to. */
-    width: max-content;
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.35rem;
-    border-radius: 0.85rem;
-    background: color-mix(in oklab, var(--color-ink-850) 82%, transparent);
-    border: 1px solid var(--color-ink-600);
-    box-shadow: 0 12px 32px -14px rgb(0 0 0 / 0.9);
-    backdrop-filter: blur(16px);
-    transition: opacity 200ms ease, transform 200ms ease;
-    max-width: calc(100vw - 1rem);
-    flex-wrap: wrap;
-    justify-content: center;
+    background: var(--color-ink-850);
+    border-bottom: 1px solid var(--color-ink-600);
+    transition: opacity 150ms ease, transform 150ms ease;
   }
   .kvm-toolbar.is-hidden {
     opacity: 0;
     pointer-events: none;
-    transform: translateX(-50%) translateY(-120%);
+    transform: translateY(-100%);
+  }
+  .kvm-toolbar-main {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    min-height: 64px;
+    padding: 8px 24px;
+  }
+  .kvm-toolbar-brand { flex: none; padding: 0 8px; }
+  .brand-logo { display: block; width: 128px; height: auto; flex: none; }
+  .kvm-connections { display: flex; align-items: center; gap: 8px; }
+  .kvm-toolbar-end { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .kvm-toolbar-end a { font-size: 14px; color: var(--color-mist-200); padding: 8px; }
+  .kvm-toolbar-end a:hover { text-decoration: underline; }
+  .kvm-tools-toggle, .kvm-tools-docs { display: none; }
+  .kvm-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 18px;
+    white-space: nowrap;
+    color: var(--color-mist-400);
+  }
+  .kvm-status::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+  }
+  .kvm-status.is-live { color: var(--color-live-400); }
+  .kvm-status.is-warning { color: var(--color-warn-400); }
+  .kvm-status.is-error { color: var(--color-alert-400); }
+  .kvm-tools {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 24px;
+    border-top: 1px solid var(--color-ink-600);
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .kvm-tool-group { display: flex; align-items: center; gap: 8px; flex: none; }
+  .kvm-tool-label { color: var(--color-mist-400); font-size: 12px; margin-right: 4px; }
+  .kvm-tools .kvm-btn { border-color: transparent; background: transparent; }
+  .kvm-tools .kvm-btn:hover { border-color: var(--color-ink-600); }
+  .kvm-tools .kvm-btn[aria-pressed="true"] {
+    color: var(--color-signal-400);
+    background: color-mix(in srgb, var(--color-signal-400) 12%, var(--color-ink-850));
+    border-color: var(--color-signal-400);
   }
 
   .kvm-divider {
@@ -439,13 +512,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background:
-      radial-gradient(
-        1200px 600px at 50% 40%,
-        color-mix(in oklab, var(--color-signal-600) 8%, transparent),
-        transparent 70%
-      ),
-      var(--color-ink-950);
+    padding-top: var(--toolbar-height, 0px);
+    background: var(--color-ink-950);
   }
   .kvm-nosignal button {
     pointer-events: auto;
@@ -460,10 +528,10 @@
     justify-content: center;
     padding: 1.5rem;
     background: color-mix(in oklab, var(--color-ink-950) 82%, transparent);
-    backdrop-filter: blur(6px);
     opacity: 0;
     pointer-events: none;
-    transition: opacity 200ms ease;
+    transition: opacity 150ms ease;
+    overflow-y: auto;
   }
   .kvm-modal.is-visible {
     opacity: 1;
@@ -479,7 +547,6 @@
     justify-content: center;
     padding: 1.25rem;
     background: color-mix(in oklab, var(--color-ink-950) 80%, transparent);
-    backdrop-filter: blur(6px);
   }
   .kvm-overlay.is-visible {
     display: flex;
@@ -532,11 +599,7 @@
     padding: 0 0.4rem;
     border-radius: 0.5rem;
     border: 1px solid var(--color-ink-600);
-    background: linear-gradient(
-      180deg,
-      var(--color-ink-700),
-      var(--color-ink-800)
-    );
+    background: var(--color-ink-800);
     color: var(--color-mist-200);
     font-size: 0.75rem;
     font-family: var(--font-mono);
@@ -552,9 +615,9 @@
   .key:active,
   .key.key-active {
     transform: translateY(1px);
-    background: var(--color-signal-600);
+    background: var(--primary);
     border-color: var(--color-signal-400);
-    color: #04121a;
+    color: var(--on-primary);
   }
   /* `key-caps` is toggled by onscreen-keyboard.js for latched modifiers. */
   .key.key-caps {
@@ -692,7 +755,6 @@
     align-items: center;
     justify-content: center;
     background: color-mix(in oklab, var(--color-ink-950) 85%, transparent);
-    backdrop-filter: blur(6px);
   }
   .copy-box-overlay.open {
     display: flex;
@@ -713,5 +775,93 @@
   }
   50% {
     opacity: 0.35;
+  }
+}
+
+@layer components {
+  .site-page {
+    min-height: 100vh;
+    background: var(--color-ink-950);
+    color: var(--color-mist-100);
+  }
+  .site-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    min-height: 64px;
+    padding: 8px max(24px, calc((100vw - 1120px) / 2));
+    border-bottom: 1px solid var(--color-ink-600);
+  }
+  .site-nav { display: flex; align-items: center; gap: 24px; font-size: 14px; }
+  .site-nav a:hover, .site-nav a[aria-current="page"] { text-decoration: underline; text-underline-offset: 4px; }
+  .site-content { width: min(100% - 48px, 760px); margin-inline: auto; }
+  .site-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 24px max(24px, calc((100vw - 1120px) / 2));
+    border-top: 1px solid var(--color-ink-600);
+    color: var(--color-mist-400);
+    font-size: 13px;
+  }
+  .setup-panel { width: min(100%, 480px); max-height: calc(100dvh - 32px); overflow-y: auto; padding: 32px; color: var(--color-mist-100); }
+  .setup-panel h2 { font-size: 28px; line-height: 1.2; font-weight: 650; letter-spacing: -0.035em; }
+  .setup-steps { margin-top: 24px; border-top: 1px solid var(--color-ink-600); }
+  .setup-steps li { display: flex; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--color-ink-600); }
+  .setup-step-number { font: 12px/24px var(--font-mono); color: var(--color-signal-400); }
+  .setup-steps strong { display: block; font-size: 14px; font-weight: 600; }
+  .setup-steps p { margin-top: 4px; font-size: 13px; line-height: 1.6; color: var(--color-mist-400); }
+  .setup-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 24px; }
+  .setup-footer a { font-size: 13px; text-decoration: underline; text-underline-offset: 3px; color: var(--color-signal-400); }
+}
+
+@media (max-width: 1000px) {
+  .kvm-toolbar-main { flex-wrap: wrap; gap: 12px 16px; padding: 8px 16px; }
+  .kvm-connections { order: 3; width: 100%; padding-bottom: 4px; }
+  .kvm-toolbar-end { margin-left: auto; }
+  .kvm-tools-toggle { display: inline-flex; }
+  .kvm-tools { display: none; position: absolute; top: 100%; left: 0; right: 0; padding: 16px; max-height: calc(100dvh - 180px); overflow-y: auto; background: var(--color-ink-850); border-bottom: 1px solid var(--color-ink-600); }
+  .kvm-tools.is-open { display: flex; flex-direction: column; align-items: stretch; }
+  .kvm-tool-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kvm-tool-label { grid-column: 1 / -1; }
+  .kvm-tools .kvm-btn { justify-content: flex-start; }
+  .kvm-tools-docs { display: inline-flex; }
+  .kvm-tools > .kvm-divider { height: 1px; width: auto; margin: 0; }
+}
+
+@media (max-width: 600px) {
+  .site-header { padding-inline: 16px; gap: 16px; }
+  .site-header .brand-logo { width: 112px; }
+  .site-nav { gap: 16px; }
+  .site-content { width: calc(100% - 32px); }
+  .kvm-toolbar-brand { padding: 0; }
+  .kvm-toolbar-brand .brand-logo { width: 112px; }
+  .kvm-docs-link { display: none; }
+  .kvm-toolbar-end { gap: 8px; }
+  .kvm-tools-toggle { padding-inline: 8px; }
+  .kvm-connections { flex-wrap: wrap; }
+  .kvm-connections .kvm-status { font-size: 11px; }
+  .kvm-modal { padding: 16px; }
+  .setup-panel { padding: 24px; }
+  .setup-panel h2 { font-size: 24px; }
+}
+
+@media (pointer: coarse) {
+  .kvm-btn, .hotkey-btn, .kvm-tab { min-height: 44px; }
+  .kvm-btn-icon { width: 44px; height: 44px; }
+  .kvm-toggle { min-height: 44px; }
+  .kvm-input, .kvm-select { min-height: 44px; }
+  .site-nav a { display: inline-flex; align-items: center; min-height: 44px; }
+  .kvm-toolbar-end a { min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

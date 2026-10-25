@@ -14,17 +14,18 @@ export default defineNuxtConfig({
     baseURL,
     head: {
       htmlAttrs: { lang: 'en', class: 'dark' },
-      title: 'cheap-web-kvm',
+      title: '$KVM · Browser console',
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1, shrink-to-fit=no' },
         { name: 'color-scheme', content: 'dark' },
+        { name: 'theme-color', content: '#211c18' },
         {
           name: 'description',
           content: 'Browser-based USB KVM for headless machines — keyboard, mouse and video over Web Serial.',
         },
       ],
-      link: [{ rel: 'icon', type: 'image/png', href: `${baseURL}favicon.png` }],
+      link: [{ rel: 'icon', type: 'image/svg+xml', href: `${baseURL}brand/favicon.svg` }],
     },
   },
 
