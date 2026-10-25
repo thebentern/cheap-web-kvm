@@ -844,7 +844,7 @@
   .kvm-dock-status { display: none; }
 }
 
-@media (max-width: 1000px) {
+@media (max-width: 860px) {
   .kvm-dock-tools { display: none; }
   .kvm-tools-toggle { display: inline-flex; }
   .kvm-tools { display: flex; }
