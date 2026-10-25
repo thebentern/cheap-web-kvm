@@ -2,6 +2,34 @@
 
 menu "cheap-web-kvm"
 
+    config KVM_LED_ENABLED
+        bool "Onboard RGB status LED"
+        default y
+        help
+            Show USB target readiness, Bluetooth pairing, input activity and
+            dropped input on a WS2812-compatible onboard RGB LED. LED failures
+            do not stop keyboard or mouse operation.
+
+    config KVM_LED_GPIO
+        int "RGB LED GPIO"
+        depends on KVM_LED_ENABLED
+        range 0 48
+        default 48
+        help
+            ESP32-S3-DevKitC-1 v1.0 uses GPIO48; v1.1 uses GPIO38. Check clone
+            board wiring before changing this pin. Do not use the USB pins
+            GPIO19/20, UART0 protocol pins or UART1 console pins.
+
+    config KVM_LED_BRIGHTNESS
+        int "RGB LED maximum brightness (percent)"
+        depends on KVM_LED_ENABLED
+        range 1 100
+        default 10
+        help
+            Maximum channel level as a percentage of full output. The steady
+            ready indicator uses half this level. The default is intentionally
+            dim for use beside a monitor.
+
     config KVM_BLE_ENABLED
         bool "Bluetooth LE transport"
         depends on BT_NIMBLE_ENABLED

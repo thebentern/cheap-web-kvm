@@ -8,6 +8,7 @@ export type PanelName =
   | 'quickAccess'
   | 'recorder'
   | 'settings'
+  | 'ledLegend'
   | 'connectPrompt'
 
 const open = reactive<Record<PanelName, boolean>>({
@@ -17,6 +18,7 @@ const open = reactive<Record<PanelName, boolean>>({
   quickAccess: false,
   recorder: false,
   settings: false,
+  ledLegend: false,
   connectPrompt: false,
 })
 

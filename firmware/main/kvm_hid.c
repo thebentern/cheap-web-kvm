@@ -15,6 +15,7 @@
 #include "tinyusb_default_config.h"
 
 #include "kvm_hid.h"
+#include "kvm_led.h"
 #include "usb_descriptors.h"
 
 static const char *TAG = "kvm_hid";
@@ -187,7 +188,7 @@ static void kvm_hid_task(void *arg)
             memcpy(report.keycode, evt.kbd.keys, sizeof(report.keycode));
             fold_array_modifiers(&report);
             s_last_kbd = report;
-            hid_send(KVM_HID_ITF_KEYBOARD, 0, &report, sizeof(report));
+            kvm_led_input(hid_send(KVM_HID_ITF_KEYBOARD, 0, &report, sizeof(report)));
             break;
         }
 
@@ -202,7 +203,7 @@ static void kvm_hid_task(void *arg)
             };
             s_last_abs  = report;
             s_abs_valid = true;
-            hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_ABS, &report, sizeof(report));
+            kvm_led_input(hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_ABS, &report, sizeof(report)));
             break;
         }
 
@@ -214,7 +215,7 @@ static void kvm_hid_task(void *arg)
                 .wheel   = evt.rel.wheel,
             };
             s_last_rel = report;
-            hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_REL, &report, sizeof(report));
+            kvm_led_input(hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_REL, &report, sizeof(report)));
             break;
         }
 
@@ -234,6 +235,9 @@ esp_err_t kvm_hid_post(const kvm_event_t *evt, uint32_t timeout_ms)
         return ESP_ERR_INVALID_STATE;
     }
     if (xQueueSend(s_evt_queue, evt, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) {
+        if (evt->type != KVM_EVT_RESET) {
+            kvm_led_input(false);
+        }
         return ESP_ERR_TIMEOUT;
     }
     return ESP_OK;
@@ -245,6 +249,7 @@ static void kvm_usb_event_cb(tinyusb_event_t *event, void *arg)
     switch (event->id) {
     case TINYUSB_EVENT_ATTACHED:
         s_mounted = true;
+        kvm_led_target(true);
         ESP_LOGI(TAG, "target enumerated the HID device");
         /* Clear state left over from before the target power cycled. */
         if (s_evt_queue != NULL) {
@@ -254,6 +259,7 @@ static void kvm_usb_event_cb(tinyusb_event_t *event, void *arg)
         break;
     case TINYUSB_EVENT_DETACHED:
         s_mounted = false;
+        kvm_led_target(false);
         s_kbd_leds = 0;
         ESP_LOGW(TAG, "target detached (powered off or unplugged)");
         break;

@@ -35,6 +35,7 @@
 
 #include "ch9329.h"
 #include "kvm_ble.h"
+#include "kvm_led.h"
 
 static const char *TAG = "kvm_ble";
 
@@ -192,6 +193,7 @@ static int gap_event(struct ble_gap_event *event, void *arg)
 
     switch (event->type) {
     case BLE_GAP_EVENT_CONNECT:
+        kvm_led_pairing(false);
         if (event->connect.status != 0) {
             advertise();
             return 0;
@@ -202,6 +204,7 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         return 0;
 
     case BLE_GAP_EVENT_DISCONNECT:
+        kvm_led_pairing(false);
         ESP_LOGI(TAG, "disconnected; reason=0x%x", event->disconnect.reason);
         s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
         s_subscribed  = false;
@@ -219,6 +222,8 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         return 0;
 
     case BLE_GAP_EVENT_ENC_CHANGE:
+        /* Both success and failure end the passkey-entry indication. */
+        kvm_led_pairing(false);
         if (ble_gap_conn_find(event->enc_change.conn_handle, &desc) == 0) {
             ESP_LOGI(TAG, "encryption change; status=%d authenticated=%d bonded=%d",
                      event->enc_change.status, desc.sec_state.authenticated,
@@ -230,11 +235,14 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         /* We advertise DisplayOnly, so the host types and we "display". With no
          * display, the passkey comes from NVS or the build instead. */
         if (event->passkey.params.action == BLE_SM_IOACT_DISP) {
+            kvm_led_pairing(true);
             struct ble_sm_io io = {
                 .action  = BLE_SM_IOACT_DISP,
                 .passkey = s_passkey,
             };
-            ble_sm_inject_io(event->passkey.conn_handle, &io);
+            if (ble_sm_inject_io(event->passkey.conn_handle, &io) != 0) {
+                kvm_led_pairing(false);
+            }
         }
         return 0;
 
@@ -320,6 +328,7 @@ static void on_sync(void)
 
 static void on_reset(int reason)
 {
+    kvm_led_pairing(false);
     ESP_LOGW(TAG, "host reset; reason=%d", reason);
 }
 

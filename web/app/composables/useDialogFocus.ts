@@ -1,9 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { onBeforeUnmount, onMounted, watch, type Ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, watch, type Ref } from 'vue'
 
 interface Dialog {
   element: HTMLElement
   previous: HTMLElement | null
+}
+
+interface DialogFocusOptions {
+  /** Preserve an opener before the surrounding console becomes inert. */
+  returnFocus?: () => HTMLElement | null
+  /** Wait for the parent to remove inert before restoring focus. */
+  restoreAfterUpdate?: boolean
 }
 
 const dialogs: Dialog[] = []
@@ -28,14 +35,14 @@ function focusDialog(dialog: Dialog) {
 }
 
 /** Keep keyboard focus in the topmost open dialog and return it on close. */
-export function useDialogFocus(root: Ref<HTMLElement | null>, close?: () => void) {
+export function useDialogFocus(root: Ref<HTMLElement | null>, close?: () => void, options: DialogFocusOptions = {}) {
   let dialog: Dialog | null = null
   let stopWatch: (() => void) | undefined
 
   function deactivate() {
     if (!dialog) return
     const wasTop = dialogs.at(-1) === dialog
-    const previous = dialog.previous
+    const previous = options.returnFocus?.() ?? dialog.previous
     dialogs.splice(dialogs.indexOf(dialog), 1)
     for (const remaining of dialogs) {
       if (remaining.previous && dialog.element.contains(remaining.previous)) remaining.previous = previous
@@ -43,12 +50,18 @@ export function useDialogFocus(root: Ref<HTMLElement | null>, close?: () => void
     dialog = null
     if (!wasTop) return
 
-    const next = dialogs.at(-1)
-    if (previous?.isConnected && (!next || next.element.contains(previous))) {
-      previous.focus({ preventScroll: true })
-    } else if (next) {
-      focusDialog(next)
+    function restore() {
+      const next = dialogs.at(-1)
+      if (previous?.isConnected && !previous.closest('[inert]')
+        && previous.getClientRects().length > 0 && getComputedStyle(previous).visibility !== 'hidden'
+        && (!next || next.element.contains(previous))) {
+        previous.focus({ preventScroll: true })
+      } else if (next) {
+        focusDialog(next)
+      }
     }
+    if (options.restoreAfterUpdate) void nextTick(restore)
+    else restore()
   }
 
   function sync() {

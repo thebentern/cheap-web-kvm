@@ -143,10 +143,13 @@ vite.config.ts.timestamp-*
 .vite/
 
 # --- ESP-IDF firmware ---
+__pycache__/
 firmware/build/
 firmware/sdkconfig
 firmware/sdkconfig.old
 firmware/managed_components/
+# Generated alongside the static site from the same checkout; never commit binaries.
+web/public/firmware/
 # firmware/dependencies.lock is intentionally NOT ignored: it pins the resolved
 # esp_tinyusb / tinyusb versions so builds are reproducible.
 
