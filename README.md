@@ -1,4 +1,9 @@
-# cheap-web-kvm
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="web/public/brand/logo-dark.svg">
+    <img src="web/public/brand/logo.svg" alt="$KVM — cheap-web-kvm" width="240">
+  </picture>
+</h1>
 
 A USB KVM made from an ESP32-S3 dev board and an HDMI capture stick. Control a
 headless machine's keyboard, mouse and video from a browser on a laptop or iPad.
