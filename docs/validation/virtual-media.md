@@ -1,9 +1,10 @@
 # Virtual media validation — 2026-10-26
 
-**Software checks do not satisfy the physical acceptance criteria.** No ESP32-S3
-UART device or Wyse 3040 was attached during this work. This PR deliberately
-leaves media networking opt-in and does not claim successful Wyse USB discovery,
-F12 delivery, OS boot, target-to-client file transfer, or board throughput.
+**Software checks do not satisfy the physical acceptance criteria.** Follow-up
+testing used a connected ESP32-S3 over UART and router Wi-Fi; see the board
+checks below. A Wyse 3040 has not been validated. Networking starts off on a
+fresh ordinary install and is configurable in the UI. Successful Wyse USB
+discovery, F12 delivery, OS boot and target-to-client file transfer remain unverified.
 
 ## Software evidence
 
@@ -15,7 +16,7 @@ F12 delivery, OS boot, target-to-client file transfer, or board throughput.
   async read completion, 8 KiB read-ahead, write ACK timing, stale IDs, USB bus/BOT
   resets, read-only rejection, busy/prevented ejection, timeout/lease failure,
   and bounded boot repetition. It substitutes platform services, not USB hardware.
-- All 135 web tests pass. They exercise protocol integrity, random/unaligned cross-page IO,
+- All 142 web tests pass. They exercise protocol integrity, random/unaligned cross-page IO,
   IndexedDB close/reopen, source preservation, transaction abort, exclusive locks,
   strict write ACK ordering, late replies after disconnect, bounded input flow,
   FAT32 geometry, LFN/unicode/nested directories, capacity/name limits, mirror and
@@ -210,3 +211,25 @@ This verifies the configuration control path, NVS persistence and apply lifecycl
 on that board. It does not prove router association/DHCP against a real network,
 Bluetooth pairing, wireless media speed, or Wyse boot. The expanded web suite has
 142 passing tests in addition to the native media and Wi-Fi settings harnesses.
+
+
+### Live router-client test
+
+The owner entered router credentials through Settings → Wi-Fi using the connected
+board's UART link. The UI reported successful router association and a DHCP
+address, with the recovery hotspot still at `192.168.4.1`. Reloading board settings
+in the UI succeeded. An intentionally nonexistent SSID had previously reached the
+bounded connection-failure state (reason 201) while retaining the recovery hotspot.
+The command-line reader and browser briefly overlapped on UART during that test;
+its interrupted restore was superseded by the owner's successful router setup.
+
+A direct authenticated WebSocket connection over router Wi-Fi completed HELLO and
+20 round trips of 8,192-byte deterministic payloads with matching IDs, CRCs and
+contents. Access without a token was closed before any media protocol response.
+ESP-IDF 5.4 upgrades the socket before the URI handler authenticates it, so this
+rejection appears as connection closure rather than a clean HTTP 403 handshake.
+A hardware reset confirmed saved client credentials and recovery configuration
+survived; the board rejoined the router and passed another 20 verified round trips.
+Observed aggregate round-trip payload rates were 62,341 and 119,962 bytes/s, with
+worst RTTs of 1,120.5 and 315.2 ms respectively in these short samples. This is an echo measurement, not USB disk,
+durable-write, sustained-load, Bluetooth coexistence or boot throughput.
