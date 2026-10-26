@@ -256,8 +256,10 @@ File object; after a reload, reopen the saved overlay and reselect the original.
 Its size and full SHA-256 must match. For an imported `.img.xz`, the prepared raw
 source remains in OPFS and its reference is saved with the volume metadata in
 IndexedDB. Reopen that saved disk without selecting the compressed file again;
-the prepared source's SHA-256 is verified before use. If browser data has removed
-the prepared source, select the original `.img.xz` again to restore it against the
+the app uses its saved source directly, with only presence and size checks rather
+than another full-image checksum scan. Initial imports and newly selected
+replacement files still establish or confirm the source fingerprint. If browser
+data has removed the prepared source, select the original `.img.xz` again to restore it against the
 saved overlay's fingerprint. Successful prepared sources are retained alongside
 their saved volumes; unreferenced interrupted imports are reclaimed. All of this
 storage belongs to the current browser profile and exact origin, including its

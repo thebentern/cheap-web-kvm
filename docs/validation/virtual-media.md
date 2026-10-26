@@ -413,3 +413,15 @@ the user's browser. A reported cold-start detection failure was also fixed: fail
 metadata probes remain retryable, Wi-Fi selection and Connect recheck the board,
 and missing authentication shows the token field before any WebSocket opens.
 Three added regression tests bring the web suite to 205 passing tests.
+
+
+### Reopen saved images without a full verification pass
+
+Saved immutable OPFS sources now reopen directly from metadata. Opening a saved
+image checks that its source exists and has the recorded size, then serves sectors
+lazily through the existing overlay. It does not reread or hash the complete image.
+Initial imports and newly selected replacement sources still validate identity.
+The worker-level regression test counts source reads: two saved reopens read zero
+bytes, overlay reads remain lazy, missing/truncated caches reject without scanning,
+and a same-sized replacement file still hashes and fails its identity check.
+All 208 web tests, type checking and production generation pass.

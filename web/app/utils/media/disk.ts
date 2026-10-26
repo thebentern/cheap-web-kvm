@@ -107,14 +107,23 @@ export class PersistentDisk implements Disk {
   ) {
     this.size = meta.size
   }
-  static async open(meta: Volume, source?: File, create = false) {
+  /** Skip source hashing only when reopening an immutable saved OPFS source. */
+  static async open(
+    meta: Volume,
+    source?: File,
+    create = false,
+    verifySource = true,
+  ) {
     if (!navigator.locks)
       throw new Error(
         'This browser needs Web Locks for exclusive disk ownership. Use a current browser in a secure context.',
       )
     if (
       meta.kind === 'boot' &&
-      (!source || (await fingerprint(source)) !== meta.fingerprint)
+      (!source ||
+        source.size !== meta.size ||
+        ((create || verifySource) &&
+          (await fingerprint(source)) !== meta.fingerprint))
     )
       throw new Error(
         'Reselect the original image matching this saved overlay.',

@@ -97,16 +97,21 @@ async function call(method: string, a: any) {
     case 'open': {
       if (!a.file && !a.meta) validateFat32(a.size, a.label)
       if (disk) await requireDisk()
+      // An immutable source already saved in OPFS does not need another full
+      // scan. Freshly selected files still establish/confirm their identity.
+      const savedSource = !!(a.meta?.sourceCache && !a.file)
       const activate = async (source?: File, key?: string, digest?: string) => {
-        const hash = source
-          ? (digest ??
-            (await fingerprint(source, (progress) =>
-              self.postMessage({ progress, phase: 'Verifying image' }),
-            )))
-          : undefined
+        const hash =
+          source && !savedSource
+            ? (digest ??
+              (await fingerprint(source, (progress) =>
+                self.postMessage({ progress, phase: 'Verifying image' }),
+              )))
+            : undefined
         if (
           a.meta?.kind === 'boot' &&
-          (source?.size !== a.meta.size || hash !== a.meta.fingerprint)
+          (source?.size !== a.meta.size ||
+            (!savedSource && hash !== a.meta.fingerprint))
         )
           throw new Error(
             'Select the original image matching this saved overlay.',
@@ -130,7 +135,12 @@ async function call(method: string, a: any) {
           await previous.close()
           disk = null
         }
-        const opened = await PersistentDisk.open(meta, source, !a.meta)
+        const opened = await PersistentDisk.open(
+          meta,
+          source,
+          !a.meta,
+          !savedSource,
+        )
         try {
           if (a.meta && (key || (a.file && oldKey)))
             await opened.setSourceCache(key)
@@ -159,8 +169,8 @@ async function call(method: string, a: any) {
         }
       }
       let source = a.file
-      if (!source && a.meta?.sourceCache) {
-        self.postMessage({ progress: 0, phase: 'Verifying image' })
+      if (savedSource) {
+        self.postMessage({ progress: 0, phase: 'Opening saved image' })
         source = await cachedImage(a.meta.sourceCache)
       }
       return activate(source)
