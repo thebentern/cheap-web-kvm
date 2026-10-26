@@ -140,18 +140,18 @@ static const tusb_desc_device_t s_device_desc = {
     .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
     .idVendor           = KVM_USB_VID,
     .idProduct          = KVM_USB_PID,
-    .bcdDevice          = 0x0100,
+    .bcdDevice          = 0x0200,
     .iManufacturer      = 0x01,
     .iProduct           = 0x02,
     .iSerialNumber      = 0x03,
     .bNumConfigurations = 0x01,
 };
 
-#define KVM_CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + 2 * TUD_HID_DESC_LEN)
+#define KVM_CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + 2 * TUD_HID_DESC_LEN + TUD_MSC_DESC_LEN)
 
 static const uint8_t s_fs_config_desc[] = {
     /* Remote wakeup: waking a sleeping target is the whole point of a KVM. */
-    TUD_CONFIG_DESCRIPTOR(1, KVM_HID_ITF_COUNT, 0, KVM_CONFIG_TOTAL_LEN,
+    TUD_CONFIG_DESCRIPTOR(1, KVM_HID_ITF_COUNT + 1, 0, KVM_CONFIG_TOTAL_LEN,
                           TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 100),
 
     /* Boot subclass + Keyboard protocol on interface 0, or the keyboard works
@@ -165,6 +165,8 @@ static const uint8_t s_fs_config_desc[] = {
     TUD_HID_DESCRIPTOR(KVM_HID_ITF_MOUSE, 0, HID_ITF_PROTOCOL_NONE,
                        sizeof(s_mouse_report_desc), KVM_EP_MOUSE_IN,
                        CFG_TUD_HID_EP_BUFSIZE, KVM_EP_INTERVAL_MS),
+
+    TUD_MSC_DESCRIPTOR(2, 0, 0x03, 0x83, 64),
 };
 
 static char s_serial_str[13] = "000000000000";

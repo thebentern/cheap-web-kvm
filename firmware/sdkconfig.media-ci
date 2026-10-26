@@ -1,0 +1,5 @@
+# Build-only credentials. Never use this configuration on deployed hardware.
+CONFIG_KVM_MEDIA_WIFI=y
+CONFIG_KVM_MEDIA_SSID="build-validation-only"
+CONFIG_KVM_MEDIA_PASSWORD="build-validation-only"
+CONFIG_KVM_MEDIA_TOKEN="build-validation-token-only"

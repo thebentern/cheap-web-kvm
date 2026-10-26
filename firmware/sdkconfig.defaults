@@ -43,3 +43,11 @@ CONFIG_BT_NIMBLE_NVS_PERSIST=y
 # from a sniffed pairing exchange.
 CONFIG_BT_NIMBLE_SM_LEGACY=n
 CONFIG_BT_NIMBLE_SM_SC=y
+
+# Composite keyboard (0), mouse (1), asynchronous client-backed MSC (2).
+# MSC is enabled in kvm_tusb_config.h; do not link the vendor storage frontend.
+CONFIG_TINYUSB_MSC_ENABLED=n
+CONFIG_HTTPD_WS_SUPPORT=y
+
+# Wi-Fi + BLE + MSC needs more than the 1 MiB default factory app slot.
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y

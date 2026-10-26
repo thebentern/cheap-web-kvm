@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { computed, ref } from 'vue'
+import { useVirtualMedia } from '~/composables/useVirtualMedia'
 import { useBleLink } from '~/composables/useBleLink'
 import { useSerialLink, type SendResult } from '~/composables/useSerialLink'
 
@@ -9,14 +10,23 @@ import { useSerialLink, type SendResult } from '~/composables/useSerialLink'
  * differs. One transport is active at a time.
  */
 
-export type LinkKind = 'serial' | 'ble'
+export type LinkKind = 'serial' | 'ble' | 'wifi'
 
 const kind = ref<LinkKind>('serial')
+const wifiHidEnabled = ref(false)
 
 export function useLink() {
   const serial = useSerialLink()
   const ble = useBleLink()
-  const active = computed(() => (kind.value === 'ble' ? ble : serial))
+  const media = useVirtualMedia()
+  const wifi = {
+    connected: computed(() => media.connected.value && wifiHidEnabled.value), connecting: media.connecting,
+    portLabel: computed(() => 'Wi-Fi media link'), lastError: media.error,
+    connect: async () => { if (!media.connected.value) await media.connect(); wifiHidEnabled.value = media.connected.value; return media.connected.value },
+    // Switching HID transport must not eject a disk owned by the media panel.
+    disconnect: async () => { await media.releaseHid(); wifiHidEnabled.value = false }, sendAndWait: media.sendAndWait,
+  }
+  const active = computed(() => (kind.value === 'wifi' ? wifi : kind.value === 'ble' ? ble : serial))
 
   async function connect(which: LinkKind) {
     if (active.value.connected.value) await active.value.disconnect()
@@ -28,7 +38,8 @@ export function useLink() {
     kind,
     serialSupported: serial.supported,
     bleSupported: ble.supported,
-    supported: computed(() => serial.supported.value || ble.supported.value),
+    wifiAvailable: media.connected,
+    supported: computed(() => serial.supported.value || ble.supported.value || media.connected.value),
     connected: computed(() => active.value.connected.value),
     connecting: computed(() => active.value.connecting.value),
     portLabel: computed(() => active.value.portLabel.value),

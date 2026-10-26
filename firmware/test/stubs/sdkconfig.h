@@ -1,0 +1,2 @@
+#pragma once
+#define CONFIG_KVM_MEDIA_LOCAL_PROOF 0

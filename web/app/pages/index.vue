@@ -11,9 +11,11 @@ import { usePanels } from '~/composables/usePanels'
 import { useStackedKeys } from '~/composables/useStackedKeys'
 import { useJiggler } from '~/composables/useJiggler'
 import { useToasts } from '~/composables/useToasts'
+import { useVirtualMedia } from '~/composables/useVirtualMedia'
 import { useWakeLock } from '~/composables/useWakeLock'
 
 const kvm = useKvm()
+const virtualMedia = useVirtualMedia()
 const capture = useCapture()
 const panels = usePanels()
 const stacked = useStackedKeys()
@@ -86,7 +88,7 @@ async function startCapture() {
 
 /* --------------------------------------------------------------------- link */
 async function toggleLink(which: LinkKind) {
-  const name = which === 'ble' ? 'Bluetooth' : 'Serial'
+  const name = which === 'wifi' ? 'Wi-Fi' : which === 'ble' ? 'Bluetooth' : 'Serial'
   if (kvm.link.connected.value && kvm.link.kind.value === which) {
     await kvm.link.disconnect()
     toasts.info(`${name} link closed`)
@@ -519,7 +521,7 @@ onMounted(() => {
   stopSignalWatch = capture.watchSignal(() => videoEl.value)
   stopDeviceWatch = capture.watchDevices(() => settings.enableAudio)
   wakeLock = useWakeLock(
-    () => ['live', 'paused', 'reconnecting'].includes(capture.status.value),
+    () => virtualMedia.inserted.value || ['live', 'paused', 'reconnecting'].includes(capture.status.value),
     capture.note,
   )
   if (!settings.skipConnectPrompt) panels.show('connectPrompt')
@@ -546,7 +548,7 @@ onBeforeUnmount(() => {
 <template>
   <ClientOnly>
     <div class="relative h-dvh w-screen overflow-hidden bg-ink-950">
-      <div :inert="panels.open.ledLegend || undefined">
+      <div :inert="panels.open.ledLegend || panels.open.media || undefined">
       <video
         ref="videoEl"
         class="kvm-video"
@@ -613,6 +615,7 @@ onBeforeUnmount(() => {
       <ConnectPrompt v-if="panels.open.connectPrompt" :busy="startingCapture" @start="startCapture" />
       <BrowserWarning v-if="!linkSupported" />
       </div>
+      <VirtualMediaPanel v-if="panels.open.media" />
       <LedLegendModal v-if="panels.open.ledLegend" :return-focus="ledLegendOpener" />
     </div>
   </ClientOnly>

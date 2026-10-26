@@ -124,7 +124,7 @@ def main():
     print(f"\ns_fs_config_desc ({size} bytes): {cfg.hex(' ')}")
     total = int.from_bytes(cfg[2:4], "little")
     check(total == size, f"wTotalLength={total} matches actual array length {size}")
-    check(cfg[4] == 2, f"bNumInterfaces={cfg[4]}")
+    check(cfg[4] == 3, f"bNumInterfaces={cfg[4]}")
     check(bool(cfg[7] & 0x20),
           f"bmAttributes=0x{cfg[7]:02x} advertises Remote Wakeup (can wake a sleeping target)")
 
@@ -140,6 +140,8 @@ def main():
           "interface 0 is HID, Boot subclass (1), Keyboard protocol (1)")
     check(itfs[1][1] == 0x03 and itfs[1][2] == 0x00,
           "interface 1 is HID, non-boot")
+
+    check(itfs[2] == (2, 0x08, 0x06, 0x50), "interface 2 is SCSI bulk-only mass storage")
 
     addr, size = syms["s_kbd_report_desc"]
     kbd = grab(mem, addr, size)

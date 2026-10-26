@@ -3,6 +3,7 @@
  * All tud_hid_* calls happen on this one task, so the UART parser never blocks
  * on USB and TinyUSB never blocks on us. */
 
+#include <stdatomic.h>
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
@@ -14,6 +15,8 @@
 #include "tinyusb.h"
 #include "tinyusb_default_config.h"
 
+#include "boot_repeat.h"
+#include "kvm_boot.h"
 #include "kvm_hid.h"
 #include "kvm_led.h"
 #include "usb_descriptors.h"
@@ -31,12 +34,48 @@ static const char *TAG = "kvm_hid";
 #define KVM_HID_READY_TIMEOUT_MS 40
 
 #define KVM_HID_TASK_STACK 4096
-#define KVM_HID_TASK_PRIO  4
+#define KVM_HID_TASK_PRIO 4
 
-static QueueHandle_t   s_evt_queue;
-static volatile bool   s_mounted;
+static portMUX_TYPE boot_lock = portMUX_INITIALIZER_UNLOCKED;
+static boot_config_t boot_command;
+static unsigned boot_generation, boot_seen;
+static bool boot_pending;
+static atomic_bool boot_running;
+static atomic_bool link_release;
+void kvm_hid_release_link(void)
+{
+    atomic_store(&link_release, true);
+    kvm_boot_cancel();
+}
+static boot_repeat_t boot_state;
+static bool boot_report_down;
+bool kvm_boot_arm(uint8_t key, uint32_t delay, uint32_t press, uint32_t interval, uint32_t duration)
+{
+    boot_config_t c = {key, delay, press, interval, duration};
+    if (!boot_config_valid(&c))
+        return false;
+    taskENTER_CRITICAL(&boot_lock);
+    boot_command = c;
+    boot_pending = true;
+    boot_generation++;
+    taskEXIT_CRITICAL(&boot_lock);
+    atomic_store(&boot_running, true);
+    return true;
+}
+void kvm_boot_cancel(void)
+{
+    taskENTER_CRITICAL(&boot_lock);
+    boot_pending = false;
+    boot_generation++;
+    taskEXIT_CRITICAL(&boot_lock);
+    atomic_store(&boot_running, false);
+}
+bool kvm_boot_active(void) { return atomic_load(&boot_running); }
+
+static QueueHandle_t s_evt_queue;
+static volatile bool s_mounted;
 static volatile uint8_t s_kbd_leds;
-static int64_t         s_last_report_us[KVM_HID_ITF_COUNT];
+static int64_t s_last_report_us[KVM_HID_ITF_COUNT];
 
 typedef struct __attribute__((packed)) {
     uint8_t modifier;
@@ -45,17 +84,17 @@ typedef struct __attribute__((packed)) {
 } kvm_kbd_report_t;
 
 typedef struct __attribute__((packed)) {
-    uint8_t  buttons;
+    uint8_t buttons;
     uint16_t x;
     uint16_t y;
-    int8_t   wheel;
+    int8_t wheel;
 } kvm_mouse_abs_report_t;
 
 typedef struct __attribute__((packed)) {
     uint8_t buttons;
-    int8_t  dx;
-    int8_t  dy;
-    int8_t  wheel;
+    int8_t dx;
+    int8_t dy;
+    int8_t wheel;
 } kvm_mouse_rel_report_t;
 
 _Static_assert(sizeof(kvm_kbd_report_t) == 8, "boot keyboard report must be 8 bytes");
@@ -64,20 +103,14 @@ _Static_assert(sizeof(kvm_mouse_rel_report_t) == 4, "relative mouse report must 
 
 /* Last report sent on each path, so Get_Report can be answered and so
  * hid_release_all() can clear buttons without moving the pointer. */
-static kvm_kbd_report_t       s_last_kbd;
+static kvm_kbd_report_t s_last_kbd;
 static kvm_mouse_abs_report_t s_last_abs;
 static kvm_mouse_rel_report_t s_last_rel;
-static bool                   s_abs_valid;  /* an absolute position has been sent */
+static bool s_abs_valid; /* an absolute position has been sent */
 
-bool kvm_hid_mounted(void)
-{
-    return s_mounted;
-}
+bool kvm_hid_mounted(void) { return s_mounted; }
 
-uint8_t kvm_hid_leds(void)
-{
-    return s_kbd_leds;
-}
+uint8_t kvm_hid_leds(void) { return s_kbd_leds; }
 
 static bool hid_wait_writable(uint8_t instance)
 {
@@ -136,7 +169,7 @@ static void hid_release_all(void)
      * the top-left corner. */
     if (s_abs_valid) {
         s_last_abs.buttons = 0;
-        s_last_abs.wheel   = 0;
+        s_last_abs.wheel = 0;
         hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_ABS, &s_last_abs, sizeof(s_last_abs));
     }
 
@@ -169,13 +202,66 @@ static void fold_array_modifiers(kvm_kbd_report_t *report)
     memcpy(report->keycode, keys, sizeof(keys));
 }
 
+/* Merge the macro into ordinary input rather than replacing held modifiers or
+ * keys. When all six slots are occupied, repetition waits for a free slot. */
+static bool send_keyboard(void)
+{
+    kvm_kbd_report_t report = s_last_kbd;
+    if (boot_state.active && boot_state.down) {
+        bool found = false;
+        for (int i = 0; i < 6; i++)
+            if (report.keycode[i] == boot_state.config.key)
+                found = true;
+        if (!found)
+            for (int i = 0; i < 6; i++)
+                if (!report.keycode[i]) {
+                    report.keycode[i] = boot_state.config.key;
+                    break;
+                }
+    }
+    return hid_send(KVM_HID_ITF_KEYBOARD, 0, &report, sizeof(report));
+}
+static void boot_tick(void)
+{
+    boot_config_t command;
+    bool pending, fresh;
+    taskENTER_CRITICAL(&boot_lock);
+    fresh = boot_generation != boot_seen;
+    boot_seen = boot_generation;
+    command = boot_command;
+    pending = boot_pending;
+    taskEXIT_CRITICAL(&boot_lock);
+    uint64_t now = esp_timer_get_time() / 1000;
+    if (fresh) {
+        /* Always release a previous repetition before arming its replacement. */
+        boot_state.active = false;
+        boot_state.down = false;
+        if (boot_report_down && send_keyboard())
+            boot_report_down = false;
+        if (pending)
+            boot_repeat_arm(&boot_state, &command, now);
+    }
+    bool ready = s_mounted && tud_mounted() && !tud_suspended();
+    boot_repeat_step(&boot_state, now, ready);
+    bool want = boot_state.active && boot_state.down;
+    if (want != boot_report_down && ready && tud_hid_n_ready(KVM_HID_ITF_KEYBOARD) &&
+        send_keyboard())
+        boot_report_down = want;
+    atomic_store(&boot_running, boot_state.active);
+}
+
 static void kvm_hid_task(void *arg)
 {
     (void)arg;
     kvm_event_t evt;
 
     for (;;) {
-        if (xQueueReceive(s_evt_queue, &evt, portMAX_DELAY) != pdTRUE) {
+        if (atomic_exchange(&link_release, false)) {
+            xQueueReset(s_evt_queue);
+            hid_release_all();
+        }
+        boot_tick();
+        if (xQueueReceive(s_evt_queue, &evt, pdMS_TO_TICKS(5)) != pdTRUE) {
             continue;
         }
 
@@ -188,7 +274,7 @@ static void kvm_hid_task(void *arg)
             memcpy(report.keycode, evt.kbd.keys, sizeof(report.keycode));
             fold_array_modifiers(&report);
             s_last_kbd = report;
-            kvm_led_input(hid_send(KVM_HID_ITF_KEYBOARD, 0, &report, sizeof(report)));
+            kvm_led_input(send_keyboard());
             break;
         }
 
@@ -197,25 +283,27 @@ static void kvm_hid_task(void *arg)
             uint16_t y = evt.abs.y > KVM_ABS_LOGICAL_MAX ? KVM_ABS_LOGICAL_MAX : evt.abs.y;
             const kvm_mouse_abs_report_t report = {
                 .buttons = evt.abs.buttons,
-                .x       = x,
-                .y       = y,
-                .wheel   = evt.abs.wheel,
+                .x = x,
+                .y = y,
+                .wheel = evt.abs.wheel,
             };
-            s_last_abs  = report;
+            s_last_abs = report;
             s_abs_valid = true;
-            kvm_led_input(hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_ABS, &report, sizeof(report)));
+            kvm_led_input(
+                hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_ABS, &report, sizeof(report)));
             break;
         }
 
         case KVM_EVT_MOUSE_REL: {
             const kvm_mouse_rel_report_t report = {
                 .buttons = evt.rel.buttons,
-                .dx      = evt.rel.dx,
-                .dy      = evt.rel.dy,
-                .wheel   = evt.rel.wheel,
+                .dx = evt.rel.dx,
+                .dy = evt.rel.dy,
+                .wheel = evt.rel.wheel,
             };
             s_last_rel = report;
-            kvm_led_input(hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_REL, &report, sizeof(report)));
+            kvm_led_input(
+                hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_REL, &report, sizeof(report)));
             break;
         }
 
@@ -281,9 +369,9 @@ esp_err_t kvm_hid_start(void)
     const char **strings = kvm_usb_string_descriptors(&string_count);
 
     tinyusb_config_t tusb_cfg = TINYUSB_DEFAULT_CONFIG(kvm_usb_event_cb, NULL);
-    tusb_cfg.descriptor.device            = kvm_usb_device_descriptor();
-    tusb_cfg.descriptor.string            = strings;
-    tusb_cfg.descriptor.string_count      = string_count;
+    tusb_cfg.descriptor.device = kvm_usb_device_descriptor();
+    tusb_cfg.descriptor.string = strings;
+    tusb_cfg.descriptor.string_count = string_count;
     tusb_cfg.descriptor.full_speed_config = kvm_usb_config_descriptor();
 
     esp_err_t err = tinyusb_driver_install(&tusb_cfg);
@@ -294,8 +382,8 @@ esp_err_t kvm_hid_start(void)
         return err;
     }
 
-    if (xTaskCreate(kvm_hid_task, "kvm_hid", KVM_HID_TASK_STACK, NULL,
-                    KVM_HID_TASK_PRIO, NULL) != pdPASS) {
+    if (xTaskCreate(kvm_hid_task, "kvm_hid", KVM_HID_TASK_STACK, NULL, KVM_HID_TASK_PRIO, NULL) !=
+        pdPASS) {
         ESP_LOGE(TAG, "failed to create HID task");
         return ESP_ERR_NO_MEM;
     }
@@ -305,9 +393,8 @@ esp_err_t kvm_hid_start(void)
 }
 
 /* Get_Report is a mandatory HID class request; returning 0 would STALL EP0. */
-uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id,
-                               hid_report_type_t report_type, uint8_t *buffer,
-                               uint16_t reqlen)
+uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_t report_type,
+                               uint8_t *buffer, uint16_t reqlen)
 {
     const void *src = NULL;
     uint16_t len = 0;
@@ -325,12 +412,11 @@ uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id,
                 len = sizeof(s_last_rel);
             }
         }
-    } else if (report_type == HID_REPORT_TYPE_OUTPUT &&
-               instance == KVM_HID_ITF_KEYBOARD) {
+    } else if (report_type == HID_REPORT_TYPE_OUTPUT && instance == KVM_HID_ITF_KEYBOARD) {
         static uint8_t leds;
         leds = s_kbd_leds;
-        src  = &leds;
-        len  = sizeof(leds);
+        src = &leds;
+        len = sizeof(leds);
     }
 
     if (src == NULL || len > reqlen) {
@@ -342,13 +428,11 @@ uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id,
 
 /* Only OUT report is the keyboard LED state; kept so CH9329 GET_INFO can
  * report it. */
-void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
-                           hid_report_type_t report_type, const uint8_t *buffer,
-                           uint16_t bufsize)
+void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_t report_type,
+                           const uint8_t *buffer, uint16_t bufsize)
 {
     (void)report_id;
-    if (instance == KVM_HID_ITF_KEYBOARD && report_type == HID_REPORT_TYPE_OUTPUT &&
-        bufsize >= 1) {
+    if (instance == KVM_HID_ITF_KEYBOARD && report_type == HID_REPORT_TYPE_OUTPUT && bufsize >= 1) {
         s_kbd_leds = buffer[0];
     }
 }

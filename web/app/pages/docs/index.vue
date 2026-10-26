@@ -16,9 +16,15 @@ interface DocLink {
 
 const links: DocLink[] = [
   {
+    title: 'Virtual media and FAT32 file sharing (experimental)',
+    blurb: 'Stream a local boot image, create a FAT32 thumb drive, save target writes, export files, and arm F12 repetition. Includes Wi-Fi helper setup and outstanding hardware checks.',
+    href: `${REPO}/blob/main/docs/VIRTUAL_MEDIA.md`,
+    cta: 'Virtual media guide',
+  },
+  {
     title: 'CH9329 wire protocol',
     blurb:
-      'Frame format, checksums, the four commands this UI actually emits, and how replies are parsed. Written from the bytes on the wire rather than from the datasheet — the firmware parser is written against it.',
+      'Frame format, checksums, HID commands, boot repetition, the versioned media protocol, and how replies are parsed. Written from the bytes on the wire rather than from the datasheet — the firmware parser is written against it.',
     href: `${REPO}/blob/main/docs/PROTOCOL.md`,
     cta: 'docs/PROTOCOL.md',
   },

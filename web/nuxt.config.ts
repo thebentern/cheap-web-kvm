@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import process from 'node:process'
 import tailwindcss from '@tailwindcss/vite'
 
 // Project-site hosting: https://thebentern.github.io/cheap-web-kvm/

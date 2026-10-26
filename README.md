@@ -28,11 +28,29 @@ ESP32-S3. Its firmware speaks the CH9329 serial protocol to the host and
 presents a USB HID keyboard and absolute mouse to the target.
 
 Unlike the fixed-function CH9329, an MCU can add features. Bluetooth LE is
-implemented but not yet tested on hardware (see [iPad](#ipad)). USB mass
-storage, USB Ethernet and Wi-Fi are [stretch goals](#stretch-goals).
+implemented but not yet tested on hardware (see [iPad](#ipad)). Experimental USB mass storage, FAT32 file sharing, Wi-Fi media transport and
+firmware-controlled boot-key repetition are now available; see
+[Virtual media](docs/VIRTUAL_MEDIA.md). Wyse boot and board performance still
+need hardware validation. USB Ethernet remains a stretch goal.
 
 Video does not pass through the ESP32. The capture stick is a separate UVC
 device plugged into the host.
+
+## Virtual media (experimental)
+
+Stream an unpacked `.img` or USB-bootable hybrid ISO from the browser, or create
+an actual FAT32 thumb drive for ordinary file sharing. The source stays unchanged;
+optional target writes commit to a persistent browser overlay before they are
+acknowledged. Safely eject before client edits, retrieving target-created files,
+or exporting the updated image. F12 repetition runs in firmware across target
+reboots, with configurable timing and cancellation.
+
+This workflow uses an opt-in Wi-Fi firmware build and the local HTTPS helper;
+the ordinary installer keeps networking disabled. Serial/Bluetooth HID still
+works independently. Follow the [setup and persistence guide](docs/VIRTUAL_MEDIA.md)
+and [hardware acceptance procedure](docs/validation/virtual-media.md). No measured
+board throughput or successful Wyse boot is claimed yet. The published mPWRD-OS
+UEFI raw image was inspected for its x86_64 fallback loader, not booted on hardware.
 
 ## Hardware
 
@@ -322,6 +340,7 @@ python3 tools/ch9329_test.py -p /dev/tty.usbserial-XXXX --passkey
 | M2 | CH9329 frames on UART0 drive HID reports | Verified on hardware. All four commands ACK; 1000/1000 reports in a soak with no timeouts or errors. |
 | M3 | Web UI drives the target end to end | Implemented, not yet confirmed. |
 | M4 | Reconnect, power-cycle survival, sustained typing | Sustained typing verified (soak above). Power-cycle survival not yet confirmed. |
+| M6 | Client-backed USB media, FAT32 sharing and boot repetition | Software checks pass; Wyse boot, physical file transfer and transport measurements outstanding. |
 | M5 | Bluetooth LE transport and iPad support | Bluetooth PIN read and change over UART verified on hardware. The UI's Bluetooth queue tested against a simulated device. Bluetooth pairing, the iPad and touch input not yet confirmed. |
 
 Tested on an ESP32-S3-DevKitC-1-N8R8 (rev v0.2, 8 MB flash, 8 MB PSRAM) with
@@ -329,11 +348,10 @@ nothing on the native port, so `--info` reports `USB enumerated: no`.
 
 ### Stretch goals
 
-* USB MSC virtual media: expose an SD card or flash partition as mass storage to
-  boot an ISO on the target. Not possible with a CH9329. Watch UEFI behaviour
-  when adding a third USB interface.
-* Wi-Fi transport: SoftAP, a LittleFS-hosted UI and WebSocket, for targets out of
-  cable reach. Web Serial stays the default.
+* Hardware qualification for client-backed USB media and FAT32 file sharing;
+  see the [validation procedure](docs/validation/virtual-media.md).
+* Hosting the UI directly on the ESP32 (the current Wi-Fi media workflow uses
+  the local HTTPS helper).
 * USB Ethernet (RNDIS/ECM) to the target.
 
 ### Not planned
@@ -347,6 +365,8 @@ nothing on the native port, so `--info` reports `USB enumerated: no`.
 
 * [docs/PROTOCOL.md](docs/PROTOCOL.md): the wire protocol as the web UI sends
   it, including the Bluetooth transport. Read it before changing the parser.
+* [Virtual media](docs/VIRTUAL_MEDIA.md): Wi-Fi setup, FAT32 files, persistent
+  overlays, exports, boot repetition and outstanding hardware validation.
 * [NOTICE](NOTICE): attribution and the changes made to upstream.
 
 ## License

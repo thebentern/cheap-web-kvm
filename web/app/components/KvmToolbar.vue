@@ -103,6 +103,7 @@ const linkButtons = computed<LinkButton[]>(() => {
       'Disconnect Bluetooth',
     )
   }
+  if (kvm.link.wifiAvailable.value) add('wifi', 'globe', 'Use Wi-Fi for keyboard and mouse', 'Connecting Wi-Fi…', 'Wi-Fi keyboard and mouse active')
   return out
 })
 
@@ -119,6 +120,7 @@ const videoLabel = computed(() => {
 
 const videoLive = computed(() => capture.status.value === 'live' && !capture.testPattern.value)
 const inputTools: { panel: PanelName; icon: string; label: string; needsLink?: boolean }[] = [
+  { panel: 'media', icon: 'usb', label: 'Virtual media' },
   { panel: 'paste', icon: 'clipboard', label: 'Paste text', needsLink: true },
   { panel: 'copy', icon: 'search', label: 'Copy text' },
   { panel: 'keyboard', icon: 'keyboard', label: 'Keyboard', needsLink: true },

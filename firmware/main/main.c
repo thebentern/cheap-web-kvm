@@ -10,6 +10,7 @@
 #include "kvm_ble.h"
 #include "kvm_hid.h"
 #include "kvm_led.h"
+#include "kvm_media.h"
 
 static const char *TAG = "kvm";
 
@@ -18,10 +19,11 @@ void app_main(void)
     ESP_LOGI(TAG, "cheap-web-kvm firmware starting");
 
     /* USB first: the target may already be powered and waiting to enumerate. */
+    ESP_ERROR_CHECK(kvm_media_init());
     ESP_ERROR_CHECK(kvm_hid_start());
     kvm_led_start();
 
-#if CONFIG_KVM_BLE_ENABLED
+#if CONFIG_KVM_BLE_ENABLED || CONFIG_KVM_MEDIA_WIFI
     /* Bonds and the passkey live in NVS, which must be up before UART0 can
      * take a set-passkey command. A partition written by an older layout is
      * wiped rather than left to block startup; the cost is re-pairing and the
@@ -35,11 +37,13 @@ void app_main(void)
 #endif
 
     ESP_ERROR_CHECK(ch9329_start());
+    ESP_ERROR_CHECK(kvm_media_network_start());
 
 #if CONFIG_KVM_BLE_ENABLED
     ESP_ERROR_CHECK(kvm_ble_start());
-    ESP_LOGI(TAG, "ready - CH9329 on UART0 @ 115200 and Bluetooth LE, HID on native USB");
+    ESP_LOGI(TAG, "ready - CH9329 on UART0 @ %d and Bluetooth LE, HID/MSC on native USB",
+             CONFIG_KVM_UART_BAUD);
 #else
-    ESP_LOGI(TAG, "ready - CH9329 on UART0 @ 115200, HID on native USB");
+    ESP_LOGI(TAG, "ready - CH9329 on UART0 @ %d, HID/MSC on native USB", CONFIG_KVM_UART_BAUD);
 #endif
 }

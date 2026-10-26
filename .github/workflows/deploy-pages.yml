@@ -13,6 +13,7 @@ on:
       - 'tools/test_led_pattern.py'
       - 'tools/verify_descriptors.py'
       - 'docs/PROTOCOL.md'
+      - 'docs/VIRTUAL_MEDIA.md'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 
@@ -69,7 +70,9 @@ jobs:
         run: npm run test
 
       - name: Sync protocol docs into the published site
-        run: cp ../docs/PROTOCOL.md public/PROTOCOL.md
+        run: |
+          cp ../docs/PROTOCOL.md public/PROTOCOL.md
+          cp ../docs/VIRTUAL_MEDIA.md public/VIRTUAL_MEDIA.md
 
       - name: Generate static site
         run: npm run generate
