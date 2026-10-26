@@ -2,6 +2,11 @@
 import { decode, encode, MAX_IO, OP, type Message } from './protocol'
 import { websocketTransport, type MediaTransport } from './transport'
 export type { MediaTransport } from './transport'
+export interface MediaReadStats {
+  requests: number
+  totalMs: number
+  maxMs: number
+}
 export class MediaConnection {
   private transport: MediaTransport | null = null
   private generation = 0
@@ -18,9 +23,12 @@ export class MediaConnection {
   >()
   private heartbeat?: ReturnType<typeof setInterval>
   private serving: MediaTransport | null = null
+  private reads: MediaReadStats = { requests: 0, totalMs: 0, maxMs: 0 }
   onState = (_flags: number) => {}
   onError = (_message: string) => {}
   onActivity = (_bytes: number, _write: boolean) => {}
+  /** Browser receipt to response handoff; excludes Wi-Fi transit and target IO. */
+  onReadResponse = (_stats: MediaReadStats) => {}
   constructor(
     private storage: {
       read(offset: number, length: number): Promise<Uint8Array>
@@ -29,6 +37,7 @@ export class MediaConnection {
   ) {}
   async connect(target: string | MediaTransport) {
     this.close()
+    this.resetReadStats()
     const mine = this.generation
     const transport =
       typeof target === 'string' ? await websocketTransport(target) : target
@@ -87,6 +96,10 @@ export class MediaConnection {
   }
   get live() {
     return this.transport !== null && this.session !== 0
+  }
+  resetReadStats() {
+    this.reads = { requests: 0, totalMs: 0, maxMs: 0 }
+    this.onReadResponse({ ...this.reads })
   }
   private fail(message: string) {
     this.close()
@@ -152,6 +165,7 @@ export class MediaConnection {
     })
   }
   private async receive(transport: MediaTransport, input: Uint8Array) {
+    const receivedAt = performance.now()
     if (transport !== this.transport) return
     let m: Message
     try {
@@ -226,6 +240,18 @@ export class MediaConnection {
     if (transport === this.transport && m.session === this.session)
       try {
         await transport.send(encode({ ...m, op: m.op | 128, flags, data }))
+        if (
+          m.op === OP.READ &&
+          !flags &&
+          transport === this.transport &&
+          m.session === this.session
+        ) {
+          const milliseconds = performance.now() - receivedAt
+          this.reads.requests++
+          this.reads.totalMs += milliseconds
+          this.reads.maxMs = Math.max(this.reads.maxMs, milliseconds)
+          this.onReadResponse({ ...this.reads })
+        }
       } catch (error) {
         if (transport === this.transport)
           this.fail(`Media send failed: ${(error as Error).message}`)

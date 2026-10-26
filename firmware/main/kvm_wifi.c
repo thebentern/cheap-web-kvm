@@ -162,6 +162,13 @@ static esp_err_t apply(const wifi_settings_t *c)
     if (e != ESP_OK)
         return e;
     driver_initialized = true;
+    /* This USB-powered device favors receive latency over modem power saving. */
+    e = esp_wifi_set_ps(WIFI_PS_NONE);
+    if (e != ESP_OK) {
+        if (esp_wifi_deinit() == ESP_OK)
+            driver_initialized = false;
+        return e;
+    }
     e = esp_wifi_set_storage(WIFI_STORAGE_RAM);
     if (e != ESP_OK)
         return e;

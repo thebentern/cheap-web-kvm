@@ -623,6 +623,13 @@ onMounted(() => {
               storage; unmount on the target before ejecting to flush its cached
               data.
             </p>
+            <p v-if="activity.readRequests" class="kvm-hint">
+              Browser read response: {{ activity.readRequests.toLocaleString() }}
+              requests · average
+              {{ (activity.readTotalMs / activity.readRequests).toFixed(1) }} ms ·
+              max {{ activity.readMaxMs.toFixed(1) }} ms. Includes browser storage
+              and response handoff; excludes Wi-Fi transit and target processing.
+            </p>
           </div>
         </details>
         <p
@@ -630,7 +637,8 @@ onMounted(() => {
           class="kvm-hint mt-3"
         >
           Read {{ size(activity.read) }} · Written
-          {{ size(activity.written) }} · {{ size(Math.round(activity.rate)) }}/s
+          {{ size(activity.written) }} · Read speed
+          {{ size(Math.round(activity.rate)) }}/s
         </p>
       </section>
 

@@ -48,6 +48,16 @@ static uint64_t cache_offset;
 static uint32_t cache_length;
 static uint8_t hid_reply[CH9329_MAX_PAYLOAD + 6];
 static size_t hid_reply_len;
+static media_metrics_t metrics;
+static int64_t read_sent_at;
+bool kvm_media_metrics(media_metrics_t *out)
+{
+    if (!out || !lock || xSemaphoreTake(lock, pdMS_TO_TICKS(5)) != pdTRUE)
+        return false;
+    *out = metrics;
+    xSemaphoreGive(lock);
+    return true;
+}
 static void hid_tx(const uint8_t *p, size_t n)
 {
     memcpy(hid_reply, p, n);
@@ -186,6 +196,8 @@ bool kvm_media_poll_from(media_source_t source, uint8_t *out, size_t *len)
             *len = media_encode(out, &m, io.op == M_WRITE ? io.data : NULL,
                                 io.op == M_WRITE ? io.length : 0);
             io.sent = true;
+            if (io.op == M_READ)
+                read_sent_at = now;
             send = true;
         }
     }
@@ -249,8 +261,22 @@ size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t n
             m.offset == io.offset && m.length == io.length && (m.op & 0x7f) == io.op &&
             io.epoch == atomic_load(&epoch)) {
             io.ok = m.flags == M_OK && pn == (io.op == M_READ ? io.length : 0);
-            if (io.ok && io.op == M_READ)
+            /* A matching successful IO reply proves the owner is alive too.
+             * Do not expire an active transfer solely because a browser's
+             * heartbeat timer is delayed; the per-IO deadline still applies. */
+            if (io.ok && io.sent)
+                heartbeat = esp_timer_get_time();
+            if (io.ok && io.op == M_READ) {
                 memcpy(io.data, p, pn);
+                if (io.sent) {
+                    uint64_t elapsed = (uint64_t)(esp_timer_get_time() - read_sent_at);
+                    metrics.reads++;
+                    metrics.read_bytes += pn;
+                    metrics.read_time_us += elapsed;
+                    if (elapsed > metrics.read_max_us)
+                        metrics.read_max_us = elapsed;
+                }
+            }
             io.done = true;
             if (!io.ok)
                 fail_link();
@@ -278,6 +304,7 @@ size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t n
                 session = 1;
             connected = true;
             owner = source;
+            memset(&metrics, 0, sizeof(metrics));
             heartbeat = esp_timer_get_time();
             failed = false;
             payload[0] = MEDIA_VERSION;
@@ -463,6 +490,7 @@ static int32_t transfer(uint8_t lun, uint32_t lba, uint32_t off, void *buf, uint
     if (!write && cache_length && address >= cache_offset &&
         address + n <= cache_offset + cache_length) {
         memcpy(buf, cache + (address - cache_offset), n);
+        metrics.cache_bytes += n;
         result = n;
         goto done;
     }

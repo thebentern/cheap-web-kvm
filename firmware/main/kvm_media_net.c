@@ -20,6 +20,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "lwip/sockets.h"
+#include <errno.h>
+#include <inttypes.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
@@ -42,10 +45,17 @@ static void tls_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 }
 static esp_err_t diagnostics(httpd_req_t *req)
 {
-    char body[256];
-    snprintf(body, sizeof(body), "{\"freeHeap\":%u,\"minimumHeap\":%u,\"largestBlock\":%u,\"tlsError\":%d,\"tlsCode\":%d,\"tlsFlags\":%d}",
+    media_metrics_t metrics;
+    if (!kvm_media_metrics(&metrics)) {
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        return httpd_resp_sendstr(req, "Media diagnostics busy");
+    }
+    char body[512];
+    snprintf(body, sizeof(body), "{\"freeHeap\":%u,\"minimumHeap\":%u,\"largestBlock\":%u,\"tlsError\":%d,\"tlsCode\":%d,\"tlsFlags\":%d,"
+        "\"media\":{\"reads\":%" PRIu32 ",\"readBytes\":%" PRIu64 ",\"readTimeUs\":%" PRIu64 ",\"readMaxUs\":%" PRIu64 ",\"cacheBytes\":%" PRIu64 "}}",
         (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT), (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
-        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), atomic_load(&tls_last_error), atomic_load(&tls_code), atomic_load(&tls_flags));
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), atomic_load(&tls_last_error), atomic_load(&tls_code), atomic_load(&tls_flags),
+        metrics.reads, metrics.read_bytes, metrics.read_time_us, metrics.read_max_us, metrics.cache_bytes);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     httpd_resp_set_hdr(req, "Connection", "close");
@@ -88,6 +98,13 @@ static esp_err_t ws(httpd_req_t *req)
             return ESP_FAIL;
         }
         int fd = httpd_req_to_sockfd(req);
+        /* The HTTP server writes WebSocket headers and payloads separately.
+         * Send small read requests immediately instead of waiting for an ACK. */
+        int nodelay = 1;
+        if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay)) != 0) {
+            ESP_LOGE("media_net", "Cannot configure TCP_NODELAY: errno %d", errno);
+            return ESP_FAIL; /* Close this socket without claiming the medium. */
+        }
         xSemaphoreTake(net_lock, portMAX_DELAY);
         if (atomic_load(&owner) >= 0) {
             xSemaphoreGive(net_lock);

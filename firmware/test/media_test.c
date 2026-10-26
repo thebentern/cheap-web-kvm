@@ -109,6 +109,9 @@ int main(void)
     media_msg_t m = command(M_HELLO, 0, 0);
     assert(!m.flags);
     session = m.session;
+    media_metrics_t metrics;
+    assert(!kvm_media_metrics(NULL));
+    assert(kvm_media_metrics(&metrics) && !metrics.reads && !metrics.read_bytes);
     media_msg_t competing = {.op = M_HELLO, .id = ++id};
     size_t competing_n = media_encode(frame, &competing, NULL, 0);
     competing_n = kvm_media_command_from(MEDIA_SOURCE_SERIAL, frame, competing_n, reply);
@@ -128,16 +131,23 @@ int main(void)
     assert(tud_msc_read10_cb(0, 0, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
     m = poll_request();
     assert(m.length == 8192);
+    mock_time += 50000;
     media_msg_t stale = m;
     stale.id++;
     answer(stale, M_OK);
     assert(!completed && usb[0] == 0xcc);
+    assert(kvm_media_metrics(&metrics) && !metrics.reads);
     answer(m, M_OK);
+    answer(m, M_OK); /* Duplicate replies must not inflate timing or bytes. */
+    assert(kvm_media_metrics(&metrics));
+    assert(metrics.reads == 1 && metrics.read_bytes == 8192);
+    assert(metrics.read_time_us == 50000 && metrics.read_max_us == 50000);
     assert(!completed);
     finish();
     assert(completed == 1 && completion == 4096 && usb[0] == 0x5a);
     /* Read-ahead cache satisfies adjacent requests with no network operation. */
     assert(tud_msc_read10_cb(0, 8, 0, usb, sizeof(usb)) == 4096);
+    assert(kvm_media_metrics(&metrics) && metrics.cache_bytes == 4096 && metrics.reads == 1);
     memset(usb, 0x72, sizeof(usb));
     assert(tud_msc_write10_cb(0, 8, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
     m = poll_request();
@@ -147,6 +157,7 @@ int main(void)
     answer(m, M_OK);
     finish();
     assert(completed == 2);
+    assert(kvm_media_metrics(&metrics) && metrics.reads == 1 && metrics.read_bytes == 8192);
     /* Bus resets invalidate both pending response IDs and prevention state. */
     assert(tud_msc_prevent_allow_medium_removal_cb(0, 1, 0));
     assert(command(M_EJECT, 0, 0).flags == M_PROTECTED);
@@ -179,8 +190,10 @@ int main(void)
     finish();
     assert(completion == TUD_MSC_RET_ERROR);
     assert(!tud_msc_test_unit_ready_cb(0));
+    assert(kvm_media_metrics(&metrics) && metrics.reads == 3 && metrics.read_bytes == 3 * 8192);
     m = command(M_HELLO, 0, 0);
     session = m.session;
+    assert(kvm_media_metrics(&metrics) && !metrics.reads && !metrics.read_time_us && !metrics.cache_bytes);
     assert(command(M_INSERT, 0, 1024 * 1024).flags == M_OK);
     assert(tud_msc_write10_cb(0, 0, 0, usb, sizeof(usb)) == TUD_MSC_RET_ERROR);
     assert(command(M_EJECT, 0, 0).flags == M_OK);
@@ -223,6 +236,23 @@ int main(void)
     kvm_media_disconnect_from(MEDIA_SOURCE_SERIAL);
     assert(!tud_msc_test_unit_ready_cb(0));
     assert(command(M_HELLO, 0, 0).flags == M_OK);
+
+    /* Real IO is owner liveness even if a background heartbeat timer stalls.
+     * Each reply still finishes inside its own three-second IO deadline. */
+    session = command(M_HELLO, 0, 0).session;
+    assert(command(M_INSERT, 0, 1024 * 1024).flags == M_OK);
+    for (unsigned i = 0; i < 4; i++) {
+        mock_time += 2000000;
+        assert(tud_msc_read10_cb(0, 200 + i * 16, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
+        m = poll_request();
+        answer(m, M_OK);
+        finish();
+        assert(completion == sizeof(usb));
+    }
+    assert(command(M_EJECT, 0, 0).flags == M_OK);
+    mock_time += 5000001;
+    assert(!kvm_media_poll(request, &n));
+    assert(command(M_STATUS, 0, 0).flags == M_STALE); /* Idle lease is unchanged. */
 
     /* UART reuses the parser's full-capacity buffer for in-place replies. */
     session = command(M_HELLO, 0, 0).session;

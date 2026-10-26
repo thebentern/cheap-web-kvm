@@ -3,12 +3,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 const state = vi.hoisted(() => ({
   addresses: [] as string[],
   close: vi.fn(),
+  connections: [] as any[],
 }))
 vi.mock('../app/composables/useSerialLink', () => ({
   useSerialLink: () => ({ connected: { value: false } }),
 }))
 vi.mock('../app/utils/media/client', () => ({
   MediaConnection: class {
+    onActivity = (_bytes: number, _write: boolean) => {}
+    onReadResponse = (_stats: unknown) => {}
+    constructor() {
+      state.connections.push(this)
+    }
+    resetReadStats() {
+      this.onReadResponse({ requests: 0, totalMs: 0, maxMs: 0 })
+    }
+    async request() {}
     async connect(address: string) {
       state.addresses.push(address)
     }
@@ -22,11 +32,15 @@ const json = (value: unknown) =>
   new Response(JSON.stringify(value), {
     headers: { 'Content-Type': 'application/json' },
   })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
 async function setup(onboard = true, initialInfoFailures = 0) {
   vi.resetModules()
   state.addresses = []
+  state.connections = []
   state.close.mockClear()
   let authenticated = false,
     acceptToken = true,
@@ -49,7 +63,7 @@ async function setup(onboard = true, initialInfoFailures = 0) {
   class Worker {
     onmessage?: (event: { data: unknown }) => void
     postMessage(message: { id: number; method: string }) {
-      if (message.method !== 'saved')
+      if (!['saved', 'insert', 'eject'].includes(message.method))
         throw new Error(`Unexpected worker operation ${message.method}`)
       queueMicrotask(() =>
         this.onmessage?.({ data: { id: message.id, value: [] } }),
@@ -62,10 +76,15 @@ async function setup(onboard = true, initialInfoFailures = 0) {
   vi.stubGlobal('location', { protocol: 'https:', host: 'kvm.local' })
   vi.stubGlobal('navigator', { storage: { persisted: async () => false } })
   vi.stubGlobal('window', { addEventListener: vi.fn() })
-  vi.stubGlobal('document', {
-    addEventListener: vi.fn(),
+  const listeners = new Map<string, () => void>()
+  const document = {
+    hidden: false,
+    addEventListener: vi.fn((event: string, listener: () => void) =>
+      listeners.set(event, listener),
+    ),
     createElement: () => ({}),
-  })
+  }
+  vi.stubGlobal('document', document)
   const media = (
     await import('../app/composables/useVirtualMedia')
   ).useVirtualMedia()
@@ -73,6 +92,10 @@ async function setup(onboard = true, initialInfoFailures = 0) {
   return {
     media,
     fetch,
+    hide: () => {
+      document.hidden = true
+      listeners.get('visibilitychange')?.()
+    },
     expire: () => {
       authenticated = false
     },
@@ -108,6 +131,57 @@ describe('direct on-board media connection', () => {
     media.transport.value = 'usb'
     await media.initialize()
     expect(media.transport.value).toBe('usb')
+  })
+  it('preserves the disconnect reason when the media panel reopens or the tab is hidden', async () => {
+    const { media, hide } = await setup()
+    media.boardToken.value = TOKEN
+    await media.connect()
+    media.inserted.value = true
+    const reason = 'Media connection lost. Eject the target before recovery.'
+    state.connections.at(-1)!.onError(reason)
+    expect(media.connected.value).toBe(false)
+    expect(media.uncertain.value).toBe(true)
+    await media.initialize()
+    expect(media.error.value).toBe(reason)
+    hide()
+    expect(media.error.value).toBe(reason)
+    expect(media.uncertain.value).toBe(true)
+  })
+  it('shows recent read speed, clears it while idle, and stops sampling on ejection', async () => {
+    vi.useFakeTimers()
+    const { media } = await setup()
+    media.boardToken.value = TOKEN
+    await media.connect()
+    media.meta.value = {
+      id: 'test-disk',
+      kind: 'boot',
+      name: 'test.img',
+      size: 1048576,
+      revision: 0,
+      exportedRevision: 0,
+      created: '',
+    }
+    await media.insert()
+    expect(media.error.value).toBe(null)
+    const connection = state.connections.at(-1)!
+    connection.onActivity(8192, false)
+    connection.onReadResponse({ requests: 1, totalMs: 3, maxMs: 3 })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(media.activity.rate).toBe(8192)
+    expect(media.activity.readRequests).toBe(1)
+    expect(media.activity.readTotalMs).toBe(3)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(media.activity.rate).toBe(0)
+    connection.onActivity(8192, true)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(media.activity.rate).toBe(0)
+    connection.onActivity(4096, false)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(media.activity.rate).toBe(4096)
+    await media.eject(false)
+    expect(media.inserted.value).toBe(false)
+    expect(media.activity.rate).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
   })
   it('recovers a failed startup probe when Wi-Fi is selected and requires pairing before WSS', async () => {
     const { media } = await setup(true, 1)

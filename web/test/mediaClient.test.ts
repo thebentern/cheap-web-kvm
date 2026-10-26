@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MediaConnection } from '../app/utils/media/client'
+import { MediaConnection, type MediaReadStats } from '../app/utils/media/client'
 import { encode, decode, OP, type Message } from '../app/utils/media/protocol'
 class Socket {
   static OPEN = 1
@@ -41,6 +41,7 @@ const connections: MediaConnection[] = []
 afterEach(() => {
   for (const c of connections) c.close()
   connections.length = 0
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -74,6 +75,77 @@ describe('client media flow and durability', () => {
     expect(ws.sent.at(-1)?.op).toBe(OP.READ | 128)
     expect(ws.sent.at(-1)?.data).toEqual(new Uint8Array(512).fill(42))
     expect((await c.benchmark(0)).count).toBe(1)
+  })
+  it('measures successful browser read response handoff, excludes writes and resets for a new disk', async () => {
+    let now = 1000
+    const durations = [10, 40]
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    const { c, ws } = await connect({
+      read: async (_offset, length) => {
+        now += durations.shift()!
+        return new Uint8Array(length)
+      },
+      write: async () => {
+        now += 100
+      },
+    })
+    const stats: MediaReadStats[] = []
+    c.onReadResponse = (sample) => stats.push(sample)
+    const send = ws.send.bind(ws)
+    ws.send = (data) => {
+      if (decode(data).op === (OP.READ | 128)) now += 5
+      send(data)
+    }
+    ws.receive(request(OP.READ))
+    await tick()
+    expect(stats).toEqual([{ requests: 1, totalMs: 15, maxMs: 15 }])
+    ws.receive(request(OP.WRITE, 51))
+    await tick()
+    expect(stats).toHaveLength(1)
+    ws.receive(request(OP.READ, 52))
+    await tick()
+    expect(stats).toEqual([
+      { requests: 1, totalMs: 15, maxMs: 15 },
+      { requests: 2, totalMs: 60, maxMs: 45 },
+    ])
+    c.resetReadStats()
+    expect(stats.at(-1)).toEqual({ requests: 0, totalMs: 0, maxMs: 0 })
+  })
+  it('does not count failed reads, failed sends or a response completed after disconnect', async () => {
+    const failed = await connect({
+      read: async () => new Uint8Array(1),
+      write: async () => {},
+    })
+    const stats = vi.fn()
+    failed.c.onReadResponse = stats
+    failed.ws.receive(request(OP.READ))
+    await tick()
+    expect(failed.ws.sent.at(-1)?.flags).toBe(4)
+    expect(stats).not.toHaveBeenCalled()
+
+    const sending = await connect()
+    sending.c.onReadResponse = stats
+    sending.ws.send = () => {
+      throw new Error('Disconnected before handoff')
+    }
+    sending.ws.receive(request(OP.READ))
+    await tick()
+    expect(sending.c.live).toBe(false)
+    expect(stats).not.toHaveBeenCalled()
+
+    let finish!: (value: Uint8Array) => void
+    const late = await connect({
+      read: () => new Promise<Uint8Array>((resolve) => (finish = resolve)),
+      write: async () => {},
+    })
+    late.c.onReadResponse = stats
+    late.ws.receive(request(OP.READ))
+    await tick()
+    late.c.close()
+    finish(new Uint8Array(512))
+    await tick()
+    expect(late.ws.sent).toHaveLength(1)
+    expect(stats).not.toHaveBeenCalled()
   })
   it('never acknowledges a write before durable storage resolves', async () => {
     let commit!: () => void

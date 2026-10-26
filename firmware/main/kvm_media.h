@@ -16,6 +16,15 @@ size_t kvm_media_command(const uint8_t *in, size_t len, uint8_t *reply);
 bool kvm_media_poll(uint8_t *out, size_t *len);
 void kvm_media_disconnect(void);
 
+/* Successful remote READ replies only. Timing starts when the request is
+ * handed to the transport and ends after its reply passes protocol validation.
+ * Reset on HELLO; no image data, names, or offsets are exposed. */
+typedef struct {
+    uint64_t read_bytes, read_time_us, read_max_us, cache_bytes;
+    uint32_t reads;
+} media_metrics_t;
+bool kvm_media_metrics(media_metrics_t *out);
+
 /* Reserve a disk-free window while changing the network, blocking insertion. */
 bool kvm_media_network_change_begin(void);
 void kvm_media_network_change_end(void);

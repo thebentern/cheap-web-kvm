@@ -6,6 +6,7 @@ import { authenticateDevice } from '~/utils/deviceHost'
 import { MediaConnection } from '~/utils/media/client'
 import { FLAG, OP } from '~/utils/media/protocol'
 import { MediaHidQueue } from '~/utils/media/hidQueue'
+import { MediaReadRate } from '~/utils/media/readRate'
 import { parseReply, resetFrame } from '~/utils/ch9329'
 import type { Volume } from '~/utils/media/disk'
 import type { Entry } from '~/utils/media/fat'
@@ -32,6 +33,9 @@ const activity = reactive({
   read: 0,
   written: 0,
   rate: 0,
+  readRequests: 0,
+  readTotalMs: 0,
+  readMaxMs: 0,
   last: '',
   benchmark: '',
 })
@@ -42,8 +46,26 @@ const deviceHost = useDeviceHost()
 const hidQueue = new MediaHidQueue(transactHid)
 let worker: Worker | null = null,
   connection: MediaConnection | null = null,
-  next = 0,
-  transferStart = 0
+  next = 0
+let activityTimer: ReturnType<typeof setInterval> | undefined
+const readRate = new MediaReadRate()
+function stopActivity() {
+  if (activityTimer) clearInterval(activityTimer)
+  activityTimer = undefined
+  activity.rate = 0
+}
+function startActivity() {
+  stopActivity()
+  activity.read = 0
+  activity.written = 0
+  activity.readRequests = 0
+  activity.readTotalMs = 0
+  activity.readMaxMs = 0
+  readRate.reset(0, performance.now())
+  activityTimer = setInterval(() => {
+    activity.rate = readRate.sample(activity.read, performance.now())
+  }, 1000)
+}
 let hostDefaultsApplied = false
 const pending = new Map<
   number,
@@ -73,6 +95,7 @@ function rpc<T = any>(method: string, args?: unknown): Promise<T> {
         'Storage worker failed. Eject/unmount the target before reloading; committed writes are preserved.'
       uncertain.value ||= inserted.value
       connection?.close()
+      stopActivity()
       connected.value = false
       for (const p of pending.values()) p.reject(new Error(error.value!))
       pending.clear()
@@ -85,7 +108,7 @@ function rpc<T = any>(method: string, args?: unknown): Promise<T> {
     })
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && inserted.value)
-        error.value =
+        error.value ||=
           'Keep this tab visible. Browser suspension can disconnect the virtual disk; durable writes remain saved.'
     })
   }
@@ -100,10 +123,13 @@ function rpc<T = any>(method: string, args?: unknown): Promise<T> {
     }
   })
 }
-async function run<T>(action: () => Promise<T>): Promise<T | undefined> {
+async function run<T>(
+  action: () => Promise<T>,
+  clearError = true,
+): Promise<T | undefined> {
   if (busy.value) return
   busy.value = true
-  error.value = null
+  if (clearError) error.value = null
   progress.value = 0
   phase.value = 'Working'
   try {
@@ -193,6 +219,7 @@ async function connect() {
     try {
       hidQueue.clear()
       connection?.close()
+      stopActivity()
       connection = new MediaConnection({
         read: (offset, length) => rpc('read', { offset, length }),
         write: async (offset, data) => {
@@ -204,7 +231,10 @@ async function connect() {
         if (connection !== current) return
         error.value = message
         if (inserted.value) uncertain.value = true
-        if (!connection?.live) connected.value = false
+        if (!connection?.live) {
+          connected.value = false
+          stopActivity()
+        }
       }
       connection.onState = (state) => {
         if (connection !== current) return
@@ -223,10 +253,13 @@ async function connect() {
         if (connection !== current) return
         if (write) activity.written += bytes
         else activity.read += bytes
-        activity.rate =
-          (activity.read + activity.written) /
-          Math.max((performance.now() - transferStart) / 1000, 0.001)
         activity.last = `${write ? 'Committed write' : 'Read'} · ${bytes} bytes`
+      }
+      connection.onReadResponse = (stats) => {
+        if (connection !== current) return
+        activity.readRequests = stats.requests
+        activity.readTotalMs = stats.totalMs
+        activity.readMaxMs = stats.maxMs
       }
       if (transport.value === 'usb') {
         const serial = useSerialLink()
@@ -263,6 +296,7 @@ async function connect() {
       flags.value = 0
     } catch (e) {
       connection?.close()
+      stopActivity()
       connected.value = false
       throw e
     } finally {
@@ -279,6 +313,8 @@ async function insert() {
     await rpc('insert', { writable: writeMode.value })
     // An insert timeout is ambiguous. Keep the worker locked until confirmed ejection.
     inserted.value = true
+    startActivity()
+    connection.resetReadStats()
     try {
       await connection.request(
         OP.INSERT,
@@ -291,9 +327,6 @@ async function insert() {
       throw e
     }
     uncertain.value = false
-    transferStart = performance.now()
-    activity.read = 0
-    activity.written = 0
   })
 }
 async function eject(targetUnmounted: boolean) {
@@ -310,6 +343,7 @@ async function eject(targetUnmounted: boolean) {
     // The worker FIFO drains any in-flight storage transaction before unlocking.
     meta.value = await rpc('eject')
     inserted.value = false
+    stopActivity()
     uncertain.value = false
     flags.value = 0
     await refresh()
@@ -325,6 +359,7 @@ async function disconnect() {
       throw new Error('Eject and synchronize before disconnecting')
     await releaseHid()
     connection?.close()
+    stopActivity()
     connection = null
     try {
       if (transport.value === 'usb') await useSerialLink().waitForMediaRelease()
@@ -437,20 +472,23 @@ export function useVirtualMedia() {
         preview.value = `${name}${p.truncated ? ' (first 64 KiB)' : ''}\n\n${p.text}`
       }),
     initialize: () =>
-      run(async () => {
-        const device = await deviceHost.initialize()
-        if (
-          device &&
-          !hostDefaultsApplied &&
-          !connected.value &&
-          !inserted.value &&
-          !uncertain.value
-        )
-          transport.value = 'wifi'
-        if (device) hostDefaultsApplied = true
-        await syncPersistent()
-        await refresh()
-      }),
+      run(
+        async () => {
+          const device = await deviceHost.initialize()
+          if (
+            device &&
+            !hostDefaultsApplied &&
+            !connected.value &&
+            !inserted.value &&
+            !uncertain.value
+          )
+            transport.value = 'wifi'
+          if (device) hostDefaultsApplied = true
+          await syncPersistent()
+          await refresh()
+        },
+        false, // Reopening the panel must preserve the session's failure reason.
+      ),
     grantPersistence,
     open,
     cancelImport,

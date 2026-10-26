@@ -471,3 +471,42 @@ closure for Serial/Bluetooth-only use, expire after the configured delay and
 duration, and hand completion to board status when available. Pending actions
 keep stable labels; a failed Stop retains the active state. Ten fake-timer
 regressions cover these transitions. All 229 web tests and type checking pass.
+
+### Wi-Fi read latency preparation
+
+The Wyse loaded the kernel and progressed to the initial ramdisk through the
+browser-backed mPWRD disk. Its reported session-average read rate was roughly
+29–35 KiB/s; the user reported a roughly 40-minute ramdisk load. Full OS boot
+remains unconfirmed. No saved-image verification scan was used during this
+investigation.
+
+Inspection of the installed ESP-IDF 5.4 WebSocket implementation found separate
+header and payload writes without `TCP_NODELAY` on the media socket. Each READ
+request has only a 32-byte protocol payload. The prepared firmware disables Nagle
+for authenticated HTTP/WSS media sockets and explicitly disables Wi-Fi modem
+power saving. The browser already caches eight 64 KiB pages; changing image
+storage was not identified as the primary fix.
+
+Successful matching IO replies now renew the owner lease in addition to explicit
+heartbeats. The per-request deadline and idle lease remain three and five seconds.
+A native test sustains reads for eight seconds without a heartbeat, then confirms
+idle expiry. A later screenshot showed the kernel running, then a read-only fsck
+failure, the disk becoming unavailable and a kernel panic. That confirms an actual
+boot failure, but does not independently identify the connection-loss cause.
+
+New diagnostics count only successful matching read replies, remote/cache bytes
+and request-to-reply timings. Native regressions check stale/duplicate exclusion,
+read-ahead versus cache bytes, write/timeout exclusion and session reset. Browser
+response timings and a recent read-rate display support comparison without
+scanning disk contents. These changes still require deployment and measured
+target read traffic before claiming a speedup. The existing boot was left running
+while preparing the update; it subsequently failed before any deployment.
+
+All 235 web tests, type checking, root-based production generation, native
+media/Wi-Fi/serial/HID tests, the private quad-PSRAM firmware build, compiled USB
+descriptor checks and native device-web authentication tests pass. Reopening the
+panel preserves a disconnect error, including across visibility warnings.
+
+The automatic programming-mode attempt failed with no serial data before any
+flash write began. Manual BOOT/Reset entry is required before deployment and
+physical throughput measurement can continue.

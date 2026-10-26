@@ -283,7 +283,8 @@ filesystem corruption is also reported when parsing detects it; an actual disk
 checker remains advisable after an unclean target shutdown.
 
 Media IO has a 3-second deadline. Heartbeats run every second with a 5-second
-lease. A timeout, suspension, failed storage commit, or socket loss makes the
+lease; matching successful IO replies also renew that lease. A timeout,
+suspension, failed storage commit, or socket loss makes the
 medium unavailable and fails pending requests; it never fabricates zeros or
 reports a failed write as successful. Already committed writes remain saved.
 A late response is rejected after session/request/bus-epoch changes. USB bus resets
@@ -334,7 +335,36 @@ For an actual board:
   echoes and reports aggregate round-trip payload throughput and worst RTT.
   This measures the browser/board path (plus the helper if used), **not USB or durable write speed**.
 - During sustained target reads/writes record the panel's actual transfer counts,
-  average rate and storage errors. Test cold/random reads as well as sequential
+  current read rate and storage errors. Test cold/random reads as well as sequential
   access. Record HID latency during both; Wi-Fi/BLE coexistence needs measurement.
 - Follow [the hardware acceptance procedure](validation/virtual-media.md) before
   choosing a production transport or claiming Wyse boot compatibility.
+
+### Diagnose slow Wi-Fi reads
+
+Media sockets enable `TCP_NODELAY`: ESP-IDF sends a WebSocket header and its
+payload in separate writes, so a small sector request must not wait behind TCP's
+Nagle buffering and the peer's delayed acknowledgment. Wi-Fi modem power saving
+is explicitly disabled to favor latency on this USB-powered device. These settings
+do not increase the 8 KiB request limit or change write acknowledgment rules.
+
+The panel's read rate uses recent byte deltas and falls to zero when idle.
+**Disk details & download** also shows browser response timing: receiving a READ
+request through reading storage, encoding, and handing its response to the
+transport. It excludes Wi-Fi transit and target USB completion.
+
+`GET /device/diagnostics` reports a `media` object without acquiring a media
+session or reading image contents. Counters reset on a successful HELLO:
+
+- `reads` and `readBytes`: successful, matching remote READ replies, including
+  read-ahead bytes. Failed, stale, duplicate and unsent replies do not count.
+- `readTimeUs`: total request-to-validated-reply time, including network transit,
+  browser processing and HTTP scheduling; `readMaxUs` is the session maximum.
+- `cacheBytes`: target reads served directly from the board's cache. These are
+  separate from remote bytes and must not be added as unique disk contents.
+
+Take two diagnostics snapshots during sustained target reads. Divide the change
+in `readBytes` by elapsed wall time for current remote throughput, and the change
+in `readTimeUs` by the change in `reads` for mean request latency. Compare the
+same target workload before and after a firmware update; large echo packets alone
+do not reproduce the small outbound requests used by actual virtual media.
