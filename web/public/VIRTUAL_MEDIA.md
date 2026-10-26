@@ -35,17 +35,18 @@ synchronize before recovery. Bluetooth remains a control link rather than a disk
 transport. No Wi-Fi setup, access token or HTTPS media helper is needed for USB;
 the UI still needs a secure context (hosted HTTPS or localhost).
 
-The default firmware UART is **115200 baud**. The wire ceiling is 11,520 bytes/s
-in one direction before framing, and an 8 KiB message occupies roughly 0.72 s.
-Large images and OS boot will be slow; input can wait behind an in-flight media
-frame. To use a faster rate, build the board with matching
+The default firmware UART is **921600 baud**. Its one-way wire ceiling is
+92,160 bytes/s before framing, and an 8 KiB message occupies roughly 0.09 s.
+The tested board transferred about 84 KB/s aggregate in the transport benchmark;
+OS boot and real disk performance depend on the workload. Input can wait behind
+an in-flight media frame. To use another rate, build the board with matching
 `CONFIG_KVM_UART_BAUD`, then select the same rate in **Virtual media → Connection
 settings → USB baud rate** or **Settings → Advanced → USB baud rate**. Choices are
 115200, 460800, 921600 and 2000000. The selection is remembered in this browser and
 applies to both serial control and media on the next connection. Disconnect serial
-before changing it. Standard firmware still defaults to 115200; choosing a browser
-rate does not reconfigure the board. Measure your actual setup rather than treating
-this as native USB bulk throughput. USB MSC on the target is separate from the USB-UART link.
+before changing it. Choosing a browser rate does not reconfigure the board. Older
+firmware built at 115200 requires that explicit browser setting. USB MSC on the
+target is separate from this USB-UART link.
 
 ### Wi-Fi
 
@@ -238,7 +239,7 @@ For an actual board:
   Record USB-UART bridge model, cable, failures and maximum RTT. Set the same rate
   in the browser before connecting. Test media echo for at least 30 seconds at each
   candidate with control traffic active, then verify target sector reads. Use
-  115200 in both firmware and browser to restore the standard configuration.
+  921600 in both firmware and browser to restore the standard configuration.
 - With Wi-Fi firmware, choose **Measure link** while ejected. It verifies 8 KiB
   echoes and reports aggregate round-trip payload throughput and worst RTT.
   This measures the browser/helper/board path, **not USB or durable write speed**.

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Measure CH9329 vendor echo at the firmware's configured UART baud.
 
-Flash CONFIG_KVM_UART_BAUD=115200, 460800, 921600, then 2000000 separately.
+The standard firmware and this tool default to 921600 baud.
+Flash matching CONFIG_KVM_UART_BAUD values before testing other rates.
 This does not change baud on a live board, write disks, or claim media support.
 Needs pyserial. SPDX-License-Identifier: GPL-3.0-or-later
 """
@@ -15,7 +16,8 @@ from ch9329_test import frame
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('-p', '--port', required=True)
-    ap.add_argument('--baud', type=int, default=115200)
+    ap.add_argument('--baud', type=int, default=921600,
+                    help='must match firmware (default: 921600)')
     ap.add_argument('--seconds', type=float, default=5)
     args = ap.parse_args()
     import serial

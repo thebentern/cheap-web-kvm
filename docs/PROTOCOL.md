@@ -13,16 +13,17 @@ written against this document.
 
 ## 1. Transport
 
-Default `115200 8N1`, no flow control. `CONFIG_KVM_UART_BAUD` selects the firmware
+Default `921600 8N1`, no flow control. `CONFIG_KVM_UART_BAUD` selects the firmware
 rate; the browser's USB baud setting must match it. The UI opens the port with
 `navigator.serial.requestPort()` and `serialPort.open({ baudRate })`.
 
 The reference CH9329 design ships at 9600 baud and needs initial reconfiguration.
-This firmware instead starts directly at its compiled UART rate (default 115200).
+This firmware instead starts directly at its compiled UART rate (default 921600).
 The UI offers 115200, 460800, 921600 and 2000000 in USB connection settings and
 Settings → Advanced. It remembers the selection in this browser and applies it
 to the next serial connection; changes are blocked while the port is open.
-Selecting a browser rate does not change the firmware's rate.
+Selecting a browser rate does not change the firmware's rate. For older firmware
+configured at 115200, explicitly select 115200 in the browser before connecting.
 
 ### Bluetooth LE
 
@@ -327,7 +328,7 @@ after the delay and does not extend across reboots. Ordinary six-key input is
 merged with the pulse when room exists. The macro neither controls target power
 nor treats UART connection loss as a target power-cycle.
 
-UART baud remains 115200 by default. `CONFIG_KVM_UART_BAUD` permits build-time
+UART baud defaults to 921600. `CONFIG_KVM_UART_BAUD` permits build-time
 candidates up to 2000000; benchmark the actual bridge using
 `tools/benchmark_serial.py` for HID timing. The virtual-media panel has a separate
 sector-transport echo benchmark.
@@ -487,7 +488,7 @@ write-with-response to trigger pairing.
 ## 13. USB programming-port media transport
 
 Wired media uses the existing USB-UART programming connection at the firmware's
-configured UART0 baud (default 115200). The native USB port remains the target's
+configured UART0 baud (default 921600). The native USB port remains the target's
 HID/MSC device. Media packets keep the version-1 `KVM1` payload and CRC, wrapped as:
 
 | Bytes | Meaning |

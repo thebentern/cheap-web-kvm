@@ -29,7 +29,7 @@ let productId = "Generic"; //Generation of DezKVM GO
 // Get selected baudrate from radio buttons
 function getSelectedBaudrate() {
     const baudrateRadio = document.querySelector('input[name="baudrate"]:checked');
-    return baudrateRadio ? parseInt(baudrateRadio.value) : 115200;
+    return baudrateRadio ? parseInt(baudrateRadio.value) : 921600;
 }
 // Need a user triggered event to request serial port
 document.getElementById('touchscreen').addEventListener('click', function(event) {

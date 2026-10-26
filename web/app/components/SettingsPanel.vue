@@ -749,7 +749,7 @@ onBeforeUnmount(() => {
                       </div>
                       <p class="kvm-hint mt-0.5">
                         Presents a boot-protocol HID keyboard and an absolute mouse to the target,
-                        and takes CH9329 frames from this browser over UART at the selected baud rate (115200 by default). A genuine
+                        and takes CH9329 frames from this browser over UART at the selected baud rate (921600 by default). A genuine
                         <strong class="font-medium text-mist-200">CH9329</strong> module works too.
                       </p>
                     </div>

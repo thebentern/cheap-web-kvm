@@ -16,7 +16,7 @@ discovery, F12 delivery, OS boot and target-to-client file transfer remain unver
   async read completion, 8 KiB read-ahead, write ACK timing, stale IDs, USB bus/BOT
   resets, read-only rejection, busy/prevented ejection, timeout/lease failure,
   and bounded boot repetition. It substitutes platform services, not USB hardware.
-- All 169 web tests pass. They exercise protocol integrity, random/unaligned cross-page IO,
+- All 171 web tests pass. They exercise protocol integrity, random/unaligned cross-page IO,
   IndexedDB close/reopen, source preservation, transaction abort, exclusive locks,
   strict write ACK ordering, late replies after disconnect, bounded input flow,
   FAT32 geometry, LFN/unicode/nested directories, capacity/name limits, mirror and
@@ -267,7 +267,8 @@ The same board and USB bridge (`1a86:55d3`) were rebuilt with higher
 `CONFIG_KVM_UART_BAUD` values. A sustained 2,000,000-baud test timed out while
 waiting for an echo or concurrent HID reply, so that rate was rejected for this
 setup. The board was then flashed at 921,600 and its browser selection matched.
-The ordinary firmware and a fresh browser still default to 115,200.
+At the time of that benchmark, ordinary firmware and a fresh browser defaulted
+to 115,200. The default was subsequently raised as recorded below.
 
 At 921,600, a 60-second test completed 218 verified 8 KiB round trips and 218 concurrent
 CH9329 GET_INFO replies without corruption or timeouts. Aggregate echo payload
@@ -283,3 +284,15 @@ with 194.7 ms worst RTT. These are transport echo measurements, not a new target
 write/OS-boot benchmark. The previous read-only test disk was synchronized after
 the approved board restart and left ejected. The baud selector/persistence tests
 bring the web suite to 169 passing tests.
+
+
+### Standard baud default
+
+Standard firmware, fresh browser connections, legacy bundled UI, and runtime CLI
+helpers now default to 921,600 baud. A clean ESP-IDF configuration generated
+`CONFIG_KVM_UART_BAUD=921600`; browser tests verify a fresh connection opens at
+that rate and invalid saved values fall back to it. Explicit saved 115,200 choices
+remain supported. ROM flashing and the separate UART debug console retain their
+own 115,200 settings. The web suite now has 171 passing tests. The attached board
+already runs the tested 921,600 profile, so no device restart was needed for this
+default change.

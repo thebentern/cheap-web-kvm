@@ -72,7 +72,7 @@ const requirements: Requirement[] = [
   {
     title: 'An ESP32-S3 running the CH9329-compatible firmware',
     detail:
-      'Serial at the firmware’s baud rate (115200 by default), 8N1, no flow control, over the board’s UART bridge port — or Bluetooth LE, paired once with a six-digit PIN you can change under Settings → Advanced. A genuine CH9329 module works too over serial, once it has been moved off its 9600 baud default.',
+      'Serial at the firmware’s baud rate (921600 by default), 8N1, no flow control, over the board’s UART bridge port — or Bluetooth LE, paired once with a six-digit PIN you can change under Settings → Advanced. A genuine CH9329 module works too over serial, once it has been moved off its 9600 baud default.',
   },
   {
     title: 'An MS2130 HDMI capture stick',

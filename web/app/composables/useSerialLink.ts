@@ -4,9 +4,10 @@ import { parseReply } from '~/utils/ch9329'
 import { SerialDemux, serialMediaFrame } from '~/utils/media/serial'
 import type { MediaTransport } from '~/utils/media/transport'
 
+export const DEFAULT_SERIAL_BAUD_RATE = 921600
 export const SERIAL_BAUD_RATES = [115200, 460800, 921600, 2000000] as const
 const BAUD_STORAGE_KEY = 'kvm.serialBaudRate'
-const selectedBaudRate = ref<number>(115200)
+const selectedBaudRate = ref<number>(DEFAULT_SERIAL_BAUD_RATE)
 let baudLoaded = false
 function loadBaudRate() {
   if (baudLoaded || typeof window === 'undefined') return
@@ -31,7 +32,7 @@ const portLabel = ref('Not connected')
 const lastError = ref<string | null>(null)
 let readLoopRunning = false
 let generation = 0
-let baud = 115200
+let baud = DEFAULT_SERIAL_BAUD_RATE
 let media: MediaTransport | null = null
 let mediaReleasePending = false
 let release: {

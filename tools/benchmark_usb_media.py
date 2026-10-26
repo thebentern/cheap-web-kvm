@@ -2,7 +2,8 @@
 """Measure USB-UART media echo with concurrent CH9329 control replies.
 
 Close the browser's serial connection before running this tool. --baud must match
-CONFIG_KVM_UART_BAUD in the installed firmware (the normal default is 115200).
+CONFIG_KVM_UART_BAUD in the installed firmware (the normal default is 921600).
+Use --baud 115200 for older firmware built at that rate.
 Needs pyserial. This never inserts media, writes disk sectors, changes baud, or
 changes saved device settings. Results are a short transport test, not USB disk,
 boot, sustained reliability, or production qualification.
@@ -272,7 +273,7 @@ def measure(port, seconds, report):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('-p', '--port', required=True)
-    parser.add_argument('--baud', type=int, default=115200,
+    parser.add_argument('--baud', type=int, default=921600,
                         choices=(115200, 460800, 921600, 2000000))
     parser.add_argument('--seconds', type=float, default=30)
     args = parser.parse_args()

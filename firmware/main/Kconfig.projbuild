@@ -88,6 +88,6 @@ menu "cheap-web-kvm"
     config KVM_UART_BAUD
         int "UART0 baud rate (benchmark before changing)"
         range 115200 2000000
-        default 115200
+        default 921600
 
 endmenu

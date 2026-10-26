@@ -35,9 +35,16 @@ async function current() {
   return (link = module.useSerialLink())
 }
 describe('USB serial baud selection', () => {
+  it('opens a fresh connection at the firmware default without a saved preference', async () => {
+    const serial = await current()
+    expect(serial.baudRate.value).toBe(921600)
+    expect(await serial.connect()).toBe(true)
+    expect(open).toHaveBeenCalledWith({ baudRate: 921600 })
+    expect(serial.activeBaudRate.value).toBe(921600)
+  })
   it('uses and saves a supported selection on the next ordinary connection', async () => {
     const serial = await current()
-    expect(serial.baudRate.value).toBe(115200)
+    expect(serial.baudRate.value).toBe(921600)
     expect(serial.setBaudRate(2000000)).toBe(true)
     expect(values.get('kvm.serialBaudRate')).toBe('2000000')
     expect(await serial.connect()).toBe(true)
@@ -46,9 +53,10 @@ describe('USB serial baud selection', () => {
   })
   it.each([
     ['921600', 921600],
-    ['NaN', 115200],
-    ['2000001', 115200],
-    ['9600', 115200],
+    ['115200', 115200],
+    ['NaN', 921600],
+    ['2000001', 921600],
+    ['9600', 921600],
   ])('loads saved %s safely as %i', async (stored, expected) => {
     values.set('kvm.serialBaudRate', stored)
     const serial = await current()
@@ -83,7 +91,7 @@ describe('USB serial baud selection', () => {
     await connecting
     expect(serial.baudLocked.value).toBe(true)
     expect(serial.setBaudRate(2000000)).toBe(false)
-    expect(serial.baudRate.value).toBe(115200)
+    expect(serial.baudRate.value).toBe(921600)
     await serial.disconnect()
     expect(serial.baudLocked.value).toBe(false)
     expect(serial.setBaudRate(2000000)).toBe(true)

@@ -45,12 +45,14 @@ acknowledged. Safely eject before client edits, retrieving target-created files,
 or exporting the updated image. F12 repetition runs in firmware across target
 reboots, with configurable timing and cancellation.
 
-Configure a hotspot or router-client connection in **Settings → Wi-Fi**;
-[network settings](docs/WIFI.md) persist on the board. Fresh installations start
-Wi-Fi off. Virtual media uses the local HTTPS helper. Serial/Bluetooth HID still
-works independently. Follow the [setup and persistence guide](docs/VIRTUAL_MEDIA.md)
-and [hardware acceptance procedure](docs/validation/virtual-media.md). No measured
-board throughput or successful Wyse boot is claimed yet. The published mPWRD-OS
+Virtual media connects over the USB programming cable at **921600 baud by
+default**, or over Wi-Fi through the local HTTPS helper. For Wi-Fi, configure
+Hotspot or Client in **Settings → Wi-Fi**; [network settings](docs/WIFI.md) persist
+on the board. Fresh installations start Wi-Fi off. Serial/Bluetooth HID remains
+available. Older firmware configured at 115200 needs that matching browser setting.
+Follow the [setup and persistence guide](docs/VIRTUAL_MEDIA.md) and
+[hardware acceptance procedure](docs/validation/virtual-media.md) for measured
+transport results and outstanding Wyse boot validation. The published mPWRD-OS
 UEFI raw image was inspected for its x86_64 fallback loader, not booted on hardware.
 
 ## Hardware
