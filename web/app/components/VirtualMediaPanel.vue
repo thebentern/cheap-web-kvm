@@ -6,6 +6,7 @@ import { useKvm } from '~/composables/useKvm'
 import { useVirtualMedia } from '~/composables/useVirtualMedia'
 import { useDialogFocus } from '~/composables/useDialogFocus'
 import { useSerialLink } from '~/composables/useSerialLink'
+import { useBootRepeatState } from '~/composables/useBootRepeatState'
 import { frame } from '~/utils/ch9329'
 const panels = usePanels(),
   kvm = useKvm(),
@@ -50,9 +51,10 @@ const key = ref(0x45),
   delay = ref(0),
   press = ref(80),
   interval = ref(300),
-  duration = ref(60),
-  macroArmed = ref(false),
-  macroBusy = ref(false)
+  duration = ref(60)
+const repeat = useBootRepeatState(connected, flags)
+const repeatActive = repeat.active
+const macroBusy = computed(() => repeat.pending.value !== null)
 const locked = computed(() => busy.value || inserted.value || uncertain.value)
 const wifiControlActive = computed(
   () => kvm.link.kind.value === 'wifi' && kvm.link.connected.value,
@@ -119,7 +121,8 @@ async function boot(cancel = false) {
     error.value = 'Connect Serial, Bluetooth, or Wi-Fi HID first'
     return
   }
-  macroBusy.value = true
+  if (!repeat.begin(cancel)) return
+  const expiresAfter = delay.value + duration.value * 1000
   try {
     const payload = new Uint8Array(17),
       v = new DataView(payload.buffer)
@@ -140,11 +143,11 @@ async function boot(cancel = false) {
       throw new Error(
         'Boot repetition rejected. Check timing values and install firmware supporting this feature.',
       )
-    macroArmed.value = !cancel
+    repeat.acknowledge(cancel, expiresAfter)
   } catch (e) {
     error.value = (e as Error).message
   } finally {
-    macroBusy.value = false
+    repeat.finish()
   }
 }
 onMounted(() => {
@@ -753,7 +756,7 @@ onMounted(() => {
       <details class="mt-5 border-t border-ink-600 pt-4">
         <summary class="cursor-pointer text-sm font-semibold">
           Boot key
-          <span v-if="macroArmed || flags & 32" class="ml-2 text-signal-400">{{
+          <span v-if="repeatActive" class="ml-2 text-signal-400">{{
             connected ? 'Active' : 'Armed'
           }}</span>
         </summary>
@@ -813,26 +816,26 @@ onMounted(() => {
           <button
             class="kvm-btn"
             :disabled="macroBusy || !kvm.link.connected.value"
-            @click="boot()"
+            @click="boot(repeatActive)"
           >
-            Start repeating</button
-          ><button
-            class="kvm-btn"
-            :disabled="macroBusy || !kvm.link.connected.value"
-            @click="boot(true)"
-          >
-            Stop and release key
+            {{
+              macroBusy
+                ? repeat.pending.value === 'stop'
+                  ? 'Stopping…'
+                  : 'Starting…'
+                : repeatActive
+                  ? 'Stop and release key'
+                  : 'Start repeating'
+            }}
           </button>
         </div>
         <p class="kvm-hint mt-2">
           {{
-            connected
-              ? flags & 32
+            repeatActive
+              ? connected
                 ? 'Repeating'
-                : 'Not repeating'
-              : macroArmed
-                ? 'Armed for the selected duration'
-                : 'Not repeating'
+                : 'Armed for the selected duration'
+              : 'Not repeating'
           }}.<template v-if="!kvm.link.connected.value">
             Connect Serial, Bluetooth or Wi-Fi control to use this feature.
           </template>

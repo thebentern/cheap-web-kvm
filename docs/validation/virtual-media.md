@@ -462,3 +462,12 @@ idle deltas, button release/reset, keyboard independence and endpoint failures.
 The full native media/Wi-Fi/serial/HID harness passes, as do web type checking,
 production generation, the private quad-PSRAM board build and compiled USB
 descriptor checks. Physical Wyse mouse movement still requires confirmation.
+
+### Boot repetition action state
+
+The boot-key panel now presents one Start/Stop action, with the badge and status
+using the same activity state. Shared local acknowledgments survive panel
+closure for Serial/Bluetooth-only use, expire after the configured delay and
+duration, and hand completion to board status when available. Pending actions
+keep stable labels; a failed Stop retains the active state. Ten fake-timer
+regressions cover these transitions. All 229 web tests and type checking pass.
