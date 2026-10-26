@@ -9,6 +9,14 @@
 int64_t mock_time;
 int mock_lock_depth;
 static unsigned completed, hid_frames;
+static bool ble_wifi_media_active;
+static unsigned ble_pauses;
+void kvm_ble_set_wifi_media_active(bool active)
+{
+    ble_wifi_media_active = active;
+    if (active)
+        ble_pauses++;
+}
 static int32_t completion;
 static void (*deferred)(void *);
 static void *deferred_arg;
@@ -61,6 +69,7 @@ extern int32_t tud_msc_read10_cb(uint8_t, uint32_t, uint32_t, void *, uint32_t);
 extern int32_t tud_msc_write10_cb(uint8_t, uint32_t, uint32_t, uint8_t *, uint32_t);
 extern bool tud_msc_test_unit_ready_cb(uint8_t);
 extern bool tud_msc_prevent_allow_medium_removal_cb(uint8_t, uint8_t, uint8_t);
+extern bool tud_msc_start_stop_cb(uint8_t, uint8_t, bool, bool);
 extern void tud_event_hook_cb(uint8_t, uint32_t, bool);
 extern bool __wrap_mscd_control_xfer_cb(uint8_t, uint8_t, const tusb_control_request_t *);
 static uint8_t frame[MEDIA_HEADER + MEDIA_MAX_IO], reply[MEDIA_HEADER + MEDIA_MAX_IO],
@@ -106,6 +115,7 @@ int main(void)
     assert(media_range(UINT64_C(1) << 40, (UINT64_C(1) << 40) - 512, 512));
     assert(!media_range(512, 511, 2));
     assert(kvm_media_init() == ESP_OK);
+    assert(!ble_wifi_media_active);
     media_msg_t m = command(M_HELLO, 0, 0);
     assert(!m.flags);
     session = m.session;
@@ -120,8 +130,10 @@ int main(void)
     assert(command(M_STATUS, 0, 0).flags == M_OK);
     assert(kvm_media_network_change_begin());
     assert(command(M_INSERT, M_WRITABLE, 1024 * 1024).flags == M_BUSY);
+    assert(!ble_wifi_media_active && !ble_pauses);
     kvm_media_network_change_end();
     assert(command(M_INSERT, M_WRITABLE, 1024 * 1024).flags == M_OK);
+    assert(ble_wifi_media_active && ble_pauses == 1);
     assert(!kvm_media_network_change_begin());
     assert(!tud_msc_test_unit_ready_cb(0));
     assert(tud_msc_test_unit_ready_cb(0));
@@ -153,6 +165,7 @@ int main(void)
     m = poll_request();
     assert(request[32] == 0x72);
     assert(command(M_EJECT, 0, 0).flags == M_BUSY);
+    assert(ble_wifi_media_active);
     assert(completed == 1);
     answer(m, M_OK);
     finish();
@@ -161,6 +174,7 @@ int main(void)
     /* Bus resets invalidate both pending response IDs and prevention state. */
     assert(tud_msc_prevent_allow_medium_removal_cb(0, 1, 0));
     assert(command(M_EJECT, 0, 0).flags == M_PROTECTED);
+    assert(ble_wifi_media_active);
     assert(tud_msc_read10_cb(0, 40, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
     stale = poll_request();
     tud_event_hook_cb(0, 1, false);
@@ -189,14 +203,17 @@ int main(void)
     mock_time += 3000001;
     finish();
     assert(completion == TUD_MSC_RET_ERROR);
+    assert(!ble_wifi_media_active); /* A failed HTTP disk restores discovery. */
     assert(!tud_msc_test_unit_ready_cb(0));
     assert(kvm_media_metrics(&metrics) && metrics.reads == 3 && metrics.read_bytes == 3 * 8192);
     m = command(M_HELLO, 0, 0);
     session = m.session;
     assert(kvm_media_metrics(&metrics) && !metrics.reads && !metrics.read_time_us && !metrics.cache_bytes);
     assert(command(M_INSERT, 0, 1024 * 1024).flags == M_OK);
+    assert(ble_wifi_media_active && ble_pauses == 2);
     assert(tud_msc_write10_cb(0, 0, 0, usb, sizeof(usb)) == TUD_MSC_RET_ERROR);
     assert(command(M_EJECT, 0, 0).flags == M_OK);
+    assert(!ble_wifi_media_active);
     mock_time += 5000001;
     size_t n;
     kvm_media_poll(request, &n);
@@ -215,6 +232,7 @@ int main(void)
     n = media_encode(frame, &serial, NULL, 0);
     n = kvm_media_command_from(MEDIA_SOURCE_SERIAL, frame, n, reply);
     assert(media_decode(reply, n, &serial) && !serial.flags);
+    assert(!ble_wifi_media_active && ble_pauses == 2); /* UART disks do not pause BLE. */
     assert(tud_msc_read10_cb(0, 160, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
     assert(!kvm_media_poll_from(MEDIA_SOURCE_HTTP, request, &n));
     assert(kvm_media_poll_from(MEDIA_SOURCE_SERIAL, request, &n));
@@ -250,6 +268,7 @@ int main(void)
         assert(completion == sizeof(usb));
     }
     assert(command(M_EJECT, 0, 0).flags == M_OK);
+    assert(!ble_wifi_media_active);
     mock_time += 5000001;
     assert(!kvm_media_poll(request, &n));
     assert(command(M_STATUS, 0, 0).flags == M_STALE); /* Idle lease is unchanged. */
@@ -263,6 +282,18 @@ int main(void)
     n = kvm_media_command(frame, n, frame);
     assert(media_decode(frame, n, &echo) && echo.op == (M_ECHO | 128));
     assert(n == MEDIA_HEADER + MEDIA_MAX_IO && !memcmp(frame + MEDIA_HEADER, data, sizeof(data)));
+
+    /* Target ejection and HTTP disconnect also restore discovery; a protected
+     * target eject must leave it paused until the disk is actually removed. */
+    assert(command(M_INSERT, 0, 1024 * 1024).flags == M_OK);
+    assert(ble_wifi_media_active);
+    assert(tud_msc_prevent_allow_medium_removal_cb(0, 1, 0));
+    assert(!tud_msc_start_stop_cb(0, 0, false, true) && ble_wifi_media_active);
+    assert(tud_msc_prevent_allow_medium_removal_cb(0, 0, 0));
+    assert(tud_msc_start_stop_cb(0, 0, false, true) && !ble_wifi_media_active);
+    assert(command(M_INSERT, 0, 1024 * 1024).flags == M_OK && ble_wifi_media_active);
+    kvm_media_disconnect();
+    assert(!ble_wifi_media_active);
 
     /* Distinct pulses, bounded reboot window, validation, and deadline. */
     boot_config_t c = {0x45, 100, 80, 300, 1000};
@@ -286,5 +317,5 @@ int main(void)
     c.interval = 80;
     assert(!boot_config_valid(&c));
     puts("PASS: protocol, async reads/write ACKs, prefetch, bounds, stale responses, bus/BOT "
-         "reset, ejection, disconnect deadlines, boot repetition");
+         "reset, ejection, disconnect deadlines, BLE discovery policy, boot repetition");
 }

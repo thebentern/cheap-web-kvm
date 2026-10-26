@@ -15,6 +15,7 @@
 #if CONFIG_KVM_BLE_ENABLED
 
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -89,6 +90,61 @@ static volatile bool     s_subscribed;
 static volatile uint32_t s_passkey = CONFIG_KVM_BLE_PASSKEY;
 
 static void advertise(void);
+static atomic_bool s_wifi_media_active, s_host_ready, s_adv_event_pending;
+static struct ble_npl_event s_adv_event;
+static TaskHandle_t s_adv_worker;
+
+/* The event queue can block when full. Only this worker posts to it; media/USB
+ * callers and GAP callbacks merely notify the worker without waiting. */
+static void request_advertising_update(void)
+{
+    if (atomic_load(&s_host_ready))
+        xTaskNotifyGive(s_adv_worker);
+}
+void kvm_ble_set_wifi_media_active(bool active)
+{
+    atomic_store(&s_wifi_media_active, active);
+    request_advertising_update();
+}
+bool kvm_ble_advertising_pause_requested(void)
+{
+    return atomic_load(&s_wifi_media_active);
+}
+bool kvm_ble_advertising_active(void)
+{
+    /* NimBLE documents adv_active() as an atomic snapshot requiring no mutex.
+     * Its static state remains valid across host resets. */
+    return atomic_load(&s_host_ready) && ble_gap_adv_active();
+}
+static void advertising_update(struct ble_npl_event *event)
+{
+    (void)event;
+    /* Clearing at entry allows a concurrent state change to queue another pass. */
+    atomic_store(&s_adv_event_pending, false);
+    if (!atomic_load(&s_host_ready))
+        return;
+    if (atomic_load(&s_wifi_media_active)) {
+        if (ble_gap_adv_active()) {
+            int rc = ble_gap_adv_stop();
+            if (rc != 0 && rc != BLE_HS_EALREADY)
+                ESP_LOGW(TAG, "pausing advertising failed; rc=%d", rc);
+        }
+    } else {
+        advertise();
+    }
+    /* A later host event performs any restart; never stop/start in one pass. */
+}
+static void advertising_worker(void *arg)
+{
+    (void)arg;
+    for (;;) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        bool expected = false;
+        if (atomic_load(&s_host_ready) &&
+            atomic_compare_exchange_strong(&s_adv_event_pending, &expected, true))
+            ble_npl_eventq_put(nimble_port_get_dflt_eventq(), &s_adv_event);
+    }
+}
 
 /* ------------------------------------------------------------------- GATT */
 
@@ -196,7 +252,7 @@ static int gap_event(struct ble_gap_event *event, void *arg)
     case BLE_GAP_EVENT_CONNECT:
         kvm_led_pairing(false);
         if (event->connect.status != 0) {
-            advertise();
+            request_advertising_update();
             return 0;
         }
         s_conn_handle = event->connect.conn_handle;
@@ -209,11 +265,11 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         ESP_LOGI(TAG, "disconnected; reason=0x%x", event->disconnect.reason);
         s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
         s_subscribed  = false;
-        advertise();
+        request_advertising_update();
         return 0;
 
     case BLE_GAP_EVENT_ADV_COMPLETE:
-        advertise();
+        request_advertising_update();
         return 0;
 
     case BLE_GAP_EVENT_SUBSCRIBE:
@@ -264,6 +320,9 @@ static int gap_event(struct ble_gap_event *event, void *arg)
  * the scan response. Hosts filter on the UUID and show the name. */
 static void advertise(void)
 {
+    if (!atomic_load(&s_host_ready) || atomic_load(&s_wifi_media_active) ||
+        s_conn_handle != BLE_HS_CONN_HANDLE_NONE || ble_gap_adv_active())
+        return;
     struct ble_hs_adv_fields fields;
     memset(&fields, 0, sizeof(fields));
     fields.flags                = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
@@ -324,11 +383,15 @@ static void on_sync(void)
     if (s_passkey == 123456) {
         ESP_LOGW(TAG, "using the default passkey 123456; change it in the web UI's settings");
     }
-    advertise();
+    atomic_store(&s_host_ready, true);
+    request_advertising_update();
 }
 
 static void on_reset(int reason)
 {
+    atomic_store(&s_host_ready, false);
+    s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
+    s_subscribed = false;
     kvm_led_pairing(false);
     ESP_LOGW(TAG, "host reset; reason=%d", reason);
 }
@@ -419,12 +482,23 @@ esp_err_t kvm_ble_start(void)
 
     ble_store_config_init();
 
+    ble_npl_event_init(&s_adv_event, advertising_update, NULL);
+    if (xTaskCreate(advertising_worker, "ble_adv", 2048, NULL, 3,
+                   &s_adv_worker) != pdPASS)
+        return ESP_ERR_NO_MEM;
     if (xTaskCreate(ble_rx_task, "kvm_ble", KVM_BLE_TASK_STACK, NULL,
                     KVM_BLE_TASK_PRIO, NULL) != pdPASS) {
+        vTaskDelete(s_adv_worker);
+        s_adv_worker = NULL;
         return ESP_ERR_NO_MEM;
     }
     nimble_port_freertos_init(host_task);
     return ESP_OK;
 }
 
+#else
+#include "kvm_ble.h"
+void kvm_ble_set_wifi_media_active(bool active) { (void)active; }
+bool kvm_ble_advertising_active(void) { return false; }
+bool kvm_ble_advertising_pause_requested(void) { return false; }
 #endif /* CONFIG_KVM_BLE_ENABLED */

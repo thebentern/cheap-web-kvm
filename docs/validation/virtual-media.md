@@ -538,3 +538,56 @@ Short writes resume at the exact byte; zero, negative and impossible results
 fail the link. The 8 KiB protocol limit, single outstanding disk request and
 durable-write rules are unchanged. Native wire/partial-send/error tests and the
 private board build pass. A measured comparison still requires deployment.
+
+The coalesced build `614f504` was subsequently flashed through the programming
+bridge with both USB ports attached through a hub, with flash data verification.
+The same 2 MiB cached-disabled read took **38.817 s (54,026 B/s)**. Board mean
+request turnaround was 140.58 ms, while Node response handoff averaged below
+1 ms. These individual runs do **not** demonstrate a coalescing speedup; the USB
+topology also changed from direct to hub. The test disk was ejected through the
+host, then the media protocol, before the source process closed.
+[Machine-readable measurements](wifi-media-performance.json) retain the scope
+and limits. Radio scheduling is the next controlled experiment.
+
+USB inventory checks must recursively traverse hubs and include `ioreg -l` to
+read descendant properties. Earlier checks only inspected top-level device
+matches, and a later query omitted non-matching IOMedia properties. Those checks
+could incorrectly report an absent USB device or disk. Corrected checks confirm
+the exact board identity and its storage ancestry behind the hub. The programming
+bridge now flashes automatically; the earlier failures do not establish that the
+bridge is defective.
+
+### Give inserted Wi-Fi media priority over Bluetooth discovery
+
+The board now pauses advertising only while an HTTP/WSS-owned disk is present.
+Existing BLE connections are not terminated. Successful client/target ejection,
+disconnect or media failure restores discovery; rejected or protected ejection
+keeps the policy in place. Serial media does not pause discovery. An atomic
+setter only notifies a policy task; that task queues work on the NimBLE host.
+This keeps potentially blocking NPL/HCI operations outside USB callbacks and
+the media mutex. Advertising restart runs in a separate host event.
+
+Native tests cover these ownership/ejection/failure transitions, and a build
+without Bluetooth checks the stubs. The private board build passes. Runtime
+diagnostics confirm actual advertising rather than only the requested state:
+true while idle, false during insertion, true after ejection. Actual Wi-Fi
+power saving is disabled (`0`), operating mode is AP+STA (`3`), and successful
+tests used channel 1 with roughly -60 dBm signal. No network names, passwords or
+access tokens appear in diagnostics.
+
+Two more 2 MiB, host-cache-disabled reads through real USB MSC and the same Node
+WSS source took **14.118 s (148,540 B/s)** and **14.492 s (144,712 B/s)**.
+Each required exactly 2 MiB of new remote replies. Compared with the preceding
+hub run at 54,026 B/s, these are **2.68–2.75 times faster**. Mean remote request
+turnaround fell from 140.58 ms to 44.31/45.84 ms. Both test disks were ejected
+by the host and then synchronized through the media protocol; advertising
+restored afterward. These tests use a controlled Node source, not browser OPFS,
+and do not prove full Wyse boot timing or simultaneous established BLE HID
+performance. Saved user images were not scanned.
+
+The Mac was kept unlocked and awake for the successful runs. Some earlier mount
+attempts failed and their sessions expired; fresh sessions and native USB
+re-enumeration allowed testing to continue. An earlier exclusive-open log named
+Edge, but subsequent inspection found no current Edge claim, so that log does
+not establish the mount failure's cause. Edge remained open during the successful
+measurements.

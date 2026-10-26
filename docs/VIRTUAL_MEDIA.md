@@ -87,6 +87,12 @@ enough memory to start.
    the separate HDMI capture stick. Tablets do not need Web Serial/Bluetooth for
    control once the board's Wi-Fi and certificate trust are configured.
 
+While a Wi-Fi disk is inserted, the board pauses Bluetooth discovery to give
+Wi-Fi more radio time. Existing Bluetooth control connections remain active.
+Eject the disk before starting or reconnecting Bluetooth; discovery resumes
+after ejection or media-link failure. USB serial disks do not pause discovery.
+Keeping an existing Bluetooth connection can still reduce Wi-Fi throughput.
+
 The device keeps its own certificate authority and keys in NVS. Its server
 certificate is issued with an 800-day lifetime, within the 825-day limit in
 [Apple’s TLS server certificate requirements](https://support.apple.com/en-us/103769). The authority itself

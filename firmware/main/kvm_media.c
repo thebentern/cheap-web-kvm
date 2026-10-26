@@ -12,6 +12,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "kvm_boot.h"
+#include "kvm_ble.h"
 #include "kvm_hid.h"
 #include "sdkconfig.h"
 #include "tusb.h"
@@ -89,6 +90,7 @@ static void fail_link(void)
     connected = false;
     owner = MEDIA_SOURCE_NONE;
     present = false;
+    kvm_ble_set_wifi_media_active(false);
     failed = true;
     invalidate();
     if (io.active) {
@@ -328,6 +330,7 @@ size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t n
                 atomic_store(&block_count, capacity / 512);
                 writable = m.flags & M_WRITABLE;
                 present = true;
+                kvm_ble_set_wifi_media_active(owner == MEDIA_SOURCE_HTTP);
                 failed = false;
                 invalidate();
             }
@@ -341,6 +344,7 @@ size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t n
                 status = M_BUSY;
             else {
                 present = false;
+                kvm_ble_set_wifi_media_active(false);
                 failed = false;
                 invalidate();
             }
@@ -537,6 +541,7 @@ bool tud_msc_start_stop_cb(uint8_t lun, uint8_t power, bool start, bool eject)
     bool ok = !io.active && !(eject && !start && prevented);
     if (ok && eject && !start) {
         present = false;
+        kvm_ble_set_wifi_media_active(false);
         invalidate();
     }
     /* A target cannot insert an ejected browser source without consent. */

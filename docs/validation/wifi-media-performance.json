@@ -1,0 +1,85 @@
+{
+  "date": "2026-10-26",
+  "board": {
+    "chip": "ESP32-S3 rev0.2",
+    "mac": "58:e6:c5:45:7d:a0",
+    "psramMiB": 2,
+    "psramMode": "Quad",
+    "nativeUsbVidPid": "303A:4004",
+    "programmingBridgeVidPid": "1A86:55D3"
+  },
+  "workload": {
+    "diskSizeBytes": 67108864,
+    "payloadSizeBytes": 33554432,
+    "readSizeBytes": 2097152,
+    "readonly": true,
+    "hostFileCacheDisabled": true,
+    "readChunkBytes": 65536,
+    "source": "Node HTTPS/WSS file server on Mac; excludes browser OPFS and storage worker",
+    "wire": "same authenticated TLS media protocol and real USB MSC target reads"
+  },
+  "measurements": [
+    {
+      "code": "6960150",
+      "change": "TCP_NODELAY, WIFI_PS_NONE, active IO lease renewal",
+      "bytes": 2097152,
+      "seconds": 33.962213082937524,
+      "bytesPerSecond": 61749.568406471146
+    },
+    {
+      "code": "614f504",
+      "change": "coalesced WebSocket frame transport writes",
+      "bytes": 2097152,
+      "seconds": 38.81748670898378,
+      "bytesPerSecond": 54025.96040600029,
+      "remoteMeanMs": 140.57962109375,
+      "remoteReadBytes": 2097152,
+      "hostEjected": true
+    },
+    {
+      "code": "614f504+ble-pause-trial",
+      "change": "Pause BLE discovery during inserted HTTP media; preserve established connections",
+      "bytes": 2097152,
+      "seconds": 14.118416167097166,
+      "bytesPerSecond": 148540.17442037107,
+      "remoteMeanMs": 44.30705078125,
+      "remoteReadBytes": 2097152,
+      "hostEjected": true,
+      "usbTopology": "hub"
+    },
+    {
+      "code": "614f504+ble-pause-trial",
+      "change": "Pause BLE discovery during inserted HTTP media; preserve established connections",
+      "bytes": 2097152,
+      "seconds": 14.491854040999897,
+      "bytesPerSecond": 144712.47047250156,
+      "remoteMeanMs": 45.83781640625,
+      "remoteReadBytes": 2097152,
+      "hostEjected": true,
+      "usbTopology": "hub"
+    }
+  ],
+  "conclusion": "With Bluetooth discovery paused, two same-workload reads measured 144,712\u2013148,540 B/s versus the preceding hub baseline of 54,026 B/s (2.68\u20132.75x). Full browser OPFS and Wyse OS boot timings remain unmeasured.",
+  "limitations": [
+    "Synthetic Node source is not the browser OPFS path.",
+    "The first measurement used direct native USB; the second used a USB hub.",
+    "Samples are not a full Wyse boot or sustained write qualification.",
+    "No saved user image was scanned or verified.",
+    "Mac was kept unlocked and awake during the successful radio-policy measurements; individual run rates are not a universal guarantee."
+  ],
+  "radioValidation": {
+    "powerSave": 0,
+    "mode": 3,
+    "channel": 1,
+    "rssiDuringSuccessfulTests": [
+      -62,
+      -60
+    ],
+    "idleAdvertising": true,
+    "insertedAdvertising": false,
+    "insertedPauseRequested": true,
+    "ejectedAdvertising": true,
+    "ejectedPauseRequested": false,
+    "establishedBleControlUnderLoadTested": false
+  }
+}

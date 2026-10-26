@@ -4,6 +4,7 @@
  */
 #include "kvm_media.h"
 #include "kvm_wifi.h"
+#include "kvm_ble.h"
 #include "sdkconfig.h"
 #if CONFIG_KVM_MEDIA_WIFI
 
@@ -15,6 +16,7 @@
 #include "esp_https_server.h"
 #include "esp_event.h"
 #include "esp_heap_caps.h"
+#include "esp_wifi.h"
 #endif
 #include "esp_log.h"
 
@@ -51,12 +53,29 @@ static esp_err_t diagnostics(httpd_req_t *req)
         httpd_resp_set_status(req, "503 Service Unavailable");
         return httpd_resp_sendstr(req, "Media diagnostics busy");
     }
+    wifi_ps_type_t power_save;
+    wifi_mode_t mode;
+    int wifi_power_save = esp_wifi_get_ps(&power_save) == ESP_OK ? (int)power_save : -1;
+    int wifi_mode = esp_wifi_get_mode(&mode) == ESP_OK ? (int)mode : -1;
+    wifi_ap_record_t ap;
+    int wifi_rssi = -127;
+    unsigned wifi_channel = 0;
+    if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) {
+        wifi_rssi = ap.rssi;
+        wifi_channel = ap.primary;
+    }
     char body[512];
-    snprintf(body, sizeof(body), "{\"freeHeap\":%u,\"minimumHeap\":%u,\"largestBlock\":%u,\"tlsError\":%d,\"tlsCode\":%d,\"tlsFlags\":%d,"
+    int n = snprintf(body, sizeof(body), "{\"freeHeap\":%u,\"minimumHeap\":%u,\"largestBlock\":%u,\"tlsError\":%d,\"tlsCode\":%d,\"tlsFlags\":%d,\"bleAdvertising\":%s,\"bleAdvertisingPauseRequested\":%s,"
+        "\"wifiPowerSave\":%d,\"wifiMode\":%d,\"wifiRssi\":%d,\"wifiChannel\":%u,"
         "\"media\":{\"reads\":%" PRIu32 ",\"readBytes\":%" PRIu64 ",\"readTimeUs\":%" PRIu64 ",\"readMaxUs\":%" PRIu64 ",\"cacheBytes\":%" PRIu64 "}}",
         (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT), (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
         (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), atomic_load(&tls_last_error), atomic_load(&tls_code), atomic_load(&tls_flags),
+        kvm_ble_advertising_active() ? "true" : "false",
+        kvm_ble_advertising_pause_requested() ? "true" : "false",
+        wifi_power_save, wifi_mode, wifi_rssi, wifi_channel,
         metrics.reads, metrics.read_bytes, metrics.read_time_us, metrics.read_max_us, metrics.cache_bytes);
+    if (n < 0 || (size_t)n >= sizeof(body))
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Diagnostics unavailable");
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     httpd_resp_set_hdr(req, "Connection", "close");
