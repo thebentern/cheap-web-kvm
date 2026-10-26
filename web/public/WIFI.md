@@ -31,7 +31,9 @@ Router-client mode defaults to keeping a **recovery hotspot** available at the
 same time (AP+STA). That hotspot has its own saved name/password and stays usable
 if joining the router fails. The UI can show its saved password on request. If
 you disable recovery, use Serial or Bluetooth to fix an incorrect router setting.
-USB HID remains connected while the network changes.
+USB HID remains connected while the network changes. The recovery hotspot uses
+`192.168.4.x`; if your router uses that same subnet and routing fails, disable
+recovery and use Serial/Bluetooth for setup.
 
 ## Save, status, and recovery
 

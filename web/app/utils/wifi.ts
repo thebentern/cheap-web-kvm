@@ -72,7 +72,9 @@ export function validateWifi(c: WifiChanges) {
         `${name} password must be 8–63 printable ASCII characters${allowEmpty ? ' (or select an open network)' : ''}.`,
       )
   if (c.token !== undefined && !/^[\x21-\x7e]{16,80}$/.test(c.token))
-    throw new Error('Helper token must be 16–80 printable ASCII characters without spaces.')
+    throw new Error(
+      'Helper token must be 16–80 printable ASCII characters without spaces.',
+    )
 }
 export class WifiClient {
   constructor(
@@ -120,6 +122,21 @@ export class WifiClient {
       offset += data.length
     } while (offset < total)
     return decode.decode(new Uint8Array(chunks))
+  }
+  async ready(): Promise<WifiConfig> {
+    const deadline = Date.now() + 5000
+    for (;;) {
+      try {
+        return await this.config()
+      } catch (e) {
+        if (
+          Date.now() >= deadline ||
+          (e as Error).message.includes('has no Wi-Fi settings')
+        )
+          throw e
+        await new Promise((resolve) => setTimeout(resolve, 250))
+      }
+    }
   }
   async config(): Promise<WifiConfig> {
     const p = await this.request(WIFI_CMD.GET)

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   WifiClient,
   WIFI_CMD,
@@ -144,4 +144,40 @@ describe('Wi-Fi settings protocol', () => {
     validateWifi({ ...config(), mode: 0, staSsid: '' })
     validateWifi({ ...config(), staSsid: 'a'.repeat(32) })
   })
+})
+
+it('waits through serial boot timeouts before reading board settings', async () => {
+  vi.useFakeTimers()
+  let metadataReads = 0
+  const client = new WifiClient(async (f, cmd) => {
+    if (!f[4]) {
+      if (!metadataReads++) return { ok: false, timeout: true, payload: null }
+      return {
+        ok: true,
+        timeout: false,
+        payload: new Uint8Array([1, 1, 1, 1, 1, 0, 1, 0]),
+      }
+    }
+    const field = f[6]!,
+      value = field === WIFI_FIELD.AP_SSID ? 'Recovery' : ''
+    return {
+      ok: true,
+      timeout: false,
+      payload: new Uint8Array([
+        1,
+        field,
+        value.length,
+        0,
+        ...new TextEncoder().encode(value),
+      ]),
+    }
+  })
+  try {
+    const ready = client.ready()
+    await vi.advanceTimersByTimeAsync(250)
+    expect((await ready).apSsid).toBe('Recovery')
+    expect(metadataReads).toBe(2)
+  } finally {
+    vi.useRealTimers()
+  }
 })

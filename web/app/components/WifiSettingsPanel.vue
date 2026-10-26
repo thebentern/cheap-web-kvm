@@ -37,17 +37,19 @@ const locked = computed(
     media.busy.value,
 )
 const stateLabel = computed(() =>
-  !kvm.link.connected.value
-    ? 'Control link disconnected'
-    : status.value?.pending
-      ? 'Applying saved settings…'
-      : [
-          'Wi-Fi off',
-          'Hotspot active',
-          'Joining router…',
-          'Connected to router',
-          'Connection failed',
-        ][status.value?.state ?? 0],
+  busy.value && !loaded.value
+    ? 'Reading board settings…'
+    : !kvm.link.connected.value
+      ? 'Control link disconnected'
+      : status.value?.pending
+        ? 'Applying saved settings…'
+        : [
+            'Wi-Fi off',
+            'Hotspot active',
+            'Joining router…',
+            'Connected to router',
+            'Connection failed',
+          ][status.value?.state ?? 0],
 )
 let timer: ReturnType<typeof setInterval> | undefined,
   disposed = false
@@ -63,9 +65,9 @@ async function act(fn: () => Promise<void>) {
     busy.value = false
   }
 }
-async function load() {
+async function load(waitForBoot = false) {
   await act(async () => {
-    const c = await client.config()
+    const c = await (waitForBoot ? client.ready() : client.config())
     if (disposed) return
     mode.value = c.mode
     recovery.value = c.recovery
@@ -87,7 +89,7 @@ async function connect(which: 'serial' | 'ble') {
     if (!(await kvm.link.connect(which)))
       throw new Error(kvm.link.lastError.value ?? 'Connection was cancelled')
   })
-  if (kvm.link.connected.value) await load()
+  if (kvm.link.connected.value) await load(true)
 }
 async function save() {
   await act(async () => {
@@ -204,7 +206,15 @@ onBeforeUnmount(() => {
         Hotspot IP: {{ status?.apIp || 'inactive' }} · Router IP:
         {{ status?.clientIp || 'not connected' }}
       </p>
-      <p v-if="mode === 2 && recovery && status?.clientIp.startsWith('192.168.4.')" class="kvm-hint">The router and recovery hotspot share the 192.168.4.x subnet. Disable recovery and use Serial/Bluetooth if routing fails.</p>
+      <p
+        v-if="
+          mode === 2 && recovery && status?.clientIp.startsWith('192.168.4.')
+        "
+        class="kvm-hint"
+      >
+        The router and recovery hotspot share the 192.168.4.x subnet. Disable
+        recovery and use Serial/Bluetooth if routing fails.
+      </p>
       <p v-if="status?.state === 4" class="kvm-hint">
         Check the network name, password, signal and 2.4 GHz support. The board
         stops retrying after five retries; Save and apply retries. Reason

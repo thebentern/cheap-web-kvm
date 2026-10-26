@@ -197,3 +197,16 @@ exercise bad-password/missing-SSID/DHCP-timeout cases with recovery AP retained,
 turn Wi-Fi off/on while checking USB HID remains enumerated, and rotate the helper
 token with the disk ejected. Router credentials must be entered by the owner;
 software tests do not claim a successful join to their network.
+
+
+### Board checks for the Wi-Fi settings follow-up
+
+On the connected ESP32-S3 rev 0.2 (8 MB flash, 2 MB embedded PSRAM; PSRAM remains
+disabled), UART commands reported hotspot active at `192.168.4.1` with no platform
+error. A deliberately incomplete client configuration was rejected without
+changing the running hotspot. A recovery setting was saved, verified after a
+hardware reset, then restored; the board returned to hotspot mode successfully.
+This verifies the configuration control path, NVS persistence and apply lifecycle
+on that board. It does not prove router association/DHCP against a real network,
+Bluetooth pairing, wireless media speed, or Wyse boot. The expanded web suite has
+142 passing tests in addition to the native media and Wi-Fi settings harnesses.
