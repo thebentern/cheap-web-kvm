@@ -15,21 +15,20 @@ for USB bring-up.
 
 ## Setup
 
-1. Build the firmware with ESP-IDF 5.4 (minimum 5.3), using `idf.py menuconfig`
-   in `firmware`. Enable **cheap-web-kvm → Experimental client-backed media over
-   Wi-Fi**. Choose an AP SSID, an 8–63 character WPA2 password, and a distinct
-   16–80 character helper token. Networking stays disabled with blank credentials;
-   it is off in the ordinary browser-installer build. Never publish your
-   `sdkconfig`, compiled credential-bearing firmware, or token.
-2. The current defaults use the 1500 KiB factory application partition. Existing
-   configurations may still select the old 1 MiB slot; choose the large single
-   factory app partition when enabling Wi-Fi. Keep Espressif's
-   `CONFIG_TINYUSB_MSC_ENABLED` **disabled**: `kvm_tusb_config.h` enables the TinyUSB
-   class without linking Espressif's SD/flash filesystem frontend. Build rejects
-   an incompatible configuration. The TinyUSB version is pinned to the 0.21 API.
-3. Flash this build through the client-facing UART bridge. Join its WPA2 network
-   from the laptop. The ESP32 AP address is `192.168.4.1`. UART/Bluetooth control
-   can still be used independently.
+1. Install firmware containing the runtime Wi-Fi settings interface. The normal
+   build includes it and starts Wi-Fi off until configured. In **Settings → Wi-Fi**
+   (also available in Virtual media), connect Serial through the UART/programming
+   port or use paired Bluetooth and load board settings.
+2. Choose **Hotspot** to create a separate Wi-Fi network, or **Router client** to
+   join an existing 2.4 GHz network. Router-client mode can keep a separate recovery
+   hotspot available. Save/apply; settings persist on the board. Read the hotspot
+   or DHCP client IP from status. See [Wi-Fi setup](WIFI.md) for passwords, recovery,
+   and helper-token controls. Existing build-time credentials are bootstrap values
+   only and are superseded by saved settings.
+3. Keep Espressif's `CONFIG_TINYUSB_MSC_ENABLED` disabled: the project enables MSC
+   via `kvm_tusb_config.h` without the SD/flash frontend. Existing configurations
+   may need the 1500 KiB factory app slot. Join the chosen network from the client
+   and helper host; UART/Bluetooth control still works independently.
 4. Generate the Nuxt UI with the root base URL and start the existing Go HTTPS
    helper with the fixed ESP32 upstream:
 

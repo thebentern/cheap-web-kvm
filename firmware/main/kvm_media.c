@@ -31,6 +31,7 @@ static atomic_bool present, writable, failed, prevented, changed, connected;
 static atomic_uint block_count;
 static int64_t heartbeat;
 static bool wifi_input_used;
+static bool network_changing;
 static struct {
     bool active, sent, done, completion;
     uint32_t id, epoch, length, usb_length;
@@ -193,6 +194,22 @@ bool kvm_media_poll(uint8_t *out, size_t *len)
         usbd_defer_func(finish_usb, (void *)(uintptr_t)defer_id, false);
     return send;
 }
+bool kvm_media_network_change_begin(void)
+{
+    if (xSemaphoreTake(lock, pdMS_TO_TICKS(10)) != pdTRUE)
+        return false;
+    bool ok = !present && !io.active && !network_changing;
+    if (ok)
+        network_changing = true;
+    xSemaphoreGive(lock);
+    return ok;
+}
+void kvm_media_network_change_end(void)
+{
+    xSemaphoreTake(lock, portMAX_DELAY);
+    network_changing = false;
+    xSemaphoreGive(lock);
+}
 void kvm_media_disconnect(void)
 {
     if (xSemaphoreTake(lock, portMAX_DELAY) == pdTRUE) {
@@ -258,7 +275,7 @@ size_t kvm_media_command(const uint8_t *in, size_t n, uint8_t *out)
             if (pn || m.length || (m.flags & ~M_WRITABLE) || m.offset < 512 || m.offset % 512 ||
                 m.offset / 512 > UINT32_MAX)
                 status = M_INVALID;
-            else if (present || io.active || prevented)
+            else if (present || io.active || prevented || network_changing)
                 status = M_BUSY;
             else {
                 capacity = m.offset;
@@ -305,10 +322,14 @@ size_t kvm_media_command(const uint8_t *in, size_t n, uint8_t *out)
                 break;
             }
             /* Fresh parser for each complete frame; no partial-command smuggling. */
+            /* Configuration commands can acquire the network-change gate.
+             * Never dispatch them while holding the media state mutex. */
+            xSemaphoreGive(lock);
             ch9329_parser_init(&hid_parser, hid_tx);
             hid_reply_len = 0;
             for (size_t i = 0; i < pn; i++)
                 ch9329_parser_feed(&hid_parser, p[i]);
+            xSemaphoreTake(lock, portMAX_DELAY);
             if (!hid_reply_len)
                 status = M_INVALID;
             else {

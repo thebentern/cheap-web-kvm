@@ -109,7 +109,11 @@ int main(void)
     media_msg_t m = command(M_HELLO, 0, 0);
     assert(!m.flags);
     session = m.session;
+    assert(kvm_media_network_change_begin());
+    assert(command(M_INSERT, M_WRITABLE, 1024 * 1024).flags == M_BUSY);
+    kvm_media_network_change_end();
     assert(command(M_INSERT, M_WRITABLE, 1024 * 1024).flags == M_OK);
+    assert(!kvm_media_network_change_begin());
     assert(!tud_msc_test_unit_ready_cb(0));
     assert(tud_msc_test_unit_ready_cb(0));
     uint8_t usb[4096];

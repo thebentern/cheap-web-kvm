@@ -14,6 +14,7 @@ on:
       - 'tools/verify_descriptors.py'
       - 'docs/PROTOCOL.md'
       - 'docs/VIRTUAL_MEDIA.md'
+      - 'docs/WIFI.md'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 
@@ -73,6 +74,7 @@ jobs:
         run: |
           cp ../docs/PROTOCOL.md public/PROTOCOL.md
           cp ../docs/VIRTUAL_MEDIA.md public/VIRTUAL_MEDIA.md
+          cp ../docs/WIFI.md public/WIFI.md
 
       - name: Generate static site
         run: npm run generate

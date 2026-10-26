@@ -3,19 +3,23 @@
  * authenticated WebSocket owns the medium. USB work never calls the network.
  */
 #include "kvm_media.h"
+#include "kvm_wifi.h"
 #include "sdkconfig.h"
 #if CONFIG_KVM_MEDIA_WIFI
-#include "esp_event.h"
+
 #include "esp_http_server.h"
 #include "esp_log.h"
-#include "esp_netif.h"
-#include "esp_wifi.h"
+
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include <stdatomic.h>
 #include <string.h>
 #include <unistd.h>
 static httpd_handle_t server;
+static SemaphoreHandle_t net_lock;
+static TaskHandle_t pump_task;
+static char access_token[81];
 static atomic_int owner = -1;
 static uint8_t rx[MEDIA_HEADER + MEDIA_MAX_IO], reply[MEDIA_HEADER + MEDIA_MAX_IO];
 static uint8_t tx[MEDIA_HEADER + MEDIA_MAX_IO];
@@ -33,7 +37,7 @@ static esp_err_t ws(httpd_req_t *req)
     if (req->method == HTTP_GET) {
         char token[96];
         if (httpd_req_get_hdr_value_str(req, "X-KVM-Token", token, sizeof(token)) != ESP_OK ||
-            strcmp(token, CONFIG_KVM_MEDIA_TOKEN)) {
+            strcmp(token, access_token)) {
             httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, "Use the authenticated HTTPS helper");
             return ESP_FAIL;
         }
@@ -67,14 +71,14 @@ static esp_err_t ws(httpd_req_t *req)
 static atomic_bool queued;
 static void send_work(void *arg)
 {
-    (void)arg;
+    httpd_handle_t handle = arg;
     size_t n = 0;
     if (kvm_media_poll(tx, &n)) {
         int fd = atomic_load(&owner);
         if (fd >= 0) {
             httpd_ws_frame_t f = {.type = HTTPD_WS_TYPE_BINARY, .payload = tx, .len = n};
-            if (httpd_ws_send_frame_async(server, fd, &f) != ESP_OK)
-                httpd_sess_trigger_close(server, fd);
+            if (httpd_ws_send_frame_async(handle, fd, &f) != ESP_OK)
+                httpd_sess_trigger_close(handle, fd);
         } else
             kvm_media_disconnect();
     }
@@ -84,48 +88,65 @@ static void pump(void *arg)
 {
     (void)arg;
     for (;;) {
+        xSemaphoreTake(net_lock, portMAX_DELAY);
+        httpd_handle_t handle = server;
         bool expected = false;
-        if (atomic_compare_exchange_strong(&queued, &expected, true)) {
-            if (httpd_queue_work(server, send_work, NULL) != ESP_OK)
+        if (handle && atomic_compare_exchange_strong(&queued, &expected, true)) {
+            if (httpd_queue_work(handle, send_work, handle) != ESP_OK)
                 atomic_store(&queued, false);
+        }
+        xSemaphoreGive(net_lock);
+        if (!handle) {
+            size_t n;
+            if (kvm_media_poll(tx, &n))
+                kvm_media_disconnect();
         }
         vTaskDelay(pdMS_TO_TICKS(2));
     }
 }
-esp_err_t kvm_media_network_start(void)
+void kvm_media_http_stop(void)
 {
-    if (strlen(CONFIG_KVM_MEDIA_PASSWORD) < 8 || strlen(CONFIG_KVM_MEDIA_PASSWORD) > 63 ||
-        strlen(CONFIG_KVM_MEDIA_TOKEN) < 16 || strlen(CONFIG_KVM_MEDIA_TOKEN) > 80 ||
-        !strlen(CONFIG_KVM_MEDIA_SSID) || strlen(CONFIG_KVM_MEDIA_SSID) > 31) {
-        ESP_LOGE("media",
-                 "Wi-Fi disabled: configure SSID (1-31), AP password (8-63), and token (16-80)");
-        return ESP_OK;
-    }
-    ESP_ERROR_CHECK(esp_netif_init());
-    esp_err_t e = esp_event_loop_create_default();
-    if (e != ESP_OK && e != ESP_ERR_INVALID_STATE)
-        return e;
-    esp_netif_create_default_wifi_ap();
-    wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&init));
-    wifi_config_t wifi = {
-        .ap = {.max_connection = 2, .authmode = WIFI_AUTH_WPA2_PSK, .channel = 6}};
-    strlcpy((char *)wifi.ap.ssid, CONFIG_KVM_MEDIA_SSID, sizeof(wifi.ap.ssid));
-    strlcpy((char *)wifi.ap.password, CONFIG_KVM_MEDIA_PASSWORD, sizeof(wifi.ap.password));
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    if (!net_lock)
+        return;
+    xSemaphoreTake(net_lock, portMAX_DELAY);
+    httpd_handle_t old = server;
+    server = NULL;
+    xSemaphoreGive(net_lock);
+    if (old)
+        httpd_stop(old);
+    atomic_store(&queued, false);
+}
+esp_err_t kvm_media_http_start(const char *token)
+{
+    if (!net_lock)
+        net_lock = xSemaphoreCreateMutex();
+    if (!net_lock)
+        return ESP_ERR_NO_MEM;
+    strlcpy(access_token, token, sizeof(access_token));
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.close_fn = closed;
     cfg.stack_size = 6144;
     cfg.recv_wait_timeout = 1;
     cfg.send_wait_timeout = 1;
     cfg.max_open_sockets = 3;
-    ESP_ERROR_CHECK(httpd_start(&server, &cfg));
+    httpd_handle_t handle;
+    esp_err_t err = httpd_start(&handle, &cfg);
+    if (err != ESP_OK)
+        return err;
     httpd_uri_t uri = {.uri = "/media", .method = HTTP_GET, .handler = ws, .is_websocket = true};
-    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &uri));
-    return xTaskCreate(pump, "media_net", 3072, NULL, 3, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
+    err = httpd_register_uri_handler(handle, &uri);
+    if (err != ESP_OK) {
+        httpd_stop(handle);
+        return err;
+    }
+    xSemaphoreTake(net_lock, portMAX_DELAY);
+    server = handle;
+    xSemaphoreGive(net_lock);
+    if (!pump_task && xTaskCreate(pump, "media_net", 3072, NULL, 3, &pump_task) != pdPASS) {
+        kvm_media_http_stop();
+        return ESP_ERR_NO_MEM;
+    }
+    return ESP_OK;
 }
-#else
-esp_err_t kvm_media_network_start(void) { return ESP_OK; }
 #endif
+esp_err_t kvm_media_network_start(void) { return kvm_wifi_start(); }

@@ -157,15 +157,16 @@ static void ble_tx(const uint8_t *frame, size_t len)
         return;
     }
 
-    struct os_mbuf *om = ble_hs_mbuf_from_flat(frame, len);
-    if (om == NULL) {
-        ESP_LOGW(TAG, "out of mbufs, dropping reply");
-        return;
-    }
-    /* Consumes om, success or not. */
-    const int rc = ble_gatts_notify_custom(conn, s_tx_handle, om);
-    if (rc != 0) {
-        ESP_LOGW(TAG, "notify failed; rc=%d", rc);
+    /* Replies now include Wi-Fi settings. Respect even the default ATT MTU;
+     * the browser parser already accepts a frame split across notifications. */
+    uint16_t mtu=ble_att_mtu(conn);
+    size_t chunk=mtu>3?mtu-3:20;
+    for(size_t at=0;at<len;at+=chunk) {
+        size_t n=len-at;if(n>chunk)n=chunk;
+        struct os_mbuf *om=ble_hs_mbuf_from_flat(frame+at,n);
+        if(!om){ESP_LOGW(TAG,"out of mbufs, dropping reply");return;}
+        int rc=ble_gatts_notify_custom(conn,s_tx_handle,om);
+        if(rc){ESP_LOGW(TAG,"notify failed; rc=%d",rc);return;}
     }
 }
 

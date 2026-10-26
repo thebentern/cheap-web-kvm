@@ -11,6 +11,7 @@ const props = withDefaults(
 
 /** Stroked paths, drawn on a 24×24 grid. */
 const STROKED: Record<string, string> = {
+  wifi: '<path d="M2 8.5a16 16 0 0 1 20 0M5.5 12a10.5 10.5 0 0 1 13 0M9 15.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none"/>',
   check: '<polyline points="20 6 9 17 4 12"/>',
   'check-circle': '<circle cx="12" cy="12" r="9"/><polyline points="16.5 9 10.75 15 7.5 12"/>',
   x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',

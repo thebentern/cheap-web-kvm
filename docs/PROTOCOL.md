@@ -425,3 +425,54 @@ with illegal request. HID interface 0 remains boot-compatible and has no report 
 
 See [Virtual media](VIRTUAL_MEDIA.md) for FAT32 ownership, persistent overlays,
 export semantics, local proof mode, limitations, and hardware acceptance steps.
+
+## 12. Runtime Wi-Fi settings (version 1)
+
+The web UI configures Wi-Fi through the existing UART/bonded BLE CH9329 link, or
+through its authenticated Wi-Fi HID envelope. New commands remain below `40`.
+Passwords are stored in a separate `kvm_wifi/settings` NVS blob, not browser
+settings. A fresh build includes the interface and starts Wi-Fi off; explicit
+build-time hotspot credentials are bootstrap values only. Saved settings win on
+later boots. Disabling `CONFIG_KVM_MEDIA_WIFI` makes these commands return `E3`.
+
+Modes: `0` off, `1` WPA2 hotspot, `2` router client with DHCP. Client mode can keep
+an independently configured recovery hotspot (AP+STA). No IBSS/ad-hoc networking,
+enterprise authentication, static IP UI or network scanning is advertised.
+
+Fields: `1` mode (one byte), `2` hotspot SSID (≤32 bytes), `3` hotspot password
+(8–63 printable ASCII), `4` router SSID (≤32 bytes), `5` router password (8–63
+printable ASCII, or explicitly empty for open client networks), `6` helper token
+(16–80 printable non-space ASCII), `7` recovery hotspot (one byte, 0/1).
+SSIDs are UTF-8 in the browser. Password fields omitted from a transaction retain
+their saved values. All messages fit the existing 64-byte payload ceiling.
+
+| CMD | Request | Reply |
+|---|---|---|
+| `35` metadata | Empty | `[version=1, supported=1, mode, recovery, ap_password_set, router_password_set, token_set, apply_pending]` |
+| `35` field read | `[1, field, offset]` | `[1, field, total_bytes, offset, up_to_60_data_bytes]`; readable fields 2/4, plus 3/6 only when explicitly requested. Router password field 5 is never returned. |
+| `36` begin | `[1, 0]` | `[1, transaction_id_u32_LE]`; snapshot of current settings, bound to the parser/control owner, with a 30 s expiry. Another owner cannot replace an active transaction. |
+| `36` field fragment | `[1, field, transaction_id_u32_LE, offset, total_bytes, up_to_56_data_bytes]` | `00` on acceptance. Fragments must be contiguous, within bounds, and contain no embedded NUL. Offset 0 starts/restarts that field. Empty total/data explicitly clears a string field. |
+| `37` commit/apply | `[1, transaction_id_u32_LE]` | `00` only after full validation and NVS commit. Missing/expired/wrong-owner fragments fail. Requires ejected, idle media; insertion is reserved/blocked until applying completes. |
+| `38` status | Empty | 19 bytes: `[1, mode, state, apply_pending, hotspot_ipv4×4, router_ipv4×4, retries, disconnect_reason_u16_LE, esp_error_u32_LE]` |
+
+State values: `0` off, `1` hotspot active, `2` joining/waiting for address, `3`
+router connected with DHCP address, `4` failure. All-zero IPv4 means unavailable.
+Client retries are bounded to five retries and a 45 s joining/address deadline.
+Recovery AP remains available on failure; a new apply retries. Status never
+contains a password or token.
+
+Invalid requests/settings return `E5`; busy media, another transaction owner,
+apply already pending, NVS or platform failures return `E6`; mutex timeout `E1`.
+A failed NVS commit leaves the running config unchanged. Applying waits 500 ms
+after acknowledgement before stopping/restarting Wi-Fi and the HTTP endpoint.
+USB HID and BLE are not restarted. Changing Wi-Fi/token can disconnect a Wi-Fi
+control session; Serial or Bluetooth remains the recovery route.
+
+The media lock is released before dispatching Wi-Fi HID envelopes, so a settings
+commit can safely reserve the media-change gate without recursive locking. The
+HTTP pump stops queueing work before server shutdown and is joined before token
+replacement/restart. Serial transactions are serialized so status/configuration
+replies cannot clear a concurrent HID reply. BLE writes use 20-byte fragments
+and notifications respect the negotiated ATT MTU; both parsers reassemble the
+same complete CH9329 frame. The first BLE write still uses an authenticated
+write-with-response to trigger pairing.

@@ -167,6 +167,10 @@ onMounted(() => {
       >
         {{ error }}
       </p>
+      <details class="mt-4 rounded border border-ink-600 p-3">
+        <summary class="cursor-pointer text-sm font-semibold">Wi-Fi setup · hotspot or router client</summary>
+        <div class="mt-3"><WifiSettingsPanel /></div>
+      </details>
       <div class="mt-4 grid gap-3 sm:grid-cols-2">
         <label class="text-sm"
           >Media backend
@@ -203,7 +207,7 @@ onMounted(() => {
       </div>
       <p class="kvm-hint mt-2">
         Wi-Fi via the local HTTPS helper. Serial at 115200 and Bluetooth remain
-        control links. Configure the AP password and helper token in firmware;
+        control links. Configure the network and helper token in Settings → Wi-Fi;
         see the virtual-media guide in the repository.
       </p>
       <p class="mt-2 font-mono text-xs">

@@ -9,3 +9,10 @@ esp_err_t kvm_media_network_start(void);
 size_t kvm_media_command(const uint8_t *in, size_t len, uint8_t *reply);
 bool kvm_media_poll(uint8_t *out, size_t *len);
 void kvm_media_disconnect(void);
+
+/* Reserve a disk-free window while changing the network, blocking insertion. */
+bool kvm_media_network_change_begin(void);
+void kvm_media_network_change_end(void);
+/* Owned by the Wi-Fi settings task; stop joins the HTTP task before restart. */
+esp_err_t kvm_media_http_start(const char *token);
+void kvm_media_http_stop(void);

@@ -6,6 +6,8 @@ idf_component_register(
         "kvm_hid.c"
         "kvm_media.c"
         "kvm_media_net.c"
+        "kvm_wifi.c"
+        "wifi_settings.c"
         "media_protocol.c"
         "boot_repeat.c"
         "ch9329.c"
@@ -21,6 +23,7 @@ idf_component_register(
         esp_timer
         nvs_flash
         esp_wifi
+        bootloader_support
         esp_http_server
         esp_netif
 )

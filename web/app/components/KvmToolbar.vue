@@ -103,7 +103,7 @@ const linkButtons = computed<LinkButton[]>(() => {
       'Disconnect Bluetooth',
     )
   }
-  if (kvm.link.wifiAvailable.value) add('wifi', 'globe', 'Use Wi-Fi for keyboard and mouse', 'Connecting Wi-Fi…', 'Wi-Fi keyboard and mouse active')
+  if (kvm.link.wifiAvailable.value) add('wifi', 'wifi', 'Use Wi-Fi for keyboard and mouse', 'Connecting Wi-Fi…', 'Wi-Fi keyboard and mouse active')
   return out
 })
 

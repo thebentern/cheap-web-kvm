@@ -45,8 +45,9 @@ acknowledged. Safely eject before client edits, retrieving target-created files,
 or exporting the updated image. F12 repetition runs in firmware across target
 reboots, with configurable timing and cancellation.
 
-This workflow uses an opt-in Wi-Fi firmware build and the local HTTPS helper;
-the ordinary installer keeps networking disabled. Serial/Bluetooth HID still
+Configure a hotspot or router-client connection in **Settings → Wi-Fi**;
+[network settings](docs/WIFI.md) persist on the board. Fresh installations start
+Wi-Fi off. Virtual media uses the local HTTPS helper. Serial/Bluetooth HID still
 works independently. Follow the [setup and persistence guide](docs/VIRTUAL_MEDIA.md)
 and [hardware acceptance procedure](docs/validation/virtual-media.md). No measured
 board throughput or successful Wyse boot is claimed yet. The published mPWRD-OS

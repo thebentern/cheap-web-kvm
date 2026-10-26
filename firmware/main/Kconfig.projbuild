@@ -60,19 +60,20 @@ menu "cheap-web-kvm"
             Supply your own small bootable UEFI image and verify its license.
 
     config KVM_MEDIA_WIFI
-        bool "Experimental client-backed media over Wi-Fi"
+        bool "Wi-Fi configuration and experimental client-backed media"
         depends on !KVM_MEDIA_LOCAL_PROOF
-        default n
+        default y
         select HTTPD_WS_SUPPORT
         help
-            WPA2 AP plus authenticated WebSocket. Run the HTTPS helper on the
-            client and benchmark the actual board before relying on OS boot.
-            Blank credentials disable networking. UART/BLE HID still works.
+            Configure hotspot, router-client mode or Wi-Fi off from the web UI
+            over serial or bonded Bluetooth. Settings persist in NVS. Client
+            mode can keep a recovery hotspot. Blank build credentials start
+            with Wi-Fi off; the browser can enable it without recompiling.
 
     config KVM_MEDIA_SSID
-        string "Media AP SSID"
+        string "Initial hotspot SSID (blank generates a device-specific name)"
         depends on KVM_MEDIA_WIFI
-        default "cheap-web-kvm-media"
+        default ""
 
     config KVM_MEDIA_PASSWORD
         string "Media AP WPA2 password (8-63 characters)"

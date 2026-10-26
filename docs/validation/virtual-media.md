@@ -180,3 +180,20 @@ Keep the client-facing UART powered independently if target USB power disappears
 Acceptance remains **unverified** until stages 1, 3, 5 and 7 pass on the Wyse with
 usable simultaneous HID, plus the failure/persistence tests. Record failures as
 failures and keep the feature experimental until those results exist.
+
+
+## Runtime Wi-Fi configuration follow-up
+
+The settings UI now supports off, hotspot, and router-client/DHCP modes with an
+optional separate recovery hotspot. Native settings tests cover bounds, partial
+fragments, wrong-owner/transaction rejection, expiry, and open-client passwords.
+Browser tests cover 64-byte framing, long credential fragmentation, token paging,
+IP/status decoding, serial reply serialization and minimum-MTU BLE reassembly.
+Changing networks is blocked by both UI and firmware until media is ejected.
+
+Hardware follow-up: load and save hotspot settings over UART/Bluetooth, power-cycle
+and confirm NVS persistence, join a real 2.4 GHz router and read its DHCP address,
+exercise bad-password/missing-SSID/DHCP-timeout cases with recovery AP retained,
+turn Wi-Fi off/on while checking USB HID remains enumerated, and rotate the helper
+token with the disk ejected. Router credentials must be entered by the owner;
+software tests do not claim a successful join to their network.

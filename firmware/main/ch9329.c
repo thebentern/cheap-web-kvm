@@ -21,6 +21,7 @@
 #include "kvm_ble.h"
 #include "kvm_boot.h"
 #include "kvm_hid.h"
+#include "kvm_wifi.h"
 
 static const char *TAG = "ch9329";
 
@@ -135,6 +136,18 @@ static void dispatch(const ch9329_parser_t *p)
     memset(&evt, 0, sizeof(evt));
 
     switch (p->cmd) {
+    case KVM_CMD_WIFI_GET:
+    case KVM_CMD_WIFI_STAGE:
+    case KVM_CMD_WIFI_APPLY:
+    case KVM_CMD_WIFI_STATUS: {
+        uint8_t data[CH9329_MAX_PAYLOAD], len = 0;
+        uint8_t error = kvm_wifi_command(p, p->cmd, p->data, p->len, data, &len);
+        if (error)
+            reply_err(p, error);
+        else
+            send_frame(p, CH9329_REPLY_OK(p->cmd), data, len);
+        return;
+    }
     case 0x32: /* Boot repetition: key + four little-endian millisecond values. */
         if (p->len != 17) {
             reply_err(p, CH9329_ERR_PARAM);

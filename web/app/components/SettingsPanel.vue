@@ -19,7 +19,7 @@ const panels = usePanels()
 const toasts = useToasts()
 const { settings, reset } = useSettings()
 
-type TabId = 'display' | 'audio' | 'input' | 'hotkeys' | 'advanced' | 'about'
+type TabId = 'display' | 'audio' | 'input' | 'hotkeys' | 'advanced' | 'wifi' | 'about'
 
 interface Tab {
   id: TabId
@@ -32,6 +32,7 @@ const TABS: Tab[] = [
   { id: 'audio', label: 'Audio', icon: 'volume-up' },
   { id: 'input', label: 'Keyboard & mouse', icon: 'keyboard' },
   { id: 'hotkeys', label: 'Hotkeys', icon: 'bolt' },
+  { id: 'wifi', label: 'Wi-Fi', icon: 'wifi' },
   { id: 'advanced', label: 'Advanced', icon: 'wrench' },
   { id: 'about', label: 'About', icon: 'info' },
 ]
@@ -553,6 +554,7 @@ onBeforeUnmount(() => {
           </section>
 
           <!-- ----------------------------------------------------- Advanced -->
+          <section v-else-if="tab === 'wifi'"><h4 class="mb-3 text-sm font-semibold">Wi-Fi configuration</h4><WifiSettingsPanel /></section>
           <section v-else-if="tab === 'advanced'">
             <h4 class="flex items-center gap-2 text-sm font-semibold text-mist-100">
               <AppIcon name="wrench" class="text-signal-400" /> Advanced
@@ -672,8 +674,8 @@ onBeforeUnmount(() => {
                   A browser-based USB KVM. Video and audio come in from a UVC capture card;
                   keystrokes and pointer movement go out over Web Serial or Bluetooth to a
                   CH9329-compatible HID bridge, which the target sees as an ordinary USB keyboard and
-                  mouse. There is no server and nothing to reach on the network — it works on a bench
-                  with no internet at all.
+                  mouse. Serial and Bluetooth control work without internet. Optional virtual media uses
+                  Wi-Fi and a local HTTPS helper.
                 </p>
               </div>
 

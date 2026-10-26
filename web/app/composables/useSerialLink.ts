@@ -25,6 +25,9 @@ const lastError = ref<string | null>(null)
 /** Bytes received since the last command was sent. */
 let rxBuffer: number[] = []
 let readLoopRunning = false
+let generation = 0
+let queued = 0
+let transactions = Promise.resolve()
 
 export interface SendResult {
   ok: boolean
@@ -90,6 +93,7 @@ export function useSerialLink() {
   }
 
   async function disconnect() {
+    generation++
     try {
       if (reader.value) {
         await reader.value.cancel().catch(() => {})
@@ -109,7 +113,7 @@ export function useSerialLink() {
   }
 
   /** Write a frame and wait for its acknowledgement. */
-  async function sendAndWait(frame: Uint8Array, cmd: number): Promise<SendResult> {
+  async function transact(frame: Uint8Array, cmd: number): Promise<SendResult> {
     if (!writer.value) return { ok: false, timeout: false, payload: null }
 
     rxBuffer = []
@@ -126,6 +130,16 @@ export function useSerialLink() {
     }
     rxBuffer = []
     return { ok: false, timeout: true, payload: null }
+  }
+
+  function sendAndWait(frame: Uint8Array, cmd: number): Promise<SendResult> {
+    if (queued >= 128 || !connected.value) return Promise.resolve({ ok: false, timeout: false, payload: null })
+    const mine = generation
+    queued++
+    const result = transactions.then(async () => mine === generation && connected.value
+      ? transact(frame, cmd) : { ok: false, timeout: false, payload: null })
+    transactions = result.then(() => {}, () => {})
+    return result.finally(() => { queued-- })
   }
 
   return {

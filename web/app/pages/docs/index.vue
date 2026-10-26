@@ -15,6 +15,7 @@ interface DocLink {
 }
 
 const links: DocLink[] = [
+  { title: 'Wi-Fi setup: hotspot or router client', blurb: 'Configure Wi-Fi in the browser over Serial or Bluetooth, keep a recovery hotspot, and read the board’s DHCP address.', href: `${REPO}/blob/main/docs/WIFI.md`, cta: 'Wi-Fi setup' },
   {
     title: 'Virtual media and FAT32 file sharing (experimental)',
     blurb: 'Stream a local boot image, create a FAT32 thumb drive, save target writes, export files, and arm F12 repetition. Includes Wi-Fi helper setup and outstanding hardware checks.',
