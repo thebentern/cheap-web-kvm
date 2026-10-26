@@ -19,7 +19,7 @@ but changing that network will disconnect it.
 - **Hotspot (access point):** the board creates its own WPA2-protected network.
   Enter its network name and password, save, and join it from the laptop/tablet.
   The default hotspot address is `192.168.4.1`.
-- **Router client (station):** the board joins your existing **2.4 GHz personal
+- **Client:** the board joins your existing **2.4 GHz personal
   Wi-Fi network**. Enter its exact SSID and password. Choose “open network” only
   for a network intentionally configured without a password. The router supplies
   the board's address through DHCP; read it in the status panel. Enterprise Wi-Fi,
@@ -27,7 +27,7 @@ but changing that network will disconnect it.
 
 These use normal Wi-Fi infrastructure modes, **not ad-hoc/IBSS**.
 
-Router-client mode defaults to keeping a **recovery hotspot** available at the
+Client mode defaults to keeping a **recovery hotspot** available at the
 same time (AP+STA). That hotspot has its own saved name/password and stays usable
 if joining the router fails. The UI can show its saved password on request. If
 you disable recovery, use Serial or Bluetooth to fix an incorrect router setting.

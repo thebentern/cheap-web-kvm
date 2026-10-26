@@ -104,7 +104,7 @@ async function save() {
       !hasStaPassword.value
     )
       throw new Error(
-        'Enter the router password or explicitly select an open network.',
+        'Enter the network password or explicitly select an open network.',
       )
     await client.apply({
       mode: mode.value,
@@ -116,7 +116,7 @@ async function save() {
       token: token.value || undefined,
     })
     notice.value =
-      'Saved on the board. Wi-Fi changes now; USB keyboard/mouse stay connected. Router-client mode obtains its address automatically. Keep Serial/Bluetooth connected to see status.'
+      'Saved on the board. Wi-Fi changes now; USB keyboard/mouse stay connected. Client mode obtains its address automatically. Keep Serial/Bluetooth connected to see status.'
     apPassword.value = ''
     staPassword.value = ''
     token.value = ''
@@ -167,7 +167,7 @@ onBeforeUnmount(() => {
 <template>
   <section class="space-y-3" aria-label="Wi-Fi configuration">
     <p class="kvm-hint">
-      Hotspot creates the board’s own Wi-Fi network. Router client joins your
+      Hotspot creates the board’s own Wi-Fi network. Client joins your
       existing 2.4 GHz personal Wi-Fi network. Neither uses ad-hoc mode.
       Settings are saved on the board.
     </p>
@@ -203,7 +203,7 @@ onBeforeUnmount(() => {
     </p>
     <template v-else>
       <p v-if="status?.apIp || status?.clientIp" class="text-sm">
-        Hotspot IP: {{ status?.apIp || 'inactive' }} · Router IP:
+        Hotspot IP: {{ status?.apIp || 'inactive' }} · Client IP:
         {{ status?.clientIp || 'not connected' }}
       </p>
       <p
@@ -232,7 +232,7 @@ onBeforeUnmount(() => {
           >
             <option :value="0">Off</option>
             <option :value="1">Hotspot (access point)</option>
-            <option :value="2">Router client (station)</option>
+            <option :value="2">Client</option>
           </select></label
         >
         <div
@@ -240,14 +240,14 @@ onBeforeUnmount(() => {
           class="space-y-3 rounded border border-ink-600 p-3"
         >
           <label class="block text-sm"
-            >Router network name (SSID)<input
+            >Network name (SSID)<input
               v-model="staSsid"
               class="kvm-input mt-1 w-full"
               autocomplete="off"
               maxlength="32"
           /></label>
           <label class="block text-sm"
-            >Router password<input
+            >Network password<input
               v-model="staPassword"
               type="password"
               class="kvm-input mt-1 w-full"
@@ -257,7 +257,7 @@ onBeforeUnmount(() => {
               :placeholder="
                 hasStaPassword
                   ? 'Leave blank to keep saved password'
-                  : 'Enter router password'
+                  : 'Enter network password'
               "
           /></label>
           <label class="block text-sm"
@@ -274,10 +274,15 @@ onBeforeUnmount(() => {
             Enterprise Wi-Fi is not supported.
           </p>
         </div>
-        <div
+        <component
+          :is="mode === 1 ? 'div' : 'details'"
           v-if="mode === 1 || (mode === 2 && recovery)"
+          :key="mode"
           class="space-y-3 rounded border border-ink-600 p-3"
         >
+          <summary v-if="mode === 2" class="cursor-pointer text-sm">
+            Recovery hotspot settings
+          </summary>
           <label class="block text-sm"
             >Hotspot network name (SSID)<input
               v-model="apSsid"
@@ -300,7 +305,7 @@ onBeforeUnmount(() => {
           <p v-if="shownApPassword" class="break-all font-mono text-xs">
             {{ shownApPassword }}
           </p>
-        </div>
+        </component>
         <label class="block text-sm"
           >New helper access token<input
             v-model="token"
