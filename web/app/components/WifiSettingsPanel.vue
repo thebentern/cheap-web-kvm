@@ -65,9 +65,9 @@ async function act(fn: () => Promise<void>) {
     busy.value = false
   }
 }
-async function load(waitForBoot = false) {
+async function load() {
   await act(async () => {
-    const c = await (waitForBoot ? client.ready() : client.config())
+    const c = await client.ready()
     if (disposed) return
     mode.value = c.mode
     recovery.value = c.recovery
@@ -89,7 +89,7 @@ async function connect(which: 'serial' | 'ble') {
     if (!(await kvm.link.connect(which)))
       throw new Error(kvm.link.lastError.value ?? 'Connection was cancelled')
   })
-  if (kvm.link.connected.value) await load(true)
+  if (kvm.link.connected.value) await load()
 }
 async function save() {
   await act(async () => {

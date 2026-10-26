@@ -223,7 +223,7 @@ onBeforeUnmount(() => {
           </span>
           <div>
             <h3 id="kvm-settings-title" class="text-sm font-semibold text-mist-100">Settings</h3>
-            <p class="kvm-hint">Applied straight away, remembered in this browser</p>
+            <p class="kvm-hint">{{ tab === 'wifi' ? 'Saved on the board with Save and apply' : 'Applied straight away, remembered in this browser' }}</p>
           </div>
         </div>
         <button type="button" class="kvm-btn kvm-btn-icon flex-none" title="Close settings" @click="close">
