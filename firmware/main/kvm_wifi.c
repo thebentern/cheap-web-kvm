@@ -16,6 +16,9 @@
 #include "kvm_media.h"
 #include "nvs.h"
 #include "wifi_settings.h"
+#if CONFIG_KVM_DEVICE_WEB
+#include "device_tls.h"
+#endif
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
@@ -203,13 +206,25 @@ static void run(void *arg)
     (void)arg;
     for (;;) {
         if (!ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000))) {
+            uint8_t client_ip[4], hotspot_ip[4];
             xSemaphoreTake(mutex, portMAX_DELAY);
             if (state == 2 && join_deadline && esp_timer_get_time() > join_deadline) {
                 state = 4;
                 join_expired = true;
                 last_error = ESP_ERR_TIMEOUT;
             }
+            bool serve = !pending && !atomic_load(&stopping) &&
+                         (state == 1 || state == 3 || (state == 4 && ap_ip[0]));
+            memcpy(client_ip, sta_ip, 4); memcpy(hotspot_ip, ap_ip, 4);
             xSemaphoreGive(mutex);
+            if (serve) {
+                esp_err_t e = kvm_media_https_ensure(client_ip, hotspot_ip);
+                if (e != ESP_OK && e != ESP_ERR_INVALID_STATE) {
+                    xSemaphoreTake(mutex, portMAX_DELAY);
+                    last_error = e;
+                    xSemaphoreGive(mutex);
+                }
+            }
             continue;
         }
         /* Give serial/BLE/HTTP enough time to deliver the save acknowledgement. */
@@ -247,7 +262,7 @@ esp_err_t kvm_wifi_start(void)
     e = esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, event, NULL);
     if (e != ESP_OK)
         return e;
-    if (xTaskCreate(run, "wifi_settings", 5120, NULL, 3, &worker) != pdPASS)
+    if (xTaskCreate(run, "wifi_settings", 12288, NULL, 3, &worker) != pdPASS)
         return ESP_ERR_NO_MEM;
     pending = true;
     xTaskNotifyGive(worker);
@@ -276,7 +291,20 @@ uint8_t kvm_wifi_command(const void *owner, uint8_t cmd, const uint8_t *p, size_
                               pending};
             memcpy(out, meta, sizeof(meta));
             *out_len = sizeof(meta);
-        } else if (n == 3 && p[0] == 1 &&
+        }
+#if CONFIG_KVM_DEVICE_WEB
+        else if (n == 3 && p[0] == 1 && p[1] == 0x80) {
+            const char *value = device_tls_fingerprint();
+            size_t len = value ? strlen(value) : 0, offset = p[2];
+            if (len != 64 || offset > len) error = CH9329_ERR_OPERATE;
+            else {
+                size_t count = len - offset; if (count > 60) count = 60;
+                out[0] = 1; out[1] = 0x80; out[2] = len; out[3] = offset;
+                memcpy(out + 4, value + offset, count); *out_len = 4 + count;
+            }
+        }
+#endif
+        else if (n == 3 && p[0] == 1 &&
                    (p[1] == WF_AP_SSID || p[1] == WF_STA_SSID || p[1] == WF_AP_PASSWORD ||
                     p[1] == WF_TOKEN)) {
             size_t cap;

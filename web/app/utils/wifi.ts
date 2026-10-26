@@ -15,6 +15,7 @@ export const WIFI_FIELD = {
   STA_PASSWORD: 5,
   TOKEN: 6,
   RECOVERY: 7,
+  CERTIFICATE_FINGERPRINT: 0x80,
 } as const
 export type WifiMode = 0 | 1 | 2
 export interface WifiConfig {
@@ -64,16 +65,13 @@ export function validateWifi(c: WifiChanges) {
     ['Hotspot', c.apPassword],
     ['Client', c.staPassword],
   ] as const)
-    if (
-      password !== undefined &&
-      !/^[\x20-\x7e]{8,63}$/.test(password)
-    )
+    if (password !== undefined && !/^[\x20-\x7e]{8,63}$/.test(password))
       throw new Error(
         `${name} password must be 8–63 printable ASCII characters.`,
       )
   if (c.token !== undefined && !/^[\x21-\x7e]{16,80}$/.test(c.token))
     throw new Error(
-      'Helper token must be 16–80 printable ASCII characters without spaces.',
+      'Media access token must be 16–80 printable ASCII characters without spaces.',
     )
 }
 export class WifiClient {
@@ -101,9 +99,11 @@ export class WifiClient {
       const max =
         field === WIFI_FIELD.TOKEN
           ? 80
-          : field === WIFI_FIELD.AP_PASSWORD
-            ? 63
-            : 32
+          : field === WIFI_FIELD.CERTIFICATE_FINGERPRINT
+            ? 64
+            : field === WIFI_FIELD.AP_PASSWORD
+              ? 63
+              : 32
       if (
         p.length < 4 ||
         p[0] !== 1 ||
@@ -122,6 +122,14 @@ export class WifiClient {
       offset += data.length
     } while (offset < total)
     return decode.decode(new Uint8Array(chunks))
+  }
+  async certificateFingerprint() {
+    const fingerprint = await this.field(WIFI_FIELD.CERTIFICATE_FINGERPRINT)
+    if (!/^[0-9a-f]{64}$/.test(fingerprint))
+      throw new Error(
+        'The board certificate is not ready. Enable Wi-Fi and try again in a few seconds.',
+      )
+    return fingerprint
   }
   async ready(): Promise<WifiConfig> {
     const deadline = Date.now() + 5000

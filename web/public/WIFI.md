@@ -1,7 +1,7 @@
 # Configure Wi-Fi in the web UI
 
-Open **Settings → Wi-Fi**, or **Virtual media → Wi-Fi setup**. Firmware with the
-Wi-Fi settings interface is required. The ordinary build now includes that
+Open **Settings → Wi-Fi** in the full hosted/local app for initial setup.
+Firmware with the Wi-Fi settings interface is required. The ordinary build now includes that
 interface and starts with Wi-Fi **off** until configured. A build with explicit
 bootstrap hotspot credentials uses them only until settings are saved on the
 board. Updating firmware preserves saved network settings in NVS.
@@ -47,7 +47,7 @@ Names are at most 32 UTF-8 bytes. Passwords are 8–63 printable ASCII character
 Client mode requires a saved or newly entered password. Blank password inputs
 preserve saved passwords. The router's
 saved password is never returned to the browser. New inputs and explicitly
-revealed hotspot credentials/helper tokens stay in memory and are not saved to
+revealed hotspot credentials/media access tokens stay in memory and are not saved to
 browser settings or logs.
 
 The panel reports off, hotspot active, joining, connected with DHCP IP, or failure,
@@ -58,23 +58,69 @@ password, signal and 2.4 GHz support if it fails.
 
 Settings are stored on the device across restarts. They are not erased by normal
 application/partition flashing; an explicit NVS erase or incompatible/corrupt
-settings can reset them. Factory hotspot passwords and helper tokens are generated
+settings can reset them. Factory hotspot passwords and media access tokens are generated
 with the hardware entropy source enabled before the radio starts.
 
-## Connect virtual media afterward
+## Open the board-hosted console
 
-Wi-Fi media uses the HTTPS helper below. USB media uses the programming cable
-and does not require Wi-Fi or the helper:
+The ESP32 serves its own UI once Wi-Fi is active. Use the hotspot IP or Client
+DHCP IP shown in the panel; a Go helper is no longer required for this workflow.
 
-1. Use the hotspot IP or router-client IP shown in the panel as the helper's
-   fixed upstream, for example `-media http://192.168.4.1` or `-media http://10.0.0.25`.
-2. Choose **Show saved helper token** and set that value as `KVM_MEDIA_TOKEN` for
-   the local helper. It is separate from the Wi-Fi password. The UI can generate
-   and save a replacement token; update/restart the helper after rotating it.
-3. Start/open the helper's HTTPS web UI, connect media, and select Wi-Fi HID if
-   desired. Both client and helper must be able to reach the board's chosen IP.
+The board needs functioning PSRAM to run HTTPS with Wi-Fi and Bluetooth. Published
+N8R8 firmware selects Octal RAM; boards with R2/2 MB RAM need a Quad build using
+`firmware/sdkconfig.quad-psram` on a clean configuration. Select the actual mode
+in **Component config → ESP PSRAM → SPI RAM config** when using menuconfig; there
+is no runtime Quad/Octal auto-detection. A missing-RAM fallback preserves basic
+USB/Bluetooth and HTTP setup bring-up, but HTTPS may lack the memory it needs.
+[Build profiles](https://github.com/thebentern/cheap-web-kvm#match-the-psram-mode).
 
-The UI is not hosted on the ESP32. Network configuration is implemented; successful
-joining of a particular router, Bluetooth/Wi-Fi coexistence and usable OS-image
-streaming throughput require hardware validation. See [virtual media](VIRTUAL_MEDIA.md)
-and [the test procedure](validation/virtual-media.md).
+1. Open `http://BOARD_IP/` for the setup page. Download the board's public
+   certificate authority from `/device/ca.crt` and compare its SHA-256 fingerprint
+   with the value read independently over the programming USB port or paired
+   Bluetooth. Do not use the fingerprint displayed over HTTP as the only check.
+   `tools/device_certificate.py` can download the certificate and verify it
+   against a USB readout; it leaves trust installation to you.
+2. Manually install the verified authority as trusted on each client computer or
+   tablet. This is a one-time platform trust step, not an instruction to bypass a
+   browser warning. The setup page describes Keychain Access on macOS, Trusted
+   Root Certification Authorities on Windows, and profile/full trust on iOS.
+3. Open `https://BOARD_IP/`. Under **Virtual media → Wi-Fi**, enter the media
+   access token from **Settings → Wi-Fi → Advanced → Show saved token** and
+   connect. Read that token initially through USB/Bluetooth. It is separate from
+   the network password and is used to pair this browser with the board.
+4. Select **Use Wi-Fi for keyboard & mouse** if desired. The same authenticated
+   connection carries media and HID. Native USB still connects to the target;
+   the separate capture stick supplies video.
+
+The board stores a unique certificate authority and its keys in NVS. The trust
+identity survives restarts and DHCP changes; a changed IP renews the server
+certificate with the current address. An NVS erase creates a new identity, which
+requires checking and trusting its replacement. The server's device hostname is
+included in its certificate; name resolution depends on your LAN configuration.
+
+Pairing creates a Secure, HttpOnly, SameSite=Strict browser cookie. The app does
+not save the access token in local settings. Pairing expires and is cleared by a
+board restart or a network/token change; enter the token again if requested.
+The firmware allows one media owner across USB and Wi-Fi and keeps its existing
+removal/synchronization rules. Eject media before changing network settings.
+
+The on-board UI includes the console, settings and virtual media. Its OCR control
+is disabled because the language/engine assets exceed the 8 MB board's flash
+budget; use the full hosted/local app for OCR. Firmware installation links to the
+hosted installer. Disk files and changes remain in browser storage, bound to that
+browser profile and exact origin. Opening a different IP/hostname or switching
+from a local/hosted UI does not carry that storage into the new origin.
+
+## Optional helper
+
+The existing Go HTTPS helper still works with older firmware and the full UI.
+Use the chosen board IP as its fixed upstream, for example
+`-media http://192.168.4.1`, and set the saved media access token as
+`KVM_MEDIA_TOKEN`. Open the helper's trusted HTTPS UI and leave the helper address
+blank when connecting from that same UI. After token rotation, update/restart any
+helper using the old token.
+
+On-board hosting is implemented. Router compatibility, Bluetooth/Wi-Fi
+coexistence, HTTPS resource use and usable OS-image streaming throughput require
+hardware validation. See [virtual media](VIRTUAL_MEDIA.md) and
+[the recorded test procedure](validation/virtual-media.md).

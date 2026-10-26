@@ -14,7 +14,7 @@ export async function websocketTransport(url: string): Promise<MediaTransport> {
   const ws = new WebSocket(url)
   ws.binaryType = 'arraybuffer'
   const transport: MediaTransport = {
-    label: 'Wi-Fi WebSocket via HTTPS helper',
+    label: 'Wi-Fi WebSocket',
     send(data) {
       if (ws.readyState !== WebSocket.OPEN)
         throw new Error('Media connection closed')
@@ -29,7 +29,7 @@ export async function websocketTransport(url: string): Promise<MediaTransport> {
       ws.close()
       reject(
         new Error(
-          'Media connection timed out. Check Wi-Fi, helper token, and HTTPS certificate.',
+          'Media connection timed out. Check Wi-Fi, the access token, and the HTTPS certificate.',
         ),
       )
     }, 5000)
@@ -41,7 +41,7 @@ export async function websocketTransport(url: string): Promise<MediaTransport> {
       clearTimeout(timeout)
       reject(
         new Error(
-          'Cannot connect. Open the HTTPS helper and trust its certificate first.',
+          'Cannot connect. Open the board or helper over trusted HTTPS, and check its access token.',
         ),
       )
     }

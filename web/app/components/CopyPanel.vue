@@ -11,12 +11,14 @@ import { useCapture } from '~/composables/useCapture'
 import { usePanels } from '~/composables/usePanels'
 import { useSettings } from '~/composables/useSettings'
 import { useToasts } from '~/composables/useToasts'
+import { useDeviceHost } from '~/composables/useDeviceHost'
 
 const props = defineProps<{ video: HTMLVideoElement | null }>()
 
 const panels = usePanels()
 const toasts = useToasts()
 const capture = useCapture()
+const deviceHost = useDeviceHost()
 const { settings } = useSettings()
 
 /* ------------------------------------------------------------------ tesseract */
@@ -298,6 +300,11 @@ function prettyStatus(s: string) {
 }
 
 async function runOcr() {
+  await deviceHost.initialize()
+  if (deviceHost.onboard.value) {
+    toasts.info('OCR copy is available in the full web app. Its engine does not fit in the board’s storage.')
+    return
+  }
   const crop = cropCanvas.value
   if (!crop) return
 

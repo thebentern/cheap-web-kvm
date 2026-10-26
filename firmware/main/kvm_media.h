@@ -21,4 +21,5 @@ bool kvm_media_network_change_begin(void);
 void kvm_media_network_change_end(void);
 /* Owned by the Wi-Fi settings task; stop joins the HTTP task before restart. */
 esp_err_t kvm_media_http_start(const char *token);
+esp_err_t kvm_media_https_ensure(const uint8_t client_ip[4], const uint8_t ap_ip[4]);
 void kvm_media_http_stop(void);

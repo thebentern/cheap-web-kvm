@@ -17,7 +17,7 @@ FLASH_SIZE = 8 * 1024 * 1024
 SECTOR_SIZE = 4096
 NVS_START = 0x9000
 NVS_END = 0xF000
-FACTORY_END = 0x110000
+FACTORY_SIZES = (0x100000, 0x3F0000)  # Legacy firmware and current on-board UI.
 FLASH_SETTINGS = {"flash_size": "8MB", "flash_mode": "dio", "flash_freq": "80m"}
 PARTS = (
     ("bootloader", 0, "bootloader/bootloader.bin", "bootloader.bin"),
@@ -95,9 +95,13 @@ def factory_end(partition_table: bytes) -> int:
     if nvs != [(1, 2, NVS_START, NVS_END - NVS_START, b"nvs", 0)]:
         raise ValueError("NVS must remain unencrypted at 0x9000..0xf000 to preserve the PIN and pairings")
     apps = [entry for entry in partitions if entry[0] == 0]
-    if len(apps) != 1 or apps[0][1:4] != (0, 0x10000, 0x100000) or apps[0][5] != 0:
-        raise ValueError("expected one unencrypted 1MB factory application at 0x10000")
-    return FACTORY_END
+    if (len(apps) != 1 or apps[0][1:3] != (0, 0x10000)
+            or apps[0][3] not in FACTORY_SIZES or apps[0][4:] != (b"factory", 0)):
+        raise ValueError("expected one unencrypted legacy 1MB or on-board UI factory application at 0x10000")
+    phy = [entry for entry in partitions if entry[0:2] == (1, 1)]
+    if phy != [(1, 1, 0xF000, 0x1000, b"phy_init", 0)] or len(partitions) != 3:
+        raise ValueError("PHY must remain at 0xf000 and no extra flash partitions are supported")
+    return apps[0][2] + apps[0][3]
 
 
 def package_firmware(build_dir: Path, output_dir: Path, version: str) -> dict:

@@ -33,6 +33,9 @@ const {
   inspection,
   activity,
   url,
+  boardToken,
+  onboard,
+  deviceInfo,
   transport,
   flags,
   preview,
@@ -219,7 +222,9 @@ onMounted(() => {
             {{
               transport === 'usb'
                 ? 'Use the board’s USB programming port.'
-                : 'Connect through the local HTTPS helper.'
+                : onboard
+                  ? 'Connect directly to this board over Wi-Fi.'
+                  : 'Connect through the local HTTPS helper.'
             }}
           </p>
         </div>
@@ -256,23 +261,58 @@ onMounted(() => {
           Wi-Fi
         </button>
       </div>
+      <div
+        v-if="transport === 'wifi' && onboard && !deviceInfo?.authenticated"
+        class="mt-3 space-y-2 rounded-lg border border-ink-600 p-3"
+      >
+        <label class="block text-sm"
+          >Access token<input
+            v-model="boardToken"
+            type="password"
+            autocomplete="off"
+            :spellcheck="false"
+            maxlength="80"
+            class="kvm-input mt-1 w-full"
+            :disabled="connected || connecting || locked"
+            @keydown.enter.prevent="media.connect()"
+        /></label>
+        <p class="kvm-hint">
+          Find this token in Settings → Wi-Fi → Advanced using USB or Bluetooth.
+          Pairing is saved as a private browser session; the token is not stored
+          by this app.
+        </p>
+      </div>
       <details class="mt-3 border-b border-ink-600 pb-3">
         <summary class="cursor-pointer text-sm text-mist-300">
           Connection settings
         </summary>
         <div class="mt-3 space-y-3">
-          <label v-if="transport === 'wifi'" class="block text-sm"
+          <label v-if="transport === 'wifi' && !onboard" class="block text-sm"
             >Helper address<input
               v-model="url"
               class="kvm-input mt-1 w-full"
               placeholder="wss://localhost:8443/media"
               :disabled="connected || locked"
           /></label>
-          <p v-if="transport === 'wifi'" class="kvm-hint">
+          <p v-if="transport === 'wifi' && !onboard" class="kvm-hint">
             Set up the board’s network in Settings → Wi-Fi, then start the HTTPS
             helper. Leave the address blank when using the helper’s own web UI.
           </p>
-          <div v-else class="space-y-2">
+          <p v-if="transport === 'wifi' && onboard" class="kvm-hint">
+            This page is served by the board. Media connects directly over
+            HTTPS; no helper is needed.
+          </p>
+          <p
+            v-if="
+              transport === 'wifi' &&
+              onboard &&
+              deviceInfo?.certificateFingerprint
+            "
+            class="kvm-hint break-all"
+          >
+            Board certificate SHA-256: {{ deviceInfo.certificateFingerprint }}
+          </p>
+          <div v-if="transport === 'usb'" class="space-y-2">
             <label class="block text-sm"
               >USB baud rate
               <select

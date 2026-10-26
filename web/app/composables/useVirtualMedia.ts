@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { reactive, ref, shallowRef } from 'vue'
 import { useSerialLink } from '~/composables/useSerialLink'
+import { useDeviceHost } from '~/composables/useDeviceHost'
+import { authenticateDevice } from '~/utils/deviceHost'
 import { MediaConnection } from '~/utils/media/client'
 import { FLAG, OP } from '~/utils/media/protocol'
 import { MediaHidQueue } from '~/utils/media/hidQueue'
@@ -34,12 +36,15 @@ const activity = reactive({
   benchmark: '',
 })
 const url = ref('')
+const boardToken = ref('')
 const transport = ref<'usb' | 'wifi'>('usb')
+const deviceHost = useDeviceHost()
 const hidQueue = new MediaHidQueue(transactHid)
 let worker: Worker | null = null,
   connection: MediaConnection | null = null,
   next = 0,
   transferStart = 0
+let hostDefaultsApplied = false
 const pending = new Map<
   number,
   { resolve: (v: any) => void; reject: (e: Error) => void }
@@ -120,6 +125,12 @@ async function refresh() {
     entries.value = await rpc('list', { path: [...path.value] })
 }
 async function syncPersistent() {
+  if (globalThis.isSecureContext === false || !navigator.storage)
+    throw new Error(
+      deviceHost.onboard.value
+        ? 'Trust this board’s certificate using its setup page, then reopen the HTTPS console. Browser storage is unavailable until this page is trusted.'
+        : 'Browser storage needs HTTPS or localhost. Reopen this app in a secure browser context.',
+    )
   persistent.value = !!(await navigator.storage.persisted?.())
   return persistent.value
 }
@@ -215,6 +226,26 @@ async function connect() {
           )
         await connection.connect(serial.mediaTransport())
       } else {
+        let device = await deviceHost.initialize()
+        if (device) {
+          device = await deviceHost.refresh()
+          if (!device)
+            throw new Error(
+              'Cannot reach the board. Check its Wi-Fi connection and reopen this HTTPS page.',
+            )
+        }
+        if (device && !device.authenticated) {
+          try {
+            await authenticateDevice(boardToken.value)
+            const paired = await deviceHost.refresh()
+            if (!paired?.authenticated)
+              throw new Error(
+                'Pairing could not be saved. Allow cookies for this board’s HTTPS page and try again.',
+              )
+          } finally {
+            boardToken.value = ''
+          }
+        }
         await connection.connect(
           url.value ||
             `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/media`,
@@ -387,6 +418,9 @@ export function useVirtualMedia() {
     flags,
     activity,
     url,
+    boardToken,
+    onboard: deviceHost.onboard,
+    deviceInfo: deviceHost.info,
     transport,
     preview,
     inspectFile: (name: string) =>
@@ -396,6 +430,16 @@ export function useVirtualMedia() {
       }),
     initialize: () =>
       run(async () => {
+        const device = await deviceHost.initialize()
+        if (
+          device &&
+          !hostDefaultsApplied &&
+          !connected.value &&
+          !inserted.value &&
+          !uncertain.value
+        )
+          transport.value = 'wifi'
+        hostDefaultsApplied = true
         await syncPersistent()
         await refresh()
       }),

@@ -1,5 +1,24 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+set(device_web_sources "")
+set(device_web_includes ".")
+if(CONFIG_KVM_DEVICE_WEB)
+    set(KVM_DEVICE_WEB_DIR "${PROJECT_DIR}/../web/.output/public" CACHE PATH "Root-based generated device web UI")
+    set(device_web_dir "${CMAKE_BINARY_DIR}/device_web")
+    file(GLOB_RECURSE device_web_inputs CONFIGURE_DEPENDS "${KVM_DEVICE_WEB_DIR}/*")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        ${device_web_inputs} "${PROJECT_DIR}/../tools/build_device_web.py")
+    execute_process(COMMAND "${PYTHON}" "${PROJECT_DIR}/../tools/build_device_web.py"
+        --input "${KVM_DEVICE_WEB_DIR}" --output "${device_web_dir}"
+        RESULT_VARIABLE web_result OUTPUT_VARIABLE web_output ERROR_VARIABLE web_error)
+    if(NOT web_result EQUAL 0)
+        message(FATAL_ERROR "Generate the root-based web UI first (NUXT_APP_BASE_URL=/ npm --prefix web run generate). ${web_error}")
+    endif()
+    message(STATUS "${web_output}")
+    set(device_web_sources "device_web.c" "device_tls.c" "${device_web_dir}/kvm_web_assets.c")
+    list(APPEND device_web_includes "${device_web_dir}")
+endif()
+
 idf_component_register(
     SRCS
         "main.c"
@@ -16,8 +35,9 @@ idf_component_register(
         "kvm_led.c"
         "kvm_led_pattern.c"
         "usb_descriptors.c"
+        ${device_web_sources}
     INCLUDE_DIRS
-        "."
+        ${device_web_includes}
     REQUIRES
         bt
         esp_driver_uart
@@ -26,6 +46,9 @@ idf_component_register(
         esp_wifi
         bootloader_support
         esp_http_server
+        esp_https_server
+        mbedtls
+        json
         esp_netif
 )
 

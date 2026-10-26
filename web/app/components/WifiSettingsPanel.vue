@@ -25,6 +25,7 @@ const apSsid = ref(''),
   staPassword = ref(''),
   token = ref(''),
   shownToken = ref(''),
+  certificateFingerprint = ref(''),
   shownApPassword = ref(''),
   hasStaPassword = ref(false)
 const status = ref<WifiStatus | null>(null)
@@ -129,6 +130,11 @@ async function secret(field: number) {
     const value = await client.field(field)
     if (field === WIFI_FIELD.TOKEN) shownToken.value = value
     else shownApPassword.value = value
+  })
+}
+async function readCertificate() {
+  await act(async () => {
+    certificateFingerprint.value = await client.certificateFingerprint()
   })
 }
 function generateToken() {
@@ -369,10 +375,23 @@ onBeforeUnmount(() => {
                 {{ shownToken }}
               </p>
               <p class="kvm-hint">
-                Use this token and the board's IP address with the HTTPS media
-                helper. After changing the token, update KVM_MEDIA_TOKEN in the
-                helper.
+                Use this token to pair a browser with the board’s HTTPS page. If
+                you use a separate media helper, also update its KVM_MEDIA_TOKEN
+                after changing this token.
               </p>
+              <template v-if="kvm.link.kind.value !== 'wifi'">
+                <button type="button" class="kvm-btn" @click="readCertificate">
+                  Read certificate fingerprint
+                </button>
+                <p v-if="certificateFingerprint" class="kvm-hint break-all">
+                  Board certificate SHA-256:
+                  <span class="mt-1 block font-mono text-xs">{{
+                    certificateFingerprint
+                  }}</span>
+                  Compare this value with the board’s certificate setup page
+                  before trusting its certificate on this device.
+                </p>
+              </template>
             </div>
             <p class="kvm-hint">
               WPA2 or better is required. Enterprise Wi-Fi is not supported.

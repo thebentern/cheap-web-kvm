@@ -1,0 +1,4 @@
+# ESP32-S3 R2 modules, including the connected board (2 MiB AP_3v3 PSRAM).
+# Use with sdkconfig.defaults on a clean build; an existing sdkconfig wins.
+CONFIG_SPIRAM_MODE_OCT=n
+CONFIG_SPIRAM_MODE_QUAD=y

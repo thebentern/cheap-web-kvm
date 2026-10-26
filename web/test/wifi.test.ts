@@ -78,7 +78,9 @@ describe('Wi-Fi settings protocol', () => {
         (f) => f[6] === WIFI_FIELD.STA_PASSWORD && f[4] === 8 && f[12] === 0,
       ),
     ).toBe(false)
-    await expect(client.apply({ ...c, staPassword: '' })).rejects.toThrow(/password/)
+    await expect(client.apply({ ...c, staPassword: '' })).rejects.toThrow(
+      /password/,
+    )
     let committed = false
     const bad = new WifiClient(async (f, cmd) => {
       if (cmd === WIFI_CMD.APPLY) committed = true
@@ -144,6 +146,42 @@ describe('Wi-Fi settings protocol', () => {
       ).toThrow()
     validateWifi({ ...config(), mode: 0, staSsid: '' })
     validateWifi({ ...config(), staSsid: 'a'.repeat(32) })
+  })
+  it('reads the complete certificate fingerprint over two bounded control frames', async () => {
+    const fingerprint = '0123456789abcdef'.repeat(4),
+      offsets: number[] = []
+    const client = new WifiClient(async (f) => {
+      expect(f[6]).toBe(WIFI_FIELD.CERTIFICATE_FINGERPRINT)
+      const offset = f[7]!
+      offsets.push(offset)
+      return {
+        ok: true,
+        timeout: false,
+        payload: new Uint8Array([
+          1,
+          WIFI_FIELD.CERTIFICATE_FINGERPRINT,
+          64,
+          offset,
+          ...new TextEncoder().encode(fingerprint.slice(offset, offset + 60)),
+        ]),
+      }
+    })
+    expect(await client.certificateFingerprint()).toBe(fingerprint)
+    expect(offsets).toEqual([0, 60])
+    const malformed = new WifiClient(async () => ({
+      ok: true,
+      timeout: false,
+      payload: new Uint8Array([
+        1,
+        WIFI_FIELD.CERTIFICATE_FINGERPRINT,
+        1,
+        0,
+        0x7a,
+      ]),
+    }))
+    await expect(malformed.certificateFingerprint()).rejects.toThrow(
+      /certificate is not ready/,
+    )
   })
 })
 

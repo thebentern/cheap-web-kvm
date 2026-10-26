@@ -38,18 +38,22 @@ device plugged into the host.
 
 ## Virtual media (experimental)
 
-Stream an unpacked `.img` or USB-bootable hybrid ISO from the browser, or create
-an actual FAT32 thumb drive for ordinary file sharing. The source stays unchanged;
+Stream an `.img`, directly imported `.img.xz`, or USB-bootable hybrid ISO from
+the browser, or create an actual FAT32 thumb drive for ordinary file sharing. The source stays unchanged;
 optional target writes commit to a persistent browser overlay before they are
 acknowledged. Safely eject before client edits, retrieving target-created files,
 or exporting the updated image. F12 repetition runs in firmware across target
 reboots, with configurable timing and cancellation.
 
 Virtual media connects over the USB programming cable at **921600 baud by
-default**, or over Wi-Fi through the local HTTPS helper. For Wi-Fi, configure
-Hotspot or Client in **Settings → Wi-Fi**; [network settings](docs/WIFI.md) persist
-on the board. Fresh installations start Wi-Fi off. Serial/Bluetooth HID remains
-available. Older firmware configured at 115200 needs that matching browser setting.
+default**, or over Wi-Fi from the board's own HTTPS console. For Wi-Fi, configure
+Hotspot or Client in **Settings → Wi-Fi** through USB/Bluetooth first;
+[network settings](docs/WIFI.md) persist on the board. Open its HTTP IP for
+certificate setup, verify the public authority against its USB/Bluetooth
+fingerprint, manually trust it once per client, then open its HTTPS IP and pair
+using the saved media access token. The Go helper remains optional. Fresh
+installations start Wi-Fi off. Serial/Bluetooth HID remains available. Older
+firmware configured at 115200 needs that matching browser setting.
 Follow the [setup and persistence guide](docs/VIRTUAL_MEDIA.md) and
 [hardware acceptance procedure](docs/validation/virtual-media.md) for measured
 transport results and outstanding Wyse boot validation. The published mPWRD-OS
@@ -59,7 +63,7 @@ UEFI raw image was inspected for its x86_64 fallback loader, not booted on hardw
 
 | Item | Part | Notes |
 |---|---|---|
-| MCU board | ESP32-S3-DevKitC-1-N8R8 | 8 MB flash. Clone boards are fine. |
+| MCU board | ESP32-S3-DevKitC-1-N8R8 | 8 MB flash; on-board HTTPS needs working PSRAM. Match the RAM profile to the actual module. |
 | Capture | MS2130 HDMI to USB dongle | 1080p60, cleaner UVC descriptors than the MS2109. The MS2109 also works. |
 | Cables | 2× USB-C, 1× HDMI | |
 
@@ -118,26 +122,67 @@ release **BOOT** and retry. This uses the ESP32's ROM bootloader and works even
 when the installed application is not responding.
 
 The installer writes three separate binaries: bootloader, partition table and
-application. It leaves the NVS region containing your Bluetooth PIN and pairings
-intact and does not erase the whole chip. The hosted site bundles firmware from
+application. The current factory app area ends at `0x400000` on the 8 MB board;
+NVS at `0x9000..0xf000` and PHY data at `0xf000..0x10000` remain in place. It
+preserves the Bluetooth PIN/bonds, Wi-Fi settings and per-device HTTPS identity
+without erasing the whole chip. The hosted site bundles firmware from
 the same Git commit as the web app. Its default LED pin is GPIO48; see
 [RGB status LED](#rgb-status-led) for GPIO38 boards and custom builds.
+
+The published build uses **Octal PSRAM** for the advertised N8R8 module. Some
+similarly labelled boards contain R2 hardware with **2 MB Quad PSRAM** instead.
+For those, use a locally built Quad profile below; RAM wiring mode is not selected
+automatically at runtime. A board that boots without detected RAM can still offer
+USB/Bluetooth control and HTTP setup, but may not have enough memory to start
+HTTPS alongside Wi-Fi and Bluetooth.
 
 ### Build and flash locally
 
 Requires [ESP-IDF 5.3 or newer](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
 for the `esp_driver_uart` component. Tested with 5.4.
 
+Build the root-based static UI before the firmware; CMake packs its core assets
+into flash and fails if the generated site is missing or uses the Pages base URL.
+The optional OCR resources and browser-flash binaries are not embedded.
+
 ```bash
-cd firmware && idf.py set-target esp32s3 && idf.py build
+cd web
+npm ci
+NUXT_APP_BASE_URL=/ npm run generate
+cd ../firmware
+idf.py set-target esp32s3
+idf.py build
 idf.py -p /dev/tty.usbserial-XXXX flash
 ```
 
 Flash over the UART port. esptool uses the ROM bootloader on UART0, so this
 works whatever the app does with the pins.
 
-`sdkconfig.defaults` only applies to a new config. If you built before Bluetooth
-was added, delete `firmware/sdkconfig` and rebuild.
+`sdkconfig.defaults` only applies to a new config. When migrating an old build,
+regenerate `firmware/sdkconfig` from the current defaults so it uses the custom
+partition table and HTTPS options; retain any custom configuration separately.
+Changing the app/partition images leaves NVS intact.
+
+#### Match the PSRAM mode
+
+On-board HTTPS requires functioning PSRAM for TLS while Wi-Fi and Bluetooth are
+active. `sdkconfig.defaults` enables Octal RAM for N8R8, lets larger general/mbedTLS
+allocations use PSRAM, and ignores missing RAM so basic bring-up does not panic.
+That fallback does not guarantee enough internal memory for HTTPS.
+
+For an R2 module, first retain your old configuration separately and start with
+no existing `firmware/sdkconfig`. After generating the root-based UI, build with
+this checked-in overlay from `firmware/`:
+
+```bash
+idf.py -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.quad-psram" build
+```
+
+For a custom configuration, use **Component config → ESP PSRAM → SPI RAM config
+→ Mode (QUAD/OCT) of SPI RAM chip in use** in `idf.py menuconfig`. Choose Quad for
+R2 or Octal for R8 and verify successful RAM initialization in the boot log. The
+build must match the actual chip; enabling PSRAM does not automatically distinguish
+Quad from Octal wiring. Existing `sdkconfig` values take precedence over defaults.
 
 To include a local build in the web installer, run this from the repository
 root after `idf.py build`, before starting or generating the web app:
@@ -219,15 +264,31 @@ Web Bluetooth need a secure context, so serve it over HTTPS or from `localhost`.
 Desktop Chrome and Edge have both, so a laptop can also use Bluetooth instead of
 the UART cable. On Linux, Web Bluetooth is behind a browser flag.
 
+* On the board: configure Wi-Fi through USB/Bluetooth, open `http://BOARD_IP/`
+  for certificate setup, verify the certificate fingerprint independently and
+  manually install trust once per client, then open `https://BOARD_IP/`. Pair
+  **Virtual media → Wi-Fi** with the media access token from Settings → Wi-Fi →
+  Advanced. The board serves the console and authenticated media directly; no
+  helper is required. [Full setup](docs/WIFI.md#open-the-board-hosted-console).
 * Hosted: <https://thebentern.github.io/cheap-web-kvm/>, deployed by
   [GitHub Actions](.github/workflows/deploy-pages.yml) on pushes to `main` that
   change the web app, firmware, firmware packaging tools or protocol docs.
   The workflow builds and publishes matching web and firmware artifacts together.
   Docs are at [`/docs`](https://thebentern.github.io/cheap-web-kvm/docs).
-* Offline: `cd src && ./sync_www.sh && ./start.sh`, then open
+* Full local app/optional helper: `cd src && ./sync_www.sh && ./start.sh`, then open
   `https://localhost:8443/` in a Chromium browser. Needs Node.js and Go
   1.24 or newer. The Go server serves `src/www/` and creates a self-signed
-  certificate on first run.
+  certificate on first run. Install a certificate trusted by your browser before
+  using secure browser APIs; another LAN client also needs a certificate covering
+  this computer's LAN IP or hostname.
+
+The on-board build omits the oversized OCR engine/language resources and disables
+its OCR control with a link to the full app. Its firmware-install action opens
+the hosted installer. Disk images and overlays stay in the browser's storage,
+which is separate for each origin; localhost files do not automatically appear
+at the board's HTTPS address. The board's per-device authority survives DHCP
+changes, while its leaf certificate is renewed for the current addresses. An NVS
+erase requires verifying and trusting the replacement authority.
 
 ```bash
 cd web
@@ -239,7 +300,9 @@ npm run generate   # static build into web/.output/public
 
 ### iPad
 
-iPads have no Web Serial, so the keyboard and mouse use Bluetooth.
+iPads have no Web Serial. After initial network and certificate setup, the
+board-hosted HTTPS console can carry keyboard/mouse and media over Wi-Fi.
+Bluetooth remains an alternative using a compatible browser:
 
 1. Use a USB-C iPad on iPadOS 17 or later, which exposes USB cameras to
    `getUserMedia`. Connect the capture stick with a USB-C to USB-A adapter.
@@ -284,9 +347,11 @@ If it does not come back, tap Restart video.
 
 ### Offline use
 
-Everything is vendored except OCR training data for languages other than
-English. Tesseract, its worker, the WASM core and the English data are in
-`web/public/vendor/tesseract`. The other 19 languages download when picked and
+The full hosted/local app vendors everything except OCR training data for
+languages other than English. The flash-sized on-board build excludes OCR;
+its core console, device settings and virtual media are available offline once
+Wi-Fi and certificate trust are configured. In the full app, Tesseract, its worker,
+the WASM core and the English data are in `web/public/vendor/tesseract`. The other 19 languages download when picked and
 are listed under "Downloaded on first use".
 
 ### Layout
@@ -323,6 +388,9 @@ python3 tools/test_led_pattern.py
 
 # Firmware manifest, hashes, layout validation and NVS preservation bounds.
 python3 tools/test_package_firmware.py
+
+# Root-based UI assets, compression, routing and flash byte budget.
+python3 tools/test_build_device_web.py
 ```
 
 With the board on the UART port, no browser:
@@ -346,15 +414,15 @@ python3 tools/ch9329_test.py -p /dev/tty.usbserial-XXXX --passkey
 | M6 | Client-backed USB media, FAT32 sharing and boot repetition | Software checks pass; Wyse boot, physical file transfer and transport measurements outstanding. |
 | M5 | Bluetooth LE transport and iPad support | Bluetooth PIN read and change over UART verified on hardware. The UI's Bluetooth queue tested against a simulated device. Bluetooth pairing, the iPad and touch input not yet confirmed. |
 
-Tested on an ESP32-S3-DevKitC-1-N8R8 (rev v0.2, 8 MB flash, 8 MB PSRAM) with
-nothing on the native port, so `--info` reports `USB enumerated: no`.
+The connected test board reports ESP32-S3 rev v0.2, 8 MB flash and **2 MB
+AP_3v3 embedded PSRAM**, despite its N8R8 label. It therefore needs the Quad/R2
+PSRAM profile for on-board HTTPS. Earlier UART-only tests ran with nothing on the
+native port, so those `--info` results reported `USB enumerated: no`.
 
 ### Stretch goals
 
 * Hardware qualification for client-backed USB media and FAT32 file sharing;
   see the [validation procedure](docs/validation/virtual-media.md).
-* Hosting the UI directly on the ESP32 (the current Wi-Fi media workflow uses
-  the local HTTPS helper).
 * USB Ethernet (RNDIS/ECM) to the target.
 
 ### Not planned

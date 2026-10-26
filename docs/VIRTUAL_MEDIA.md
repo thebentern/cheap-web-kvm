@@ -48,41 +48,88 @@ before changing it. Choosing a browser rate does not reconfigure the board. Olde
 firmware built at 115200 requires that explicit browser setting. USB MSC on the
 target is separate from this USB-UART link.
 
-### Wi-Fi
+### Wi-Fi: open the board directly
 
-1. In **Settings → Wi-Fi**, connect Serial through the programming port or paired
-   Bluetooth and load settings. Select **Hotspot** or **Client**, enter credentials,
-   and save. Client can retain a separate recovery hotspot. Read its IP in status.
-   See [Wi-Fi setup](WIFI.md) for credentials and helper-token controls.
-2. Start the Go HTTPS helper with the board as its fixed upstream:
+The ESP32 hosts the console and its media connection. A separate computer running
+the Go helper is optional.
 
-   ```sh
-   cd web
-   npm ci
-   NUXT_APP_BASE_URL=/ npm run generate
-   cd ../src
-   # Set KVM_MEDIA_TOKEN to the saved token from Settings → Wi-Fi → Advanced.
-   go run . -www ../web/.output/public -media http://192.168.4.1
-   ```
+Direct HTTPS needs working PSRAM when Wi-Fi and Bluetooth coexist. The published
+N8R8 build uses Octal PSRAM; an R2/2 MB module needs the Quad configuration in
+`firmware/sdkconfig.quad-psram`. This mode is selected at build time, not detected
+automatically. See [PSRAM build setup](https://github.com/thebentern/cheap-web-kvm#match-the-psram-mode). Missing
+RAM is tolerated for USB/Bluetooth and HTTP setup bring-up, but HTTPS may not have
+enough memory to start.
 
-3. Open `https://localhost:8443/`, trust your own helper certificate, then choose
-   **Virtual media → Wi-Fi → Connect**. Leave the helper address blank when using
-   its own UI. The helper validates Origin and adds the token; image files and
-   saved disk state remain in the browser.
-4. Use Serial/Bluetooth control or **Use Wi-Fi for keyboard & mouse**. Tablets can
-   use Wi-Fi without Web Serial or Web Bluetooth. For a tablet, connect it and the
-   helper computer to the same reachable network. Create a helper certificate
-   including that computer's IP with `-tls-hosts localhost,127.0.0.1,LAPTOP_IP`, and
-   trust it on the tablet. Existing certificate files are preserved.
+1. Use Serial through the programming port, or paired Bluetooth, to open
+   **Settings → Wi-Fi** and load the board settings. Choose **Hotspot** or
+   **Client**, save the network credentials, and read the IP in status. Client
+   joins an existing 2.4 GHz network and can retain a recovery hotspot. Initial
+   network setup still needs USB or Bluetooth.
+2. Open `http://BOARD_IP/`. Port 80 serves a setup page and
+   `/device/ca.crt`, the board's public trust certificate. Before installing it,
+   verify its SHA-256 fingerprint using the value read independently through USB
+   or paired Bluetooth. The HTTP page alone is not proof of the certificate's
+   identity. `tools/device_certificate.py` downloads the certificate and checks
+   it against the USB fingerprint; it does not install trust automatically.
+3. Install that verified certificate as a trusted certificate authority on each
+   computer/tablet that will open the board. This is a manual, one-time trust
+   step. Follow the platform instructions in the setup page; proceeding through
+   a browser warning is not the setup procedure.
+4. Open `https://BOARD_IP/` on port 443. In **Virtual media → Wi-Fi**, enter the
+   **Media access token** shown in **Settings → Wi-Fi → Advanced → Show saved
+   token** over USB/Bluetooth, then connect. The token is separate from the Wi-Fi
+   password. Pairing creates a Secure, HttpOnly, same-site browser session cookie;
+   the app does not save the token in browser settings. Session expiry, a board
+   restart, or a network/token change can require pairing again.
+5. Choose **Use Wi-Fi for keyboard & mouse** if desired, then select a boot image
+   or USB drive. The target still connects to native USB, and video still uses
+   the separate HDMI capture stick. Tablets do not need Web Serial/Bluetooth for
+   control once the board's Wi-Fi and certificate trust are configured.
 
-Hosted HTTPS cannot directly access the board's unencrypted Wi-Fi socket. The
-HTTPS helper is required for Wi-Fi, including tablet use. Keep it on a trusted
-local network. Do not disable browser security to work around mixed-content errors.
+The device keeps its own certificate authority and keys in NVS. DHCP address
+changes renew the server certificate for the current addresses while retaining
+the same trust authority, so they do not require reinstalling that authority.
+Use the current IP reported by the board; the certificate's device hostname does
+not by itself guarantee that a router resolves that name. Erasing NVS removes
+this identity and requires verifying/trusting the replacement certificate.
+
+The on-board console embeds its compressed core assets in flash. OCR language
+and engine data do not fit on this 8 MB board; its OCR control is disabled with a
+link to the full app. Firmware installation opens the full hosted installer.
+Disk images, including prepared `.img.xz` sources, still live in the browser,
+not on the board. Browser storage belongs to the exact origin: changing from
+localhost or the hosted site to `https://BOARD_IP/`, or to a different DHCP IP,
+uses a separate storage bucket. Export needed changes before moving origins and
+select/import the source in the new one.
+
+### Optional HTTPS helper
+
+The Go helper remains available for the full UI, older firmware or an existing
+helper setup. It is not required by the board-hosted console:
+
+```sh
+cd web
+npm ci
+NUXT_APP_BASE_URL=/ npm run generate
+cd ../src
+# Set KVM_MEDIA_TOKEN to the saved media access token from Settings → Wi-Fi.
+go run . -www ../web/.output/public -media http://BOARD_IP
+```
+
+Open `https://localhost:8443/` using a certificate trusted by that browser, then
+choose **Virtual media → Wi-Fi → Connect**. Leave the helper address blank when
+using its own UI. For another LAN client, the helper certificate must include
+its computer's LAN IP/hostname and be trusted by that client. The helper's
+`-tls-hosts` option affects newly generated certificates only; it preserves
+existing certificate files. Hosted HTTPS cannot directly use the board's legacy
+unencrypted socket. Keep the helper on a trusted local network.
 
 Both transports require the custom MSC build (`CONFIG_TINYUSB_MSC_ENABLED` stays
-disabled; `kvm_tusb_config.h` supplies MSC). The factory app slot is 1500 KiB.
-Only one transport owns media at a time. A second connection cannot take over a
-live session; disconnect or let the failed connection's lease expire first.
+disabled; `kvm_tusb_config.h` supplies MSC). The current 8 MB build uses a custom
+factory partition at `0x10000..0x400000`; NVS at `0x9000..0xf000` and PHY data
+at `0xf000..0x10000` remain in place. Only one transport owns media at a time.
+A second connection cannot take over a live session; disconnect or let the failed
+connection's lease expire first.
 
 ## Boot image
 
@@ -269,7 +316,7 @@ For an actual board:
   921600 in both firmware and browser to restore the standard configuration.
 - With Wi-Fi firmware, choose **Measure link** while ejected. It verifies 8 KiB
   echoes and reports aggregate round-trip payload throughput and worst RTT.
-  This measures the browser/helper/board path, **not USB or durable write speed**.
+  This measures the browser/board path (plus the helper if used), **not USB or durable write speed**.
 - During sustained target reads/writes record the panel's actual transfer counts,
   average rate and storage errors. Test cold/random reads as well as sequential
   access. Record HID latency during both; Wi-Fi/BLE coexistence needs measurement.

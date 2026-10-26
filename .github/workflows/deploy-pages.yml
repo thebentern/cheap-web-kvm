@@ -10,6 +10,8 @@ on:
       - 'firmware/**'
       - 'tools/package_firmware.py'
       - 'tools/test_package_firmware.py'
+      - 'tools/build_device_web.py'
+      - 'tools/test_build_device_web.py'
       - 'tools/test_led_pattern.py'
       - 'tools/verify_descriptors.py'
       - 'docs/PROTOCOL.md'
@@ -37,11 +39,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Test firmware packaging and LED patterns
+      - name: Test device assets, firmware packaging and LED patterns
         working-directory: .
         run: |
           python3 tools/test_package_firmware.py
+          python3 tools/test_build_device_web.py
           python3 tools/test_led_pattern.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - name: Generate the root-based UI embedded in the device
+        run: npm run generate
+        env:
+          NUXT_APP_BASE_URL: /
 
       # Official Espressif action, pinned to the reviewed v1 commit. The v5.4
       # image matches the toolchain used to validate this firmware locally.
@@ -51,19 +67,11 @@ jobs:
           esp_idf_version: v5.4
           target: esp32s3
           path: firmware
-          command: idf.py build && python ../tools/verify_descriptors.py
+          command: idf.py build && python ../tools/verify_descriptors.py && CC=cc ../tools/test_device_tls.sh && CC=cc ../tools/test_device_web.sh
 
       - name: Bundle firmware for the browser flasher
         working-directory: .
         run: python3 tools/package_firmware.py
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - run: npm ci
 
       # The protocol layer is verified against real hardware; a failure here
       # means the wire format drifted, so refuse to ship it.

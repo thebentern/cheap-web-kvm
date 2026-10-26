@@ -4,6 +4,12 @@
 // not an overlay over live video: it scrolls, it renders server-side, and it
 // pulls in none of the KVM composables.
 import { useHead } from '#imports'
+import { onMounted } from 'vue'
+import { useDeviceHost } from '~/composables/useDeviceHost'
+
+const deviceHost = useDeviceHost()
+const firmwareUrl = deviceHost.firmwareUrl
+onMounted(() => { void deviceHost.initialize() })
 
 const REPO = 'https://github.com/thebentern/cheap-web-kvm'
 
@@ -127,7 +133,7 @@ useHead({
       <section class="docs-section" aria-labelledby="reference-title">
         <h2 id="reference-title">Reference</h2>
         <div class="docs-references">
-          <NuxtLink to="/flash" class="docs-reference">
+          <NuxtLink :to="firmwareUrl" class="docs-reference">
             <span class="docs-reference-title">Install firmware<AppIcon name="chevron-right" aria-hidden="true" /></span>
             <span class="docs-reference-description">Flash the packaged $KVM firmware on an ESP32-S3-DevKitC-1-N8R8 from desktop Chrome or Edge, using its UART USB port. Existing Bluetooth PIN and pairings are preserved.</span>
             <span class="docs-path">Browser installer</span>

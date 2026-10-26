@@ -338,10 +338,40 @@ sector-transport echo benchmark.
 Media frames use a separate format from CH9329 commands. Over USB UART they are
 multiplexed using the envelope in section 13. Over Wi-Fi, one binary WebSocket
 message carries each frame on the ESP32 `/media` endpoint. Runtime Wi-Fi settings
-select Hotspot or Client; the `X-KVM-Token` header authenticates the local helper. The HTTPS helper requires a
-same-origin HTTPS WebSocket request and injects that header; it never accepts an
-arbitrary client-provided upstream. Do not expose this endpoint to the internet.
-Wi-Fi is an unqualified experimental candidate until board measurement.
+select Hotspot or Client. The board-hosted HTTPS console uses a paired,
+same-origin browser session. The optional HTTPS helper authenticates to the
+legacy HTTP endpoint with `X-KVM-Token`; it requires a same-origin HTTPS browser
+request and never accepts an arbitrary client-provided upstream. Transport echo
+measurements do not qualify OS boot or sustained disk throughput.
+
+### Device HTTPS and browser pairing
+
+With `CONFIG_KVM_DEVICE_WEB`, HTTP port 80 serves a setup page and the public
+per-device certificate authority at `GET /device/ca.crt`. Verify that authority's
+DER SHA-256 fingerprint independently over UART/bonded BLE before manually
+trusting it on a client. The HTTP page's own fingerprint is not an independent
+identity check. The authority and private server key are stored in NVS; DHCP
+changes renew the signed server certificate for the current IPs without changing
+that authority. `tools/device_certificate.py` verifies a downloaded authority
+against its USB readout and does not install trust.
+
+HTTPS port 443 serves the compressed static console, `GET /device/info`,
+`POST /device/session`, and `/media`. Pairing posts `{"token":"…"}` using the
+saved 16–80 character media access token. It requires an exact same-origin HTTPS
+Origin/Host match and returns a Secure, HttpOnly, SameSite=Strict session cookie.
+The token is not embedded in static assets or cookie values. Sessions are bounded,
+expire after eight hours, and are cleared on board/server restart or a
+network/token change.
+Bad pairing attempts are rate limited. Browser WebSocket upgrades require both a
+valid session and the same-origin check. A helper may continue authenticating with
+its configured header. Only one connection owns the medium across HTTP, HTTPS and
+USB UART; the HTTPS server's seven-socket limit does not expand that ownership.
+
+Static assets are const flash-backed data, sent in bounded chunks with MIME,
+Content-Encoding and ETag headers. Unknown assets return 404. `/flash` redirects
+to the full hosted installer. Firmware binaries and the oversized OCR engine/data
+are excluded from the device image. Browser storage remains bound to the exact
+HTTPS origin, including IP/hostname and port.
 
 ### Encoding
 
@@ -448,7 +478,7 @@ enterprise authentication, static IP UI or network scanning is advertised.
 
 Fields: `1` mode (one byte), `2` hotspot SSID (≤32 bytes), `3` hotspot password
 (8–63 printable ASCII), `4` router SSID (≤32 bytes), `5` router password (8–63
-printable ASCII; required in Client mode), `6` helper token
+printable ASCII; required in Client mode), `6` media access token
 (16–80 printable non-space ASCII), `7` recovery hotspot (one byte, 0/1).
 SSIDs are UTF-8 in the browser. Password fields omitted from a transaction retain
 their saved values. All messages fit the existing 64-byte payload ceiling.
@@ -456,11 +486,19 @@ their saved values. All messages fit the existing 64-byte payload ceiling.
 | CMD | Request | Reply |
 |---|---|---|
 | `35` metadata | Empty | `[version=1, supported=1, mode, recovery, ap_password_set, router_password_set, token_set, apply_pending]` |
-| `35` field read | `[1, field, offset]` | `[1, field, total_bytes, offset, up_to_60_data_bytes]`; readable fields 2/4, plus 3/6 only when explicitly requested. Router password field 5 is never returned. |
+| `35` field read | `[1, field, offset]` | `[1, field, total_bytes, offset, up_to_60_data_bytes]`; readable fields 2/4, plus 3/6 only when explicitly requested, and read-only certificate fingerprint field `0x80`. Router password field 5 is never returned. |
 | `36` begin | `[1, 0]` | `[1, transaction_id_u32_LE]`; snapshot of current settings, bound to the parser/control owner, with a 30 s expiry. Another owner cannot replace an active transaction. |
 | `36` field fragment | `[1, field, transaction_id_u32_LE, offset, total_bytes, up_to_56_data_bytes]` | `00` on acceptance. Fragments must be contiguous, within bounds, and contain no embedded NUL. Offset 0 starts/restarts that field. Empty total/data explicitly clears a string field. |
 | `37` commit/apply | `[1, transaction_id_u32_LE]` | `00` only after full validation and NVS commit. Missing/expired/wrong-owner fragments fail. Requires ejected, idle media; insertion is reserved/blocked until applying completes. |
 | `38` status | Empty | 19 bytes: `[1, mode, state, apply_pending, hotspot_ipv4×4, router_ipv4×4, retries, disconnect_reason_u16_LE, esp_error_u32_LE]` |
+
+Field `0x80` is reserved for the on-board trust authority's SHA-256 fingerprint.
+Read it with CMD `0x35`, payload `[1,0x80,offset]`; its reply uses the same field
+fragment schema as other reads. Once the TLS identity is ready, it contains 64
+lowercase ASCII hex characters over the DER certificate, not its PEM text. Read
+offsets 0 and 60 for all characters. It is read-only and is not accepted by the
+`0x36` settings write transaction. This allows a certificate downloaded over HTTP
+to be verified independently using the programming cable or bonded Bluetooth.
 
 State values: `0` off, `1` hotspot active, `2` joining/waiting for address, `3`
 router connected with DHCP address, `4` failure. All-zero IPv4 means unavailable.
@@ -471,7 +509,7 @@ contains a password or token.
 Invalid requests/settings return `E5`; busy media, another transaction owner,
 apply already pending, NVS or platform failures return `E6`; mutex timeout `E1`.
 A failed NVS commit leaves the running config unchanged. Applying waits 500 ms
-after acknowledgement before stopping/restarting Wi-Fi and the HTTP endpoint.
+after acknowledgement before stopping/restarting Wi-Fi and its HTTP/HTTPS endpoints.
 USB HID and BLE are not restarted. Changing Wi-Fi/token can disconnect a Wi-Fi
 control session; Serial or Bluetooth remains the recovery route.
 

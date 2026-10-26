@@ -1,0 +1,60 @@
+{
+  "certificateVerified": true,
+  "plaintextPairingRejected": true,
+  "crossOriginPairingRejected": true,
+  "invalidTokenRejected": true,
+  "secureCookieVerified": true,
+  "assets": 62,
+  "verifiedEchoes": 20,
+  "unauthenticatedMediaRejected": true,
+  "crossOriginMediaRejected": true,
+  "echoAggregateBytesPerSecond": 62801,
+  "memoryWhileMediaConnected": {
+    "freeHeap": 2091447,
+    "minimumHeap": 1995243,
+    "largestBlock": 2031616,
+    "tlsError": 0,
+    "tlsCode": 0,
+    "tlsFlags": 0
+  },
+  "tested_date": "2026-10-26",
+  "board": {
+    "chip": "ESP32-S3 rev 0.2",
+    "flash_bytes": 8388608,
+    "psram_bytes": 2097152,
+    "psram_mode": "Quad",
+    "uart_baud": 921600
+  },
+  "heartbeat_after_each_echo": true,
+  "hardware_boot": "Not tested",
+  "target_writes": "Not tested",
+  "asset_pack": 369835,
+  "concurrent_serial_sample": {
+    "certificateVerified": true,
+    "plaintextPairingRejected": true,
+    "crossOriginPairingRejected": true,
+    "invalidTokenRejected": true,
+    "secureCookieVerified": true,
+    "assets": 0,
+    "verifiedEchoes": 20,
+    "unauthenticatedMediaRejected": true,
+    "crossOriginMediaRejected": true,
+    "echoAggregateBytesPerSecond": 66709,
+    "memoryWhileMediaConnected": {
+      "freeHeap": 2091171,
+      "minimumHeap": 1992999,
+      "largestBlock": 2031616,
+      "tlsError": 32794,
+      "tlsCode": 30592,
+      "tlsFlags": 0
+    },
+    "serial_control": {
+      "baud": 921600,
+      "seconds": 3.0002554580569267,
+      "verified_frames": 872,
+      "payload_round_trip_bytes_per_second": 37202.16546903194,
+      "max_rtt_ms": 11.348749976605177,
+      "media_transport": false
+    }
+  }
+}

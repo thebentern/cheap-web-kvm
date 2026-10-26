@@ -164,6 +164,41 @@ class PackagingTests(unittest.TestCase):
         manifest = self.package()
         self.assertEqual([part["size"] for part in manifest["parts"]], [0x8000, 0x1000, 0x100000])
 
+    def test_onboard_ui_slot_accepts_larger_app_and_enforces_its_exact_boundary(self):
+        entries = [
+            (1, 2, 0x9000, 0x6000, b"nvs", 0),
+            (1, 1, 0xF000, 0x1000, b"phy_init", 0),
+            (0, 0, 0x10000, 0x3F0000, b"factory", 0),
+        ]
+        (self.build / "partition_table/partition-table.bin").write_bytes(partition_table(entries))
+        app = self.build / "cheap-web-kvm.bin"
+        for size in (0x100001, 0x3F0000):
+            app.write_bytes(b"\0" * size)
+            manifest = self.package()
+            self.assertEqual(manifest["parts"][2]["size"], size)
+            self.assertLessEqual(0x10000 + (size + 4095) // 4096 * 4096, 0x400000)
+        app.write_bytes(b"\0" * 0x3F0001)
+        with self.assertRaisesRegex(ValueError, "factory partition"):
+            self.package()
+
+    def test_requires_exact_phy_and_factory_names_without_extra_partitions(self):
+        standard = [
+            (1, 2, 0x9000, 0x6000, b"nvs", 0),
+            (1, 1, 0xF000, 0x1000, b"phy_init", 0),
+            (0, 0, 0x10000, 0x3F0000, b"factory", 0),
+        ]
+        layouts = [
+            [standard[0], standard[2]],
+            [standard[0], (1, 1, 0x400000, 0x1000, b"phy_init", 0), standard[2]],
+            [standard[0], standard[1], (0, 0, 0x10000, 0x3F0000, b"other", 0)],
+            standard + [(1, 0x82, 0x400000, 0x1000, b"extra", 0)],
+        ]
+        for entries in layouts:
+            with self.subTest(entries=entries):
+                (self.build / "partition_table/partition-table.bin").write_bytes(partition_table(entries))
+                with self.assertRaises(ValueError):
+                    self.package()
+
     def test_rejects_empty_or_missing_binaries(self):
         app = self.build / "cheap-web-kvm.bin"
         app.write_bytes(b"")

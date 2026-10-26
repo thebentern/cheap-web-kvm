@@ -99,14 +99,18 @@ actual boot behavior establishes otherwise.
 
 ## Transport measurements
 
-| Transport | Board measurement | Current role |
+| Transport | Recorded board measurement | Current role |
 |---|---|---|
-| UART 115200 8N1 | Not available | Existing HID; theoretical one-way wire ceiling 11,520 B/s before framing |
-| UART 460800 / 921600 / 2000000 | Not available | Build-time benchmark candidates; bridge support unverified |
-| Wi-Fi through HTTPS helper | Not available | Experimental client-backed media + optional HID |
-| Bluetooth | Not available | Control only; no media capability advertised |
+| USB UART 115200 | 11,136 B/s aggregate echo; about 10.9 KiB/s physical read-only sector serving | Supported older firmware |
+| USB UART 921600 | 74,799–84,017 B/s aggregate echo with concurrent control replies | Default USB media/control |
+| USB UART 460800 | Not qualified | Optional matching firmware rate |
+| USB UART 2000000 | Sustained test timed out; rejected on the test bridge | Optional rate requiring separate qualification |
+| Direct router Wi-Fi WebSocket | 62,341–119,962 B/s aggregate echo in short samples | Wi-Fi media/control transport |
+| On-board HTTPS/WSS | 62,801–116,418 B/s aggregate echo samples, 20 verified 8 KiB round trips each | Direct browser hosting and media; see on-board hosting below |
+| Wi-Fi through HTTPS helper | Complete helper/browser disk throughput not measured | Optional compatibility gateway |
+| Bluetooth | No media benchmark | Control only; no media capability advertised |
 
-No production media transport has been selected on unmeasured board assumptions.
+Echo rates count payload in both directions and are not disk read/write rates.
 The panel's verified 8 KiB echo benchmark measures aggregate round-trip payload
 rate and worst RTT. Actual USB reads and strict durable writes may be much slower.
 Its transfer counter reports real requested bytes separately. Collect board,
@@ -327,3 +331,51 @@ exactly matching the independent raw-image inspection recorded in
 qualifies browser import/cache integrity above 4 GiB; it is not a new hardware
 boot, write or transport-speed result. No board restart or firmware change was
 needed.
+
+
+### On-board HTTPS console
+
+The ESP32 now bundles the core Nuxt console in flash. Port 80 serves certificate
+setup and preserves the authenticated legacy helper endpoint; port 443 serves the
+UI, pairing and same-origin media directly. A unique persisted P-256 CA signs the
+server certificate. DHCP changes renew the leaf while preserving the trust CA.
+USB/Bluetooth can read its fingerprint independently via Wi-Fi GET field `0x80`;
+`tools/device_certificate.py` downloads the public CA and checks its DER SHA-256
+against the USB value without installing trust. Browser trust remains a manual
+step on each client. Access tokens are posted only over HTTPS, then replaced by
+bounded expiring Secure/HttpOnly/SameSite=Strict cookies; the token never enters
+a URL or browser storage.
+
+The connected revision 0.2 board reports 8 MiB flash and 2 MiB AP_3v3 PSRAM. Its
+private validation build uses the Quad/R2 overlay; published N8R8 defaults use
+Octal RAM. Before PSRAM was enabled, TLS handshakes failed with only about
+27–36 KiB of free internal memory. With working Quad PSRAM and default allocation
+fallback, the direct HTTPS tests had more than 1.9 MiB free at the minimum. The
+firmware exposes setup/basic control without repeated TLS allocations when RAM
+is absent. The 4 MiB application partition preserves NVS and PHY offsets, so saved
+Wi-Fi credentials, Bluetooth bonds and the generated trust identity remain intact.
+OCR payloads and installer binaries are excluded from the small on-board asset
+pack; the UI points users to the full hosted application for those functions.
+
+All 202 web tests pass, as do type checking, static generation, five asset-pack
+tests, eighteen firmware-packaging tests, native media/Wi-Fi/serial harnesses,
+native TLS identity/renewal/persistence failure tests and the HTTP/session harness.
+OpenSSL independently verifies the CA chain, client/AP IP SANs, hostname and exact
+fingerprint. The HTTP harness covers strict JSON, escaped NUL rejection, exact
+Origin/Host matching, cookie expiry/reset, rate limiting, gzip negotiation, bounded
+asset chunks, MIME/cache/CSP headers, missing assets and route registration.
+Compiled USB descriptors pass with the on-board build. Hardware checks cover
+HTTPS resource integrity and authenticated transport, not OS boot or target writes.
+
+The real board served all 62 included non-installer resources over verified HTTPS
+with six concurrent clients; each decoded size and stored-byte SHA-256 matched
+the generated asset manifest. Valid-token pairing set a secure cookie and returned
+authenticated status. Plain HTTP pairing, wrong-token pairing, cross-origin pairing,
+unauthenticated media and cross-origin media were rejected. Twenty 8 KiB media
+round trips passed content/CRC/ID checks over direct WSS with no helper. The first
+short sample reported 116,418 B/s aggregate echo payload; a later sample with an
+extra heartbeat after every echo reported 62,801 B/s. These are different request
+schedules, not disk throughput. Another twenty verified echoes completed alongside
+872 USB serial vendor-echo frames in three seconds. Existing credentials survived
+the firmware updates, and the downloaded CA matched its fingerprint read over USB.
+[Machine-readable hardware checks](onboard-hosting.json) record the final sample.

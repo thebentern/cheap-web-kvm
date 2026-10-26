@@ -75,6 +75,17 @@ menu "cheap-web-kvm"
         depends on KVM_MEDIA_WIFI
         default ""
 
+    config KVM_DEVICE_WEB
+        bool "Host the console on the ESP32 over HTTPS"
+        depends on KVM_MEDIA_WIFI
+        default y
+        select MBEDTLS_PEM_WRITE_C
+        select ESP_HTTPS_SERVER_ENABLE
+        help
+            Bundle the generated core web UI in flash. HTTP provides certificate
+            setup; HTTPS serves the console and paired browser media sessions.
+            Generate the web UI with NUXT_APP_BASE_URL=/ before building firmware.
+
     config KVM_MEDIA_PASSWORD
         string "Media AP WPA2 password (8-63 characters)"
         depends on KVM_MEDIA_WIFI
