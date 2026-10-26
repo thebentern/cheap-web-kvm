@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue'
 import { useKvm } from '~/composables/useKvm'
 import { useVirtualMedia } from '~/composables/useVirtualMedia'
 import {
@@ -9,6 +9,7 @@ import {
   type WifiMode,
   type WifiStatus,
 } from '~/utils/wifi'
+const modeId = useId()
 const kvm = useKvm(),
   media = useVirtualMedia(),
   client = new WifiClient((f, c) => kvm.link.sendAndWait(f, c))
@@ -36,19 +37,21 @@ const locked = computed(
     media.busy.value,
 )
 const stateLabel = computed(() =>
-  busy.value && !loaded.value
-    ? 'Reading board settings…'
-    : !kvm.link.connected.value
-      ? 'Control link disconnected'
-      : status.value?.pending
-        ? 'Applying saved settings…'
-        : [
-            'Wi-Fi off',
-            'Hotspot active',
-            'Joining router…',
-            'Connected to router',
-            'Connection failed',
-          ][status.value?.state ?? 0],
+  kvm.link.connecting.value
+    ? 'Connecting to board…'
+    : busy.value && !loaded.value
+      ? 'Reading board settings…'
+      : !kvm.link.connected.value
+        ? 'Control link disconnected'
+        : status.value?.pending
+          ? 'Applying saved settings…'
+          : [
+              'Wi-Fi off',
+              'Hotspot active',
+              'Joining network…',
+              'Connected',
+              'Connection failed',
+            ][status.value?.state ?? 0],
 )
 let timer: ReturnType<typeof setInterval> | undefined,
   disposed = false
@@ -95,11 +98,7 @@ async function save() {
       throw new Error(
         'Eject and synchronize virtual media before changing Wi-Fi.',
       )
-    if (
-      mode.value === 2 &&
-      !staPassword.value &&
-      !hasStaPassword.value
-    )
+    if (mode.value === 2 && !staPassword.value && !hasStaPassword.value)
       throw new Error(
         'Enter the network password. Open networks are not supported.',
       )
@@ -112,8 +111,7 @@ async function save() {
       staPassword: staPassword.value || undefined,
       token: token.value || undefined,
     })
-    notice.value =
-      'Saved on the board. Wi-Fi changes now; USB keyboard/mouse stay connected. Client mode obtains its address automatically. Keep Serial/Bluetooth connected to see status.'
+    notice.value = 'Settings saved. Reconnecting Wi-Fi…'
     apPassword.value = ''
     staPassword.value = ''
     token.value = ''
@@ -162,89 +160,98 @@ onBeforeUnmount(() => {
 })
 </script>
 <template>
-  <section class="space-y-3" aria-label="Wi-Fi configuration">
-    <p class="kvm-hint">
-      Hotspot creates the board’s own Wi-Fi network. Client joins your
-      existing 2.4 GHz personal Wi-Fi network. Neither uses ad-hoc mode.
-      Settings are saved on the board.
-    </p>
-    <div class="flex flex-wrap gap-2">
+  <section class="space-y-4" aria-label="Wi-Fi configuration">
+    <div
+      class="flex items-start justify-between gap-3 rounded border border-ink-600 p-3"
+    >
+      <div class="min-w-0 space-y-1">
+        <p role="status" class="text-sm font-medium">{{ stateLabel }}</p>
+        <p
+          v-if="kvm.link.connected.value && status?.clientIp"
+          class="font-mono text-xs"
+        >
+          {{ status.clientIp }}
+        </p>
+        <p
+          v-else-if="kvm.link.connected.value && status?.apIp"
+          class="font-mono text-xs"
+        >
+          {{ status.apIp }}
+        </p>
+        <p v-if="!kvm.link.connected.value" class="kvm-hint">
+          Connect to the board to change its Wi-Fi settings.
+        </p>
+      </div>
       <button
-        class="kvm-btn"
+        v-if="kvm.link.connected.value"
+        type="button"
+        class="kvm-btn shrink-0"
+        :disabled="busy"
+        @click="load()"
+      >
+        {{ loaded ? 'Reload' : 'Load settings' }}
+      </button>
+    </div>
+    <div v-if="!kvm.link.connected.value" class="flex flex-wrap gap-2">
+      <button
+        type="button"
+        class="kvm-btn kvm-btn-primary"
         :disabled="busy || !kvm.link.serialSupported.value"
         @click="connect('serial')"
       >
-        Connect Serial for setup
+        Connect Serial
       </button>
       <button
+        type="button"
         class="kvm-btn"
         :disabled="busy || !kvm.link.bleSupported.value"
         @click="connect('ble')"
       >
-        Connect Bluetooth for setup
-      </button>
-      <button
-        class="kvm-btn"
-        :disabled="busy || !kvm.link.connected.value"
-        @click="load()"
-      >
-        Load board settings
+        Connect Bluetooth
       </button>
     </div>
-    <p role="status" class="text-sm">{{ stateLabel }}</p>
     <p v-if="error" role="alert" class="text-sm text-alert-400">{{ error }}</p>
-    <p v-if="notice" class="kvm-hint">{{ notice }}</p>
-    <p v-if="!loaded" class="kvm-hint">
-      Connect through the UART/programming port or pair over Bluetooth, then
-      load settings. Older firmware needs an update before these controls work.
-    </p>
-    <template v-else>
-      <p v-if="status?.apIp || status?.clientIp" class="text-sm">
-        Hotspot IP: {{ status?.apIp || 'inactive' }} · Client IP:
-        {{ status?.clientIp || 'not connected' }}
-      </p>
-      <p
-        v-if="
-          mode === 2 && recovery && status?.clientIp.startsWith('192.168.4.')
-        "
-        class="kvm-hint"
-      >
-        The router and recovery hotspot share the 192.168.4.x subnet. Disable
-        recovery and use Serial/Bluetooth if routing fails.
-      </p>
-      <p v-if="status?.state === 4" class="kvm-hint">
-        Check the network name, password, signal and 2.4 GHz support. The board
-        stops retrying after five retries; Save and apply retries. Reason
-        {{ status?.reason }}, device error {{ status?.error }}.
+    <p v-if="notice && status?.pending" class="kvm-hint">{{ notice }}</p>
+    <template v-if="loaded">
+      <p v-if="status?.state === 4" class="text-sm text-alert-400">
+        Couldn't join the network. Check the name and password, then save to
+        retry.
       </p>
       <fieldset
-        class="space-y-3"
+        class="space-y-4"
         :disabled="locked || !kvm.link.connected.value"
       >
         <legend class="sr-only">Saved network settings</legend>
-        <label class="block text-sm"
-          >Wi-Fi mode<select
-            v-model.number="mode"
-            class="kvm-select mt-1 w-full"
-          >
+        <div class="space-y-1">
+          <label class="block text-sm" :for="modeId">Wi-Fi mode</label>
+          <select :id="modeId" v-model.number="mode" class="kvm-select w-full">
             <option :value="0">Off</option>
-            <option :value="1">Hotspot (access point)</option>
+            <option :value="1">Hotspot</option>
             <option :value="2">Client</option>
-          </select></label
-        >
-        <div
-          v-if="mode === 2"
-          class="space-y-3 rounded border border-ink-600 p-3"
-        >
-          <label class="block text-sm"
-            >Network name (SSID)<input
+          </select>
+          <p class="kvm-hint">
+            {{
+              mode === 2
+                ? 'Join an existing 2.4 GHz Wi-Fi network.'
+                : mode === 1
+                  ? 'Create a Wi-Fi network for this board.'
+                  : 'Wi-Fi is disabled. Serial and Bluetooth remain available.'
+            }}
+          </p>
+        </div>
+        <div v-if="mode === 2" class="space-y-3">
+          <label class="block text-sm">
+            Network name (SSID)
+            <input
               v-model="staSsid"
               class="kvm-input mt-1 w-full"
               autocomplete="off"
               maxlength="32"
-          /></label>
-          <label class="block text-sm"
-            >Network password<input
+            />
+          </label>
+          <label class="block text-sm">
+            Password
+            <input
               v-model="staPassword"
               type="password"
               class="kvm-input mt-1 w-full"
@@ -255,83 +262,131 @@ onBeforeUnmount(() => {
                   ? 'Leave blank to keep saved password'
                   : 'Enter network password'
               "
-          /></label>
-          <label class="block text-sm"
-            ><input v-model="recovery" type="checkbox" /> Keep recovery hotspot
-            available while joining/using the router</label
-          >
-          <p class="kvm-hint">
-            Recovery hotspot stays available even if the router password is
-            wrong. With it disabled, use Serial or Bluetooth to recover.
-            Enterprise Wi-Fi is not supported.
-          </p>
+            />
+          </label>
+          <label class="flex items-start gap-2 text-sm">
+            <input v-model="recovery" type="checkbox" class="mt-1" />
+            <span>
+              Keep a recovery hotspot
+              <span class="kvm-hint mt-1 block"
+                >Connect to the board even if this network is unavailable.</span
+              >
+            </span>
+          </label>
         </div>
         <component
           :is="mode === 1 ? 'div' : 'details'"
           v-if="mode === 1 || (mode === 2 && recovery)"
           :key="mode"
-          class="space-y-3 rounded border border-ink-600 p-3"
+          class="space-y-3"
         >
-          <summary v-if="mode === 2" class="cursor-pointer text-sm">
+          <summary
+            v-if="mode === 2"
+            class="cursor-pointer text-sm text-mist-300"
+          >
             Recovery hotspot settings
           </summary>
-          <label class="block text-sm"
-            >Hotspot network name (SSID)<input
+          <label class="block text-sm">
+            {{ mode === 1 ? 'Network name (SSID)' : 'Hotspot name (SSID)' }}
+            <input
               v-model="apSsid"
               class="kvm-input mt-1 w-full"
               autocomplete="off"
               maxlength="32"
-          /></label>
-          <label class="block text-sm"
-            >New hotspot password<input
+            />
+          </label>
+          <label class="block text-sm">
+            {{ mode === 1 ? 'Password' : 'Hotspot password' }}
+            <input
               v-model="apPassword"
               type="password"
               class="kvm-input mt-1 w-full"
               autocomplete="new-password"
               maxlength="63"
               placeholder="Leave blank to keep saved password"
-          /></label>
-          <button class="kvm-btn" @click="secret(WIFI_FIELD.AP_PASSWORD)">
-            Show saved hotspot password
+            />
+          </label>
+          <button
+            type="button"
+            class="kvm-btn"
+            @click="secret(WIFI_FIELD.AP_PASSWORD)"
+          >
+            Show saved password
           </button>
           <p v-if="shownApPassword" class="break-all font-mono text-xs">
             {{ shownApPassword }}
           </p>
         </component>
-        <label class="block text-sm"
-          >New helper access token<input
-            v-model="token"
-            type="password"
-            class="kvm-input mt-1 w-full"
-            autocomplete="new-password"
-            maxlength="80"
-            placeholder="Leave blank to keep saved token"
-        /></label>
-        <div class="flex flex-wrap gap-2">
-          <button class="kvm-btn" @click="generateToken">
-            Generate replacement token</button
-          ><button class="kvm-btn" @click="secret(WIFI_FIELD.TOKEN)">
-            Show saved helper token
+        <p v-if="mode === 2 && !recovery" class="kvm-hint">
+          Use Serial or Bluetooth to reconnect if Wi-Fi setup fails.
+        </p>
+        <p
+          v-if="
+            mode === 2 && recovery && status?.clientIp.startsWith('192.168.4.')
+          "
+          class="kvm-hint"
+        >
+          This network shares the recovery hotspot's address range. Disable
+          recovery if connections fail.
+        </p>
+        <details class="border-t border-ink-600 pt-3">
+          <summary class="cursor-pointer text-sm text-mist-300">
+            Advanced
+          </summary>
+          <div class="mt-3 space-y-3">
+            <div v-if="status" class="space-y-1 font-mono text-xs">
+              <p>Client: {{ status.clientIp || 'not connected' }}</p>
+              <p>Hotspot: {{ status.apIp || 'inactive' }}</p>
+              <p v-if="status.state === 4">
+                Reason {{ status.reason }} · Device error {{ status.error }}
+              </p>
+            </div>
+            <div v-if="mode !== 0" class="space-y-3">
+              <label class="block text-sm">
+                Media access token
+                <input
+                  v-model="token"
+                  type="password"
+                  class="kvm-input mt-1 w-full"
+                  autocomplete="new-password"
+                  maxlength="80"
+                  placeholder="Leave blank to keep saved token"
+                />
+              </label>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="kvm-btn"
+                  @click="secret(WIFI_FIELD.TOKEN)"
+                >
+                  Show saved token
+                </button>
+                <button type="button" class="kvm-btn" @click="generateToken">
+                  Generate new token
+                </button>
+              </div>
+              <p v-if="shownToken" class="break-all font-mono text-xs">
+                {{ shownToken }}
+              </p>
+              <p class="kvm-hint">
+                Use this token and the board's IP address with the HTTPS media
+                helper. After changing the token, update KVM_MEDIA_TOKEN in the
+                helper.
+              </p>
+            </div>
+            <p class="kvm-hint">
+              WPA2 or better is required. Enterprise Wi-Fi is not supported.
+            </p>
+          </div>
+        </details>
+        <div class="border-t border-ink-600 pt-3">
+          <button type="button" class="kvm-btn kvm-btn-primary" @click="save">
+            {{ busy ? 'Saving…' : 'Save and apply' }}
           </button>
         </div>
-        <p v-if="shownToken" class="break-all font-mono text-xs">
-          {{ shownToken }}
-        </p>
-        <p class="kvm-hint">
-          The router password is never read back. Hotspot passwords and helper
-          tokens are shown only on request; they are not saved in browser
-          settings. Changing the token also requires updating KVM_MEDIA_TOKEN
-          for the HTTPS helper.
-        </p>
-        <button class="kvm-btn" @click="save">Save and apply Wi-Fi</button>
       </fieldset>
       <p v-if="media.inserted.value || media.uncertain.value" class="kvm-hint">
-        Eject and synchronize the virtual disk before changing the network.
-      </p>
-      <p class="kvm-hint">
-        For media, point the local HTTPS helper at the hotspot IP or router IP
-        shown above, then reconnect the media backend. Saving over Wi-Fi
-        disconnects that link; Serial/Bluetooth setup avoids losing control.
+        Eject and synchronize the virtual disk before changing Wi-Fi.
       </p>
     </template>
   </section>

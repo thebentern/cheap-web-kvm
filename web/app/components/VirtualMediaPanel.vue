@@ -6,7 +6,6 @@ import { useKvm } from '~/composables/useKvm'
 import { useVirtualMedia } from '~/composables/useVirtualMedia'
 import { useDialogFocus } from '~/composables/useDialogFocus'
 import { frame } from '~/utils/ch9329'
-import type { Volume } from '~/utils/media/disk'
 const panels = usePanels(),
   kvm = useKvm(),
   media = useVirtualMedia()
@@ -57,7 +56,9 @@ const size = (n: number) =>
     ? `${(n / 1073741824).toFixed(2)} GiB`
     : n >= 1048576
       ? `${(n / 1048576).toFixed(1)} MiB`
-      : `${n} B`
+      : n >= 1024
+        ? `${(n / 1024).toFixed(1)} KiB`
+        : `${n} B`
 function createDrive() {
   savedId.value = ''
   void media.open({ size: capacity.value * 1048576, label: label.value })
@@ -92,7 +93,7 @@ async function restore() {
   } else if (selectedSaved.value) {
     mode.value = 'boot'
     error.value =
-      'Reselect the original boot image below. Its size and full SHA-256 fingerprint must match the saved overlay.'
+      'Reselect the original boot image. Its size and full SHA-256 fingerprint must match the saved overlay.'
   }
 }
 async function boot(cancel = false) {
@@ -143,379 +144,460 @@ onMounted(() => {
       role="dialog"
       aria-modal="true"
       aria-labelledby="media-title"
-      class="kvm-media w-full max-w-3xl max-h-[92dvh] overflow-auto rounded-xl border border-ink-600 bg-ink-900 p-5 text-mist-100 shadow-2xl"
+      class="kvm-media w-full max-w-2xl max-h-[92dvh] overflow-auto rounded-xl border border-ink-600 bg-ink-900 p-5 text-mist-100 shadow-2xl sm:p-6"
     >
-      <div class="flex items-center justify-between gap-3">
-        <h2 id="media-title" class="text-lg font-semibold">Virtual media</h2>
+      <header class="flex items-start justify-between gap-4">
+        <div>
+          <h2 id="media-title" class="text-lg font-semibold">Virtual media</h2>
+          <p class="kvm-hint mt-1">
+            Share a boot image or a USB drive with the target.
+          </p>
+        </div>
         <button
-          class="kvm-btn"
+          class="kvm-btn kvm-btn-icon"
           aria-label="Close virtual media panel"
           @click="panels.hide('media')"
         >
-          Close
+          <AppIcon name="x" />
         </button>
-      </div>
-      <p class="kvm-hint mt-2">
-        Keep this client connected, awake, and this tab visible while media is
-        inserted. The ESP32 streams sectors; the source image stays unchanged.
-        Experimental until validated on your board and target.
-      </p>
+      </header>
+
       <p
         v-if="error"
         role="alert"
-        class="mt-3 rounded border border-alert-400 p-3 text-sm text-alert-400"
+        class="mt-4 rounded-lg border border-alert-400 p-3 text-sm text-alert-400"
       >
         {{ error }}
       </p>
-      <details class="mt-4 rounded border border-ink-600 p-3">
-        <summary class="cursor-pointer text-sm font-semibold">Wi-Fi setup · hotspot or router client</summary>
-        <div class="mt-3"><WifiSettingsPanel /></div>
-      </details>
-      <div class="mt-4 grid gap-3 sm:grid-cols-2">
-        <label class="text-sm"
-          >Media backend
-          <input
-            v-model="url"
-            class="kvm-input mt-1 w-full"
-            placeholder="wss://localhost:8443/media"
-            :disabled="connected || locked"
-          />
-        </label>
-        <div class="flex flex-wrap items-end gap-2">
-          <button
-            class="kvm-btn"
-            :disabled="busy || connecting || locked"
-            @click="connected ? media.disconnect() : media.connect()"
-          >
-            {{ connected ? 'Disconnect media' : 'Connect media' }}
-          </button>
-          <button
-            class="kvm-btn"
-            :disabled="!connected || locked"
-            @click="media.benchmark()"
-          >
-            Measure link
-          </button>
-          <button
-            class="kvm-btn"
-            :disabled="!connected || busy"
-            @click="kvm.link.connect('wifi')"
-          >
-            Use Wi-Fi HID
-          </button>
-        </div>
-      </div>
-      <p class="kvm-hint mt-2">
-        Wi-Fi via the local HTTPS helper. Serial at 115200 and Bluetooth remain
-        control links. Configure the network and helper token in Settings → Wi-Fi;
-        see the virtual-media guide in the repository.
+      <p v-if="busy" role="status" class="mt-4 text-sm text-signal-400">
+        Working{{ progress ? ` · ${progress}%` : '…' }}
       </p>
-      <p class="mt-2 font-mono text-xs">
-        {{
-          connected
-            ? 'Backend connected · protocol v1 · 512-byte sectors'
-            : 'Backend disconnected'
-        }}
-        ·
-        {{
-          uncertain
-            ? 'Synchronization required — edits locked'
-            : inserted
-              ? 'Inserted — target owns disk'
-              : 'Ejected — client owns disk'
-        }}
-      </p>
-      <p v-if="activity.benchmark" class="kvm-hint mt-1">
-        {{ activity.benchmark }}
-      </p>
-      <div class="mt-4 flex gap-2" role="group" aria-label="Media mode">
-        <button
-          class="kvm-btn"
-          :aria-pressed="mode === 'boot'"
-          :disabled="locked"
-          @click="mode = 'boot'"
-        >
-          Boot image
-        </button>
-        <button
-          class="kvm-btn"
-          :aria-pressed="mode === 'fat32'"
-          :disabled="locked"
-          @click="mode = 'fat32'"
-        >
-          FAT32 thumb drive
-        </button>
-      </div>
-      <fieldset class="mt-3 space-y-3" :disabled="locked">
-        <legend class="sr-only">Source selection</legend>
-        <div class="flex flex-wrap items-end gap-2">
-          <label class="flex-1 text-sm"
-            >Saved disks and overlays
-            <select v-model="savedId" class="kvm-input mt-1 w-full">
-              <option value="">New source</option>
-              <option v-for="v in saved" :key="v.id" :value="v.id">
-                {{ v.name }} · {{ v.kind }} · {{ v.created.slice(0, 10) }}
-              </option>
-            </select>
-          </label>
-          <button class="kvm-btn" :disabled="!savedId" @click="restore">
-            Open saved
-          </button>
-        </div>
-        <template v-if="mode === 'boot'">
-          <label class="block text-sm"
-            >Select local .img or USB-bootable hybrid .iso
-            <input
-              class="mt-2 block w-full text-sm"
-              type="file"
-              accept=".img,.iso,.xz"
-              @change="image"
-            />
-          </label>
-          <p class="kvm-hint">
-            Unpack .img.xz first. Optical-only ISOs need CD/DVD emulation, which
-            is not provided. mPWRD-OS UEFI is a compressed raw disk image and
-            may require writable media for first boot.
+
+      <section
+        aria-label="Media connection"
+        class="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-ink-850 p-3"
+      >
+        <div>
+          <p class="flex items-center gap-2 text-sm font-medium">
+            <span
+              class="h-2 w-2 rounded-full"
+              :class="connected ? 'bg-signal-400' : 'bg-ink-500'"
+              aria-hidden="true"
+            />{{ connected ? 'Media connected' : 'Media disconnected' }}
           </p>
-        </template>
-        <div v-else class="grid gap-2 sm:grid-cols-3">
-          <label class="text-sm"
-            >Capacity (MiB)<input
-              v-model.number="capacity"
-              type="number"
-              min="64"
-              max="32768"
-              step="1"
-              class="kvm-input mt-1 w-full"
-          /></label>
-          <label class="text-sm"
-            >Volume label<input
-              v-model="label"
-              maxlength="11"
-              class="kvm-input mt-1 w-full"
-          /></label>
-          <button class="kvm-btn self-end" @click="createDrive">
-            Create FAT32 drive
-          </button>
+          <p v-if="!connected" class="kvm-hint mt-1">
+            Connect through the local HTTPS helper.
+          </p>
         </div>
-      </fieldset>
-      <div v-if="meta" class="mt-4 rounded-lg border border-ink-600 p-3">
-        <p class="text-sm font-semibold">
-          {{ meta.name }} · {{ size(meta.size) }} ·
-          {{
-            meta.kind === 'fat32'
-              ? 'MBR / FAT32'
-              : 'Disk image + copy-on-write overlay'
-          }}
-        </p>
-        <p class="kvm-hint mt-1">
-          Revision {{ meta.revision }} ·
-          {{
-            dirty
-              ? 'Changes saved in this browser; export not confirmed'
-              : 'Export confirmed at current revision'
-          }}
-          ·
-          {{
-            persistent
-              ? 'Persistent storage granted'
-              : 'Storage may be evicted; writable insertion disabled'
-          }}
-        </p>
-        <p v-if="meta.needsCheck" role="alert" class="text-sm text-alert-400">
-          A client edit was interrupted. Export for filesystem repair before
-          inserting or editing.
-        </p>
-        <ul
-          v-if="inspection.length"
-          class="mt-2 space-y-1 text-xs text-mist-300"
+        <button
+          class="kvm-btn"
+          :disabled="busy || connecting || locked"
+          @click="connected ? media.disconnect() : media.connect()"
         >
-          <li v-for="line in inspection" :key="line">{{ line }}</li>
-        </ul>
-        <div class="mt-3 flex flex-wrap items-center gap-3">
-          <label class="text-sm"
-            ><input v-model="writeMode" type="checkbox" :disabled="locked" />
-            Allow target writes to saved overlay</label
+          {{
+            connecting ? 'Connecting…' : connected ? 'Disconnect' : 'Connect'
+          }}
+        </button>
+      </section>
+
+      <details class="mt-3 border-b border-ink-600 pb-3">
+        <summary class="cursor-pointer text-sm text-mist-300">
+          Connection settings
+        </summary>
+        <div class="mt-3 space-y-3">
+          <label class="block text-sm"
+            >Helper address<input
+              v-model="url"
+              class="kvm-input mt-1 w-full"
+              placeholder="wss://localhost:8443/media"
+              :disabled="connected || locked"
+          /></label>
+          <p class="kvm-hint">
+            Set up the board’s network in Settings → Wi-Fi, then start the HTTPS
+            helper. Leave the address blank when using the helper’s own web UI.
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <button
+              class="kvm-btn"
+              :disabled="!connected || locked"
+              @click="media.benchmark()"
+            >
+              Test connection speed
+            </button>
+            <button
+              class="kvm-btn"
+              :disabled="!connected || busy"
+              @click="kvm.link.connect('wifi')"
+            >
+              Use Wi-Fi for keyboard &amp; mouse
+            </button>
+          </div>
+          <p v-if="activity.benchmark" class="kvm-hint">
+            {{ activity.benchmark }}
+          </p>
+        </div>
+      </details>
+
+      <details class="mt-5" :open="!meta">
+        <summary class="cursor-pointer text-sm font-semibold">
+          {{ meta ? 'Change disk' : 'Choose a disk' }}
+        </summary>
+        <fieldset class="mt-3 space-y-4" :disabled="locked">
+          <legend class="sr-only">Disk selection</legend>
+          <div
+            class="grid grid-cols-2 gap-2"
+            role="group"
+            aria-label="Media mode"
+          >
+            <button
+              class="kvm-btn media-choice"
+              :aria-pressed="mode === 'boot'"
+              @click="mode = 'boot'"
+            >
+              Boot image
+            </button>
+            <button
+              class="kvm-btn media-choice"
+              :aria-pressed="mode === 'fat32'"
+              @click="mode = 'fat32'"
+            >
+              USB drive
+            </button>
+          </div>
+          <div v-if="mode === 'boot'" class="space-y-2">
+            <label class="block text-sm"
+              >Disk image<input
+                class="mt-2 block w-full text-sm"
+                type="file"
+                accept=".img,.iso"
+                @change="image"
+            /></label>
+            <p class="kvm-hint">
+              Choose an unpacked .img or USB-bootable .iso. The original file
+              stays unchanged.
+            </p>
+          </div>
+          <div v-else class="space-y-3">
+            <div class="grid grid-cols-2 gap-3">
+              <label class="text-sm"
+                >Size (MiB)<input
+                  v-model.number="capacity"
+                  type="number"
+                  min="64"
+                  max="32768"
+                  step="1"
+                  class="kvm-input mt-1 w-full"
+              /></label>
+              <label class="text-sm"
+                >Drive name<input
+                  v-model="label"
+                  maxlength="11"
+                  class="kvm-input mt-1 w-full"
+              /></label>
+            </div>
+            <button class="kvm-btn kvm-btn-primary" @click="createDrive">
+              Create USB drive
+            </button>
+            <p class="kvm-hint">FAT32 · 64 MiB–32 GiB · Files under 4 GiB.</p>
+          </div>
+          <div
+            v-if="saved.length"
+            class="flex flex-wrap items-end gap-2 border-t border-ink-600 pt-3"
+          >
+            <label class="min-w-0 flex-1 text-sm"
+              >Or reopen a saved disk<select
+                v-model="savedId"
+                class="kvm-select mt-1 w-full"
+              >
+                <option value="">Choose saved disk…</option>
+                <option v-for="v in saved" :key="v.id" :value="v.id">
+                  {{ v.name }} · {{ v.created.slice(0, 10) }}
+                </option>
+              </select></label
+            >
+            <button class="kvm-btn" :disabled="!savedId" @click="restore">
+              Open
+            </button>
+          </div>
+        </fieldset>
+      </details>
+
+      <section
+        v-if="meta"
+        aria-label="Selected disk"
+        class="mt-5 rounded-lg border border-ink-600 p-4"
+      >
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div class="min-w-0">
+            <h3 class="break-words text-sm font-semibold">{{ meta.name }}</h3>
+            <p class="kvm-hint mt-1">
+              {{ size(meta.size) }} ·
+              {{ meta.kind === 'fat32' ? 'FAT32 USB drive' : 'Boot image' }}
+            </p>
+          </div>
+          <span
+            class="rounded-full bg-ink-850 px-2 py-1 text-xs"
+            role="status"
+            >{{
+              meta.needsCheck
+                ? 'Repair required'
+                : uncertain
+                  ? 'Needs synchronization'
+                  : inserted
+                    ? 'Inserted'
+                    : 'Ready to insert'
+            }}</span
+          >
+        </div>
+        <p
+          v-if="meta.needsCheck"
+          role="alert"
+          class="mt-3 text-sm text-alert-400"
+        >
+          An edit was interrupted. Download this disk for filesystem repair
+          before using it.
+        </p>
+        <template v-if="inserted || uncertain">
+          <p class="kvm-hint mt-3">
+            Keep this tab visible and this computer awake while the disk is in
+            use.
+          </p>
+          <label class="mt-3 flex items-start gap-2 text-sm"
+            ><input v-model="unmounted" type="checkbox" class="mt-1" />The disk
+            is unmounted on the target, or the target is off.</label
           >
           <button
-            v-if="!persistent"
-            class="kvm-btn"
-            :disabled="busy || inserted"
-            @click="media.grantPersistence()"
-          >
-            Grant persistent storage
-          </button>
-          <button
-            class="kvm-btn"
-            :disabled="!connected || locked || !!meta.needsCheck"
-            @click="insertMedia"
-          >
-            Insert
-          </button>
-          <button
-            class="kvm-btn"
-            :disabled="busy || (!inserted && !uncertain)"
+            class="kvm-btn kvm-btn-primary mt-3"
+            :disabled="busy || ((writeMode || uncertain) && !unmounted)"
             @click="media.eject(unmounted)"
           >
             Eject and synchronize
           </button>
-        </div>
-        <label v-if="inserted || uncertain" class="mt-3 block text-sm"
-          ><input v-model="unmounted" type="checkbox" /> I unmounted/ejected
-          this disk in the target OS (or the target is powered off).</label
-        >
-        <p class="kvm-hint mt-2">
-          Before ejection, unmount in the target and wait for transfers to stop.
-          Every successful target write is committed to browser storage; quota
-          errors fail the USB write. This does not flush data still cached by
-          the target OS.
-        </p>
-        <p class="mt-2 font-mono text-xs">
-          Read {{ size(activity.read) }} · committed writes
-          {{ size(activity.written) }} · {{ size(Math.round(activity.rate)) }}/s
-          average · {{ activity.last || 'No transfers yet' }}
-        </p>
-        <div class="mt-3 flex flex-wrap gap-2">
-          <button
-            class="kvm-btn"
-            :disabled="locked"
-            @click="media.exportDisk()"
-          >
-            Export updated disk image
-          </button>
-          <button
-            v-if="dirty"
-            class="kvm-btn"
-            :disabled="locked"
-            @click="media.markExported()"
-          >
-            I saved the downloaded export
-          </button>
-        </div>
-        <p class="kvm-hint mt-1">
-          Exports are new files. Saved overlays can be reopened here; boot
-          overlays require reselecting the matching original. Clearing browser
-          data removes them. An interrupted client edit is locked for external
-          repair.
-        </p>
-      </div>
-      <fieldset
-        v-if="meta?.kind === 'fat32'"
-        class="mt-4"
-        :disabled="locked || !!meta.needsCheck"
-      >
-        <legend class="text-sm font-semibold">
-          Files · /{{ path.join('/') }}
-        </legend>
-        <div class="mt-2 flex flex-wrap items-center gap-2">
-          <button
-            class="kvm-btn"
-            :disabled="!path.length"
-            @click="media.navigate()"
-          >
-            Up
-          </button>
-          <label class="kvm-btn"
-            >Add files<input
-              class="sr-only"
-              type="file"
-              multiple
-              :disabled="locked"
-              @change="add"
-          /></label>
-          <input
-            v-model="folder"
-            class="kvm-input"
-            placeholder="New folder name"
-            aria-label="New folder name"
-          />
-          <button
-            class="kvm-btn"
-            :disabled="!folder"
-            @click="media.mkdir(folder)"
-          >
-            Create folder
-          </button>
-        </div>
-        <p v-if="inserted || uncertain" class="kvm-hint mt-2">
-          File browser locked while the target owns the filesystem. Eject and
-          synchronize to retrieve target-created files.
-        </p>
-        <table v-else class="mt-3 w-full text-left text-sm">
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Size</th>
-              <th scope="col">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="entry in entries"
-              :key="entry.name"
-              class="border-t border-ink-600"
+        </template>
+        <template v-else>
+          <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <label class="text-sm"
+              ><input v-model="writeMode" type="checkbox" :disabled="locked" />
+              Allow target to write</label
             >
-              <td class="max-w-60 break-words py-2">
-                <button
-                  v-if="entry.directory"
-                  class="underline"
-                  @click="media.navigate(entry.name)"
-                >
-                  {{ entry.name }}/</button
-                ><span v-else>{{ entry.name }}</span>
-              </td>
-              <td>{{ entry.directory ? 'Folder' : size(entry.size) }}</td>
-              <td>
-                <button
-                  v-if="!entry.directory"
-                  class="kvm-btn"
-                  @click="media.inspectFile(entry.name)"
-                >
-                  Inspect
-                </button>
-                <button
-                  v-if="!entry.directory"
-                  class="kvm-btn"
-                  @click="media.downloadFile(entry.name)"
-                >
-                  Download
-                </button>
-                <button class="kvm-btn" @click="media.remove(entry.name)">
-                  Remove
-                </button>
-              </td>
-            </tr>
-            <tr v-if="!entries.length">
-              <td colspan="3" class="py-3 text-mist-400">
-                This folder is empty.
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <pre
-          v-if="preview && !inserted && !uncertain"
-          class="mt-3 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded border border-ink-600 p-2 text-xs"
-          >{{ preview }}</pre>
-        <p class="kvm-hint mt-2">
-          64 MiB–32 GiB, up to 4 GiB minus 1 byte per file, VFAT names up to 255
-          UTF-16 units. Remove folder contents before removing a folder.
+            <button
+              class="kvm-btn kvm-btn-primary"
+              :disabled="
+                !connected ||
+                locked ||
+                !!meta.needsCheck ||
+                (writeMode && !persistent)
+              "
+              @click="insertMedia"
+            >
+              Insert into target
+            </button>
+          </div>
+          <div v-if="writeMode && !persistent" class="mt-3">
+            <p class="kvm-hint">
+              Allow browser storage to keep target writes before inserting.
+            </p>
+            <button
+              class="kvm-btn mt-2"
+              :disabled="busy"
+              @click="media.grantPersistence()"
+            >
+              Allow persistent storage
+            </button>
+          </div>
+          <p v-if="!connected" class="kvm-hint mt-3">
+            Connect media above to insert this disk.
+          </p>
+        </template>
+        <details class="mt-4 border-t border-ink-600 pt-3">
+          <summary class="cursor-pointer text-sm text-mist-300">
+            Disk details &amp; download
+          </summary>
+          <div class="mt-3 space-y-3">
+            <p class="kvm-hint">
+              {{
+                dirty
+                  ? 'Changes saved in this browser; download a copy to keep them elsewhere.'
+                  : 'Downloaded copy is up to date.'
+              }}
+              Clearing browser data removes saved disks and changes.
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <button
+                class="kvm-btn"
+                :disabled="locked"
+                @click="media.exportDisk()"
+              >
+                Download disk image
+              </button>
+              <button
+                v-if="dirty"
+                class="kvm-btn"
+                :disabled="locked"
+                @click="media.markExported()"
+              >
+                Confirm download saved
+              </button>
+            </div>
+            <ul
+              v-if="inspection.length"
+              class="space-y-1 text-xs text-mist-300"
+            >
+              <li v-for="line in inspection" :key="line">{{ line }}</li>
+            </ul>
+            <p class="kvm-hint">
+              {{
+                persistent
+                  ? 'Persistent browser storage enabled.'
+                  : 'Browser storage may be cleared automatically.'
+              }}
+              Revision {{ meta.revision }}. Target writes are saved to browser
+              storage; unmount on the target before ejecting to flush its cached
+              data.
+            </p>
+          </div>
+        </details>
+        <p
+          v-if="inserted || activity.read || activity.written"
+          class="kvm-hint mt-3"
+        >
+          Read {{ size(activity.read) }} · Written
+          {{ size(activity.written) }} · {{ size(Math.round(activity.rate)) }}/s
         </p>
-      </fieldset>
+      </section>
+
       <section
-        class="mt-5 border-t border-ink-600 pt-4"
-        aria-labelledby="boot-repeat-title"
+        v-if="meta?.kind === 'fat32'"
+        aria-label="Drive files"
+        class="mt-5"
       >
-        <h3 id="boot-repeat-title" class="text-sm font-semibold">
-          Boot-key repetition
-        </h3>
-        <p class="kvm-hint mt-1">
-          Arm before manually restarting the target. Firmware waits for keyboard
-          readiness and resumes after re-enumeration within the duration. Target
-          power control needs additional hardware.
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h3 class="break-all text-sm font-semibold">
+            Files
+            <span class="font-normal text-mist-400">/{{ path.join('/') }}</span>
+          </h3>
+          <label v-if="!locked && !meta.needsCheck" class="kvm-btn"
+            >Add files<input class="sr-only" type="file" multiple @change="add"
+          /></label>
+        </div>
+        <p v-if="inserted || uncertain" class="kvm-hint mt-3">
+          Eject and synchronize the disk to browse files or retrieve changes
+          from the target.
         </p>
-        <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
-          <label class="text-xs"
-            >Key<select v-model.number="key" class="kvm-input mt-1 w-full">
+        <fieldset v-else class="mt-3" :disabled="locked || !!meta.needsCheck">
+          <legend class="sr-only">Manage files</legend>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              v-if="path.length"
+              class="kvm-btn"
+              @click="media.navigate()"
+            >
+              Up one folder
+            </button>
+            <details class="text-sm">
+              <summary class="cursor-pointer text-mist-300">New folder</summary>
+              <div class="mt-2 flex gap-2">
+                <input
+                  v-model="folder"
+                  class="kvm-input min-w-0 flex-1"
+                  placeholder="Folder name"
+                  aria-label="New folder name"
+                /><button
+                  class="kvm-btn"
+                  :disabled="!folder"
+                  @click="media.mkdir(folder)"
+                >
+                  Create
+                </button>
+              </div>
+            </details>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="mt-3 w-full text-left text-sm">
+              <thead class="text-mist-400">
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Size</th>
+                  <th scope="col"><span class="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="entry in entries"
+                  :key="entry.name"
+                  class="border-t border-ink-600"
+                >
+                  <td class="max-w-60 break-words py-3">
+                    <button
+                      v-if="entry.directory"
+                      class="underline underline-offset-2"
+                      @click="media.navigate(entry.name)"
+                    >
+                      {{ entry.name }}/</button
+                    ><span v-else>{{ entry.name }}</span>
+                  </td>
+                  <td class="pr-2 text-xs text-mist-400">
+                    {{ entry.directory ? 'Folder' : size(entry.size) }}
+                  </td>
+                  <td class="py-2 text-right">
+                    <details>
+                      <summary
+                        class="cursor-pointer text-xs text-mist-300"
+                        :aria-label="`Actions for ${entry.name}`"
+                      >
+                        Actions
+                      </summary>
+                      <div class="mt-2 flex flex-wrap justify-end gap-2">
+                        <button
+                          v-if="!entry.directory"
+                          class="kvm-btn"
+                          @click="media.downloadFile(entry.name)"
+                        >
+                          Download</button
+                        ><button
+                          v-if="!entry.directory"
+                          class="kvm-btn"
+                          @click="media.inspectFile(entry.name)"
+                        >
+                          Preview</button
+                        ><button
+                          class="kvm-btn"
+                          @click="media.remove(entry.name)"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </details>
+                  </td>
+                </tr>
+                <tr v-if="!entries.length">
+                  <td colspan="3" class="py-6 text-center text-mist-400">
+                    No files yet. Add files to share with the target.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <pre
+            v-if="preview"
+            class="mt-3 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded border border-ink-600 p-3 text-xs"
+            >{{ preview }}</pre>
+        </fieldset>
+      </section>
+
+      <details class="mt-5 border-t border-ink-600 pt-4">
+        <summary class="cursor-pointer text-sm font-semibold">
+          Boot key
+          <span v-if="macroArmed || flags & 32" class="ml-2 text-signal-400">{{
+            connected ? 'Active' : 'Armed'
+          }}</span>
+        </summary>
+        <p class="kvm-hint mt-2">
+          Repeat a key while you restart the target to open its boot menu.
+        </p>
+        <div class="mt-3 flex flex-wrap items-end gap-3">
+          <label class="text-sm"
+            >Key<select v-model.number="key" class="kvm-select mt-1 w-full">
               <option v-for="n in 12" :key="n" :value="0x39 + n">
                 F{{ n }}
               </option>
@@ -524,32 +606,8 @@ onMounted(() => {
               <option :value="0x28">Enter</option>
             </select></label
           >
-          <label class="text-xs"
-            >Initial delay (ms)<input
-              v-model.number="delay"
-              class="kvm-input mt-1 w-full"
-              type="number"
-              min="0"
-              max="120000"
-          /></label>
-          <label class="text-xs"
-            >Press (ms)<input
-              v-model.number="press"
-              class="kvm-input mt-1 w-full"
-              type="number"
-              min="20"
-              max="2000"
-          /></label>
-          <label class="text-xs"
-            >Press interval (ms)<input
-              v-model.number="interval"
-              class="kvm-input mt-1 w-full"
-              type="number"
-              :min="press + 10"
-              max="10000"
-          /></label>
-          <label class="text-xs"
-            >Duration (seconds)<input
+          <label class="text-sm"
+            >Repeat for (seconds)<input
               v-model.number="duration"
               class="kvm-input mt-1 w-full"
               type="number"
@@ -557,35 +615,67 @@ onMounted(() => {
               max="300"
           /></label>
         </div>
-        <div class="mt-3 flex gap-2">
+        <details class="mt-3">
+          <summary class="cursor-pointer text-sm text-mist-300">
+            Key timing
+          </summary>
+          <div class="mt-3 grid grid-cols-3 gap-2">
+            <label class="text-xs"
+              >Delay (ms)<input
+                v-model.number="delay"
+                class="kvm-input mt-1 w-full"
+                type="number"
+                min="0"
+                max="120000" /></label
+            ><label class="text-xs"
+              >Press (ms)<input
+                v-model.number="press"
+                class="kvm-input mt-1 w-full"
+                type="number"
+                min="20"
+                max="2000" /></label
+            ><label class="text-xs"
+              >Interval (ms)<input
+                v-model.number="interval"
+                class="kvm-input mt-1 w-full"
+                type="number"
+                :min="press + 10"
+                max="10000"
+            /></label>
+          </div>
+        </details>
+        <div class="mt-3 flex flex-wrap gap-2">
           <button
             class="kvm-btn"
             :disabled="macroBusy || !kvm.link.connected.value"
             @click="boot()"
           >
-            Arm repetition</button
+            Start repeating</button
           ><button
             class="kvm-btn"
-            :disabled="!kvm.link.connected.value"
+            :disabled="macroBusy || !kvm.link.connected.value"
             @click="boot(true)"
           >
-            Cancel and release key
+            Stop and release key
           </button>
         </div>
         <p class="kvm-hint mt-2">
           {{
             connected
               ? flags & 32
-                ? 'Firmware repetition active'
-                : 'Firmware repetition inactive'
+                ? 'Repeating'
+                : 'Not repeating'
               : macroArmed
-                ? 'Armed; bounded by configured duration (serial/Bluetooth status not polled)'
-                : 'Not armed'
-          }}. Cancel from the active control link, even during media transfers.
+                ? 'Armed for the selected duration'
+                : 'Not repeating'
+          }}. Connect Serial, Bluetooth or Wi-Fi control to use this feature.
         </p>
-      </section>
-      <p v-if="busy" role="status" class="mt-3 text-sm text-signal-400">
-        Working{{ progress ? ` · ${progress}%` : '…' }}
+      </details>
+      <p class="kvm-hint mt-5">
+        Experimental ·
+        <NuxtLink class="underline underline-offset-2" to="/docs"
+          >Virtual media guide</NuxtLink
+        >
       </p>
     </section>
   </div>
@@ -597,6 +687,15 @@ onMounted(() => {
 .kvm-media :disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+.media-choice[aria-pressed='true'] {
+  color: var(--color-signal-400);
+  border-color: var(--color-signal-400);
+  background: color-mix(
+    in srgb,
+    var(--color-signal-400) 10%,
+    var(--color-ink-850)
+  );
 }
 .kvm-media th {
   font-weight: 500;
