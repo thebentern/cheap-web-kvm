@@ -120,7 +120,7 @@ const videoLabel = computed(() => {
 
 const videoLive = computed(() => capture.status.value === 'live' && !capture.testPattern.value)
 const inputTools: { panel: PanelName; icon: string; label: string; needsLink?: boolean }[] = [
-  { panel: 'media', icon: 'usb', label: 'Virtual media' },
+  { panel: 'media', icon: 'hard-drive', label: 'Virtual media' },
   { panel: 'paste', icon: 'clipboard', label: 'Paste text', needsLink: true },
   { panel: 'copy', icon: 'search', label: 'Copy text' },
   { panel: 'keyboard', icon: 'keyboard', label: 'Keyboard', needsLink: true },
