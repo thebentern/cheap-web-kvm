@@ -425,3 +425,22 @@ The worker-level regression test counts source reads: two saved reopens read zer
 bytes, overlay reads remain lazy, missing/truncated caches reject without scanning,
 and a same-sized replacement file still hashes and fails its identity check.
 All 208 web tests, type checking and production generation pass.
+
+### Share Wi-Fi media with keyboard and mouse control
+
+The HID link now adopts an available Wi-Fi media connection when no selected
+USB or Bluetooth control connection is active, including after a page reload or
+media reconnect. Existing active control links remain selected. An explicit
+control pause releases HID without disconnecting or ejecting the virtual disk;
+it remains paused for that media session. A canceled Bluetooth picker restores
+the previous working control link. Connection settings no longer require a
+separate Wi-Fi HID enable step, and the panel reports whether keyboard and mouse
+share the connection. Paused control has a visible recovery action.
+
+Eleven regression tests cover shared consumers, automatic adoption and fallback,
+preserving active USB/Bluetooth, pause/resume, reconnects, canceled pickers and
+deferred picker completion during reconnects. All 219 web tests, type checking,
+production generation and the private quad-PSRAM board firmware build pass.
+The running browser's control was re-enabled without reloading the inserted
+disk. Applying the new bundled UI still requires a separately authorized board
+restart; these tests do not claim physical key delivery or OS boot acceptance.

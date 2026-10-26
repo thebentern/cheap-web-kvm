@@ -54,6 +54,9 @@ const key = ref(0x45),
   macroArmed = ref(false),
   macroBusy = ref(false)
 const locked = computed(() => busy.value || inserted.value || uncertain.value)
+const wifiControlActive = computed(
+  () => kvm.link.kind.value === 'wifi' && kvm.link.connected.value,
+)
 const dirty = computed(
   () => meta.value && meta.value.revision !== meta.value.exportedRevision,
 )
@@ -227,7 +230,24 @@ onMounted(() => {
                   : 'Connect through the local HTTPS helper.'
             }}
           </p>
+          <p v-else-if="transport === 'wifi'" class="kvm-hint mt-1">
+            {{
+              wifiControlActive
+                ? 'Keyboard and mouse also connected.'
+                : kvm.link.connected.value
+                  ? `Keyboard and mouse use ${kvm.link.kind.value === 'ble' ? 'Bluetooth' : 'USB'}.`
+                  : 'Keyboard and mouse are paused.'
+            }}
+          </p>
         </div>
+        <button
+          v-if="connected && transport === 'wifi' && !kvm.link.connected.value"
+          class="kvm-btn"
+          :disabled="busy || connecting"
+          @click="kvm.link.connect('wifi')"
+        >
+          Enable keyboard &amp; mouse
+        </button>
         <button
           class="kvm-btn"
           :disabled="busy || connecting || locked"
@@ -350,7 +370,11 @@ onMounted(() => {
               Test connection speed
             </button>
             <button
-              v-if="transport === 'wifi'"
+              v-if="
+                transport === 'wifi' &&
+                !wifiControlActive &&
+                kvm.link.connected.value
+              "
               class="kvm-btn"
               :disabled="!connected || busy"
               @click="kvm.link.connect('wifi')"
@@ -809,7 +833,9 @@ onMounted(() => {
               : macroArmed
                 ? 'Armed for the selected duration'
                 : 'Not repeating'
-          }}. Connect Serial, Bluetooth or Wi-Fi control to use this feature.
+          }}.<template v-if="!kvm.link.connected.value">
+            Connect Serial, Bluetooth or Wi-Fi control to use this feature.
+          </template>
         </p>
       </details>
       <p class="kvm-hint mt-5">

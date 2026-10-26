@@ -81,7 +81,8 @@ enough memory to start.
    password. Pairing creates a Secure, HttpOnly, same-site browser session cookie;
    the app does not save the token in browser settings. Session expiry, a board
    restart, or a network/token change can require pairing again.
-5. Choose **Use Wi-Fi for keyboard & mouse** if desired, then select a boot image
+5. Keyboard and mouse automatically use the Wi-Fi connection when no USB or
+   Bluetooth control link is active. Select a boot image
    or USB drive. The target still connects to native USB, and video still uses
    the separate HDMI capture stick. Tablets do not need Web Serial/Bluetooth for
    control once the board's Wi-Fi and certificate trust are configured.

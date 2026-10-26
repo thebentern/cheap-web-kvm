@@ -64,6 +64,9 @@ const connecting = kvm.link.connecting
 const portLabel = kvm.link.portLabel
 const serialSupported = kvm.link.serialSupported
 const bleSupported = kvm.link.bleSupported
+const preferredLink = computed(() =>
+  kvm.link.wifiAvailable.value ? 'wifi' : serialSupported.value ? 'serial' : 'ble',
+)
 
 /** Panels that can only do anything once the HID link is up. */
 const needsLink = computed(() => !connected.value)
@@ -179,7 +182,7 @@ function inputTitle(tool: typeof inputTools[number]) {
           :key="b.kind"
           type="button"
           class="kvm-btn kvm-btn-icon"
-          :class="{ negative: b.live, 'kvm-btn-primary': !connected && b.kind === (serialSupported ? 'serial' : 'ble') }"
+          :class="{ negative: b.live, 'kvm-btn-primary': !connected && b.kind === preferredLink }"
           :disabled="connecting || (b.kind === 'serial' && !serialSupported)"
           :title="b.title"
           :aria-label="b.title"
