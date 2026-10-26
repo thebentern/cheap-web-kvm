@@ -13,6 +13,8 @@ export interface Volume {
   size: number
   kind: 'boot' | 'fat32'
   fingerprint?: string
+  /** Immutable decompressed source in this origin's private file storage. */
+  sourceCache?: string
   needsCheck?: boolean
   revision: number
   exportedRevision: number
@@ -51,20 +53,20 @@ export async function volumes() {
   }
 }
 const hashes = new WeakMap<File, Promise<string>>()
-export function fingerprint(file: File) {
+/** Only use with a digest computed over every byte while preparing this File. */
+export function rememberFingerprint(file: File, digest: string) {
+  hashes.set(file, Promise.resolve(digest))
+}
+export function fingerprint(file: File, progress?: (percent: number) => void) {
   let hash = hashes.get(file)
   if (!hash) {
-    hash = hashFile(file)
+    hash = hashFile(file, progress)
     hashes.set(file, hash)
     hash.catch(() => hashes.delete(file))
   }
   return hash
 }
-async function hashFile(file: File) {
-  if (/\.xz$/i.test(file.name))
-    throw new Error(
-      'Unpack .img.xz to an .img before selecting it. Compressed bytes cannot serve random disk sectors.',
-    )
+async function hashFile(file: File, progress?: (percent: number) => void) {
   if (
     !/\.(img|iso)$/i.test(file.name) ||
     file.size < 512 ||
@@ -72,15 +74,19 @@ async function hashFile(file: File) {
     file.size / 512 > 0xffffffff
   )
     throw new Error(
-      'Select an unpacked sector-aligned .img or USB-bootable hybrid .iso (512-byte sectors, below 2 TiB).',
+      'Select a sector-aligned .img or USB-bootable hybrid .iso (512-byte sectors, below 2 TiB).',
     )
   const hash = sha256.create()
-  for (let offset = 0; offset < file.size; offset += 4 * 1048576)
+  for (let offset = 0; offset < file.size; offset += 4 * 1048576) {
     hash.update(
       new Uint8Array(
         await file.slice(offset, offset + 4 * 1048576).arrayBuffer(),
       ),
     )
+    progress?.(
+      Math.round(Math.min(1, (offset + 4 * 1048576) / file.size) * 100),
+    )
+  }
   return Array.from(hash.digest(), (b) => b.toString(16).padStart(2, '0')).join(
     '',
   )
@@ -258,6 +264,14 @@ export class PersistentDisk implements Disk {
   }
   async markExported() {
     const meta = { ...this.meta, exportedRevision: this.meta.revision }
+    const tx = this.transaction(['volumes']),
+      done = complete(tx)
+    tx.objectStore('volumes').put(meta)
+    await done
+    this.meta = meta
+  }
+  async setSourceCache(sourceCache?: string) {
+    const meta = { ...this.meta, sourceCache }
     const tx = this.transaction(['volumes']),
       done = complete(tx)
     tx.objectStore('volumes').put(meta)

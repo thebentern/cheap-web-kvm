@@ -18,6 +18,9 @@ const inserted = ref(false),
   writeMode = ref(false),
   busy = ref(false),
   progress = ref(0),
+  phase = ref('Working'),
+  importing = ref(false),
+  cancelingImport = ref(false),
   persistent = ref(false)
 const preview = ref('')
 const path = ref<string[]>([]),
@@ -50,6 +53,7 @@ function rpc<T = any>(method: string, args?: unknown): Promise<T> {
     worker.onmessage = ({ data }) => {
       if ('progress' in data) {
         progress.value = data.progress
+        if (data.phase) phase.value = data.phase
         return
       }
       const p = pending.get(data.id)
@@ -96,6 +100,7 @@ async function run<T>(action: () => Promise<T>): Promise<T | undefined> {
   busy.value = true
   error.value = null
   progress.value = 0
+  phase.value = 'Working'
   try {
     return await action()
   } catch (e) {
@@ -138,7 +143,14 @@ async function open(args: {
     if (uncertain.value || inserted.value)
       throw new Error('Eject and synchronize before switching media')
     await syncPersistent()
-    meta.value = await rpc('open', { ...args, persistent: persistent.value })
+    importing.value = /\.img\.xz$/i.test(args.file?.name ?? '')
+    cancelingImport.value = false
+    try {
+      meta.value = await rpc('open', { ...args, persistent: persistent.value })
+    } finally {
+      importing.value = false
+      cancelingImport.value = false
+    }
     path.value = []
     inspection.value = []
     entries.value = []
@@ -146,6 +158,11 @@ async function open(args: {
       inspection.value = (await rpc('inspect')).details
     await refresh()
   })
+}
+function cancelImport() {
+  if (!importing.value || cancelingImport.value) return
+  cancelingImport.value = true
+  worker?.postMessage({ method: 'cancelImport' })
 }
 async function connect() {
   return run(async () => {
@@ -293,7 +310,7 @@ async function saveHandle(name: string) {
 }
 async function exportDisk() {
   // Picker must be invoked during the user gesture, before any async work.
-  const name = `${meta.value?.name.replace(/\.(img|iso)$/i, '') ?? 'disk'}-updated.img`
+  const name = `${meta.value?.name.replace(/\.xz$/i, '').replace(/\.(img|iso)$/i, '') ?? 'disk'}-updated.img`
   let handle: FileSystemFileHandle | undefined
   try {
     handle = await saveHandle(name)
@@ -361,6 +378,9 @@ export function useVirtualMedia() {
     writeMode,
     busy,
     progress,
+    phase,
+    importing,
+    cancelingImport,
     persistent,
     path,
     inspection,
@@ -381,6 +401,7 @@ export function useVirtualMedia() {
       }),
     grantPersistence,
     open,
+    cancelImport,
     connect,
     disconnect,
     insert,

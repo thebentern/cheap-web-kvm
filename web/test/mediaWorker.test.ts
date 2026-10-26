@@ -43,6 +43,10 @@ describe('media storage worker ownership', () => {
         persistent: true,
       })
       expect(meta.needsCheck).toBe(false)
+      await expect(
+        rpc('open', { file: new File(['broken'], 'broken.img.xz') }),
+      ).rejects.toThrow()
+      expect((await rpc('meta')).id).toBe(meta.id)
       const edited = await rpc('add', { path: [], name: 'Client folder' })
       expect(edited.needsCheck).toBe(false)
       expect((await rpc('list', { path: [] }))[0].name).toBe('Client folder')

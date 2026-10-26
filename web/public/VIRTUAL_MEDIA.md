@@ -86,10 +86,25 @@ live session; disconnect or let the failed connection's lease expire first.
 
 ## Boot image
 
-Select an unpacked `.img` or **USB-bootable hybrid** `.iso`. An optical-only ISO
+Select an `.img`, `.img.xz`, or **USB-bootable hybrid** `.iso`. An optical-only ISO
 needs a separate CD/DVD emulation implementation; this device identifies as a
-USB disk, not an optical drive. `.img.xz` is rejected with an unpacking instruction:
-compressed offsets cannot be treated as raw disk sectors.
+USB disk, not an optical drive.
+
+The app prepares `.img.xz` automatically in the background. It streams the
+decompressed image into the browser's private file storage (OPFS), checks the XZ
+structure and integrity checks, and computes the raw image's SHA-256 before making
+it available to insert. Progress and **Cancel import** appear during preparation;
+failed or canceled imports remove their partial file. Closing the tab can leave a
+partial file, which the next saved-disk refresh reclaims. The original compressed
+file stays unchanged. Ordinary LZMA2 XZ images with CRC32 or CRC64 checks and a
+dictionary up to 64 MiB are supported; unsupported compression options fail with
+an error.
+
+Preparation needs browser storage for the **full decompressed image**, plus space
+for later changed sectors. Available quota is checked before import, and a full
+storage error stops the import. The worker streams data with bounded memory; it
+does not load the whole image into RAM. Compressed bytes are never presented as
+raw disk sectors.
 
 Selection computes a full streaming SHA-256 in the storage worker with bounded
 memory. This can take time for a large image. The UI inspects MBR/GPT partitions
@@ -115,9 +130,11 @@ Switching sources/modes requires ejection first.
 The [generic x86_64 UEFI release](https://github.com/mPWRD-OS/mPWRD-OS/releases/tag/v0.2.1)
 contains a compressed raw disk image, not necessarily a live image or installer:
 `mPWRD-OS_26.05.0-trunk_Uefi-x86_trixie_current_6.18.38_minimal.img.xz`.
-Unpack with `xz -dk IMAGE.img.xz`, verify its checksum, and inspect the resulting
-`.img`. The artifact inspected for this change contains a FAT32 ESP and an
-x86_64 fallback loader; see [the recorded results](validation/virtual-media.md).
+Select this `.img.xz` directly in **Boot image**. Its roughly 1.25 GiB download
+requires about **5.69 GiB** of browser storage for the prepared image. Verify the
+download's published checksum before use. The artifact inspected for this change
+contains a FAT32 ESP and an x86_64 fallback loader; see
+[the recorded results](validation/virtual-media.md).
 Its boot and Secure Boot compatibility with the Wyse have **not** been proven.
 Use a writable overlay for its normal OS-disk workflow.
 
@@ -172,9 +189,19 @@ Locks prevent two tabs from opening the same saved disk at once. Private browsin
 quota exhaustion, unsupported durability, revoked permission, storage corruption,
 and user-cleared browser data cannot be hidden by a successful USB ACK. Browser
 persistence is not an external backup and cannot protect against deleting browser
-data or underlying storage failure. Source images are retained only as selected
-File objects; after a reload, reopen the saved overlay and reselect the original.
-The full SHA-256 must match.
+data or underlying storage failure.
+
+For a directly selected `.img` or `.iso`, the source is retained as a selected
+File object; after a reload, reopen the saved overlay and reselect the original.
+Its size and full SHA-256 must match. For an imported `.img.xz`, the prepared raw
+source remains in OPFS and its reference is saved with the volume metadata in
+IndexedDB. Reopen that saved disk without selecting the compressed file again;
+the prepared source's SHA-256 is verified before use. If browser data has removed
+the prepared source, select the original `.img.xz` again to restore it against the
+saved overlay's fingerprint. Successful prepared sources are retained alongside
+their saved volumes; unreferenced interrupted imports are reclaimed. All of this
+storage belongs to the current browser profile and exact origin, including its
+port.
 
 The panel distinguishes browser-saved revisions from a confirmed external export.
 Export writes a new `*-updated.img`. Save File capable browsers stream straight

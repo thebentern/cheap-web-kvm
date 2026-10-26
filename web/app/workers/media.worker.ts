@@ -12,11 +12,18 @@ import {
   inspectBoot,
   validateFat32,
 } from '../utils/media/fat'
+import {
+  cachedImage,
+  cleanImageCache,
+  importCompressedImage,
+  removeCachedImage,
+} from '../utils/media/imageCache'
 let disk: PersistentDisk | null = null
 let inserted = false,
   writable = false,
   persistent = false
 let queue = Promise.resolve()
+let importing: AbortController | null = null
 const metadata = () => disk?.meta ?? null
 async function requireDisk(edit = false) {
   if (!disk) throw new Error('Open a disk first')
@@ -85,31 +92,78 @@ async function call(method: string, a: any) {
       persistent = !!a.persistent
       return persistent
     case 'saved':
+      await cleanImageCache().catch(() => {}) // Optional orphan cleanup must not block raw media.
       return volumes()
     case 'open': {
       if (!a.file && !a.meta) validateFat32(a.size, a.label)
-      if (disk) {
-        await requireDisk()
-        await disk.close()
-        disk = null
-      }
-      let meta: Volume = a.meta
-      if (!meta) {
-        meta = {
+      if (disk) await requireDisk()
+      const activate = async (source?: File, key?: string, digest?: string) => {
+        const hash = source
+          ? (digest ??
+            (await fingerprint(source, (progress) =>
+              self.postMessage({ progress, phase: 'Verifying image' }),
+            )))
+          : undefined
+        if (
+          a.meta?.kind === 'boot' &&
+          (source?.size !== a.meta.size || hash !== a.meta.fingerprint)
+        )
+          throw new Error(
+            'Select the original image matching this saved overlay.',
+          )
+        const meta: Volume = a.meta ?? {
           id: crypto.randomUUID(),
-          kind: a.file ? 'boot' : 'fat32',
-          name: a.file?.name ?? a.label,
-          size: a.file?.size ?? a.size,
-          fingerprint: a.file ? await fingerprint(a.file) : undefined,
+          kind: source ? 'boot' : 'fat32',
+          name: a.file?.name.replace(/\.xz$/i, '') ?? a.label,
+          size: source?.size ?? a.size,
+          fingerprint: hash,
+          sourceCache: key,
           created: new Date().toISOString(),
           revision: 0,
           exportedRevision: -1,
         }
+        if (importing?.signal.aborted) throw new Error('Image import canceled.')
+        const previous = disk,
+          oldKey = a.meta?.sourceCache
+        // Reopening the same disk must release our own exclusive ownership.
+        if (previous?.meta.id === meta.id) {
+          await previous.close()
+          disk = null
+        }
+        const opened = await PersistentDisk.open(meta, source, !a.meta)
+        try {
+          if (a.meta && (key || (a.file && oldKey)))
+            await opened.setSourceCache(key)
+        } catch (error) {
+          await opened.close()
+          throw error
+        }
+        if (previous && previous === disk) await previous.close()
+        disk = opened
+        if (a.file && oldKey && key !== oldKey) await removeCachedImage(oldKey)
+        if (!source && !a.meta) await mutate(() => formatFat32(disk!, a.label))
+        persistent = !!a.persistent
+        return metadata()
       }
-      disk = await PersistentDisk.open(meta, a.file, !a.meta)
-      if (!a.file && !a.meta) await mutate(() => formatFat32(disk!, a.label))
-      persistent = !!a.persistent
-      return metadata()
+      if (a.file && /\.img\.xz$/i.test(a.file.name)) {
+        importing = new AbortController()
+        try {
+          return await importCompressedImage(
+            a.file,
+            importing.signal,
+            (progress, phase) => self.postMessage({ progress, phase }),
+            activate,
+          )
+        } finally {
+          importing = null
+        }
+      }
+      let source = a.file
+      if (!source && a.meta?.sourceCache) {
+        self.postMessage({ progress: 0, phase: 'Verifying image' })
+        source = await cachedImage(a.meta.sourceCache)
+      }
+      return activate(source)
     }
     case 'close':
       await requireDisk()
@@ -207,6 +261,10 @@ async function call(method: string, a: any) {
 }
 self.onmessage = (e) => {
   const { id, method, args } = e.data
+  if (method === 'cancelImport') {
+    importing?.abort()
+    return
+  }
   queue = queue.then(async () => {
     try {
       self.postMessage({ id, value: await call(method, args ?? {}) })

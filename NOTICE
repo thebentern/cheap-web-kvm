@@ -121,6 +121,11 @@ character recognition works without a network connection.
 Nuxt, Vue and Tailwind CSS (all MIT) are build-time dependencies pulled by npm;
 they are not vendored into this repository.
 
+XZ-Decompress 0.2.3 (MIT), by Tim Perry and Steven Sanderson, is bundled by npm
+for streaming compressed disk images in the browser. Its embedded WebAssembly
+decoder uses XZ Embedded and walloc. Source and license notices:
+https://github.com/httptoolkit/xz-decompress
+
 Upstream's Fomantic-UI and jQuery dependencies were removed in this rewrite.
 
 The firmware pulls espressif/esp_tinyusb and espressif/tinyusb at build time via

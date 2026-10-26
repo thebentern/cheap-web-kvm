@@ -245,7 +245,7 @@ describe('durable copy-on-write disk', () => {
       PersistentDisk.open({ ...meta, fingerprint: 'wrong' }, source),
     ).rejects.toThrow(/original/)
     await expect(fingerprint(new File(['xz'], 'disk.img.xz'))).rejects.toThrow(
-      /Unpack/,
+      /sector-aligned/,
     )
   })
   it('keeps committed data and revision intact if storage commit aborts', async () => {

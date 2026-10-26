@@ -25,6 +25,9 @@ const {
   writeMode,
   busy,
   progress,
+  phase,
+  importing,
+  cancelingImport,
   persistent,
   path,
   inspection,
@@ -93,8 +96,11 @@ async function add(event: Event) {
   input.value = ''
 }
 async function restore() {
-  if (selectedSaved.value?.kind === 'fat32') {
-    mode.value = 'fat32'
+  if (
+    selectedSaved.value?.kind === 'fat32' ||
+    selectedSaved.value?.sourceCache
+  ) {
+    mode.value = selectedSaved.value.kind
     await media.open({ meta: selectedSaved.value })
   } else if (selectedSaved.value) {
     mode.value = 'boot'
@@ -175,9 +181,23 @@ onMounted(() => {
       >
         {{ error }}
       </p>
-      <p v-if="busy" role="status" class="mt-4 text-sm text-signal-400">
-        Working{{ progress ? ` · ${progress}%` : '…' }}
-      </p>
+      <div v-if="busy" class="mt-4 flex items-center justify-between gap-3">
+        <p role="status" class="text-sm text-signal-400">
+          {{
+            cancelingImport
+              ? 'Canceling import…'
+              : `${phase}${progress ? ` · ${progress}%` : '…'}`
+          }}
+        </p>
+        <button
+          v-if="importing"
+          class="kvm-btn"
+          :disabled="cancelingImport"
+          @click="media.cancelImport()"
+        >
+          Cancel import
+        </button>
+      </div>
 
       <section
         aria-label="Media connection"
@@ -335,12 +355,13 @@ onMounted(() => {
               >Disk image<input
                 class="mt-2 block w-full text-sm"
                 type="file"
-                accept=".img,.iso"
+                accept=".img,.iso,.img.xz"
                 @change="image"
             /></label>
             <p class="kvm-hint">
-              Choose an unpacked .img or USB-bootable .iso. The original file
-              stays unchanged.
+              Choose .img, .img.xz, or USB-bootable .iso. Compressed images are
+              prepared automatically in browser storage. Your original stays
+              unchanged.
             </p>
           </div>
           <div v-else class="space-y-3">
@@ -480,6 +501,20 @@ onMounted(() => {
             Disk details &amp; download
           </summary>
           <div class="mt-3 space-y-3">
+            <p v-if="meta.sourceCache" class="kvm-hint">
+              Prepared image saved in this browser. Reopen it from the saved
+              disk list.
+            </p>
+            <p v-if="meta.fingerprint" class="kvm-hint">
+              {{
+                meta.sourceCache
+                  ? 'Prepared image SHA-256'
+                  : 'Original image SHA-256'
+              }}
+              <span class="mt-1 block break-all font-mono text-xs">{{
+                meta.fingerprint
+              }}</span>
+            </p>
             <p class="kvm-hint">
               {{
                 dirty

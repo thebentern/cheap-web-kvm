@@ -296,3 +296,34 @@ remain supported. ROM flashing and the separate UART debug console retain their
 own 115,200 settings. The web suite now has 171 passing tests. The attached board
 already runs the tested 921,600 profile, so no device restart was needed for this
 default change.
+
+
+### Native compressed image import
+
+The web app accepts `.img.xz` directly. XZ header/footer/index checks establish
+expanded size before storage allocation; streamed decoding checks the payload,
+exact output size and SHA-256 while writing an immutable source to private
+browser file storage. Metadata is published only after that file closes. Imports
+use a 1 MiB write batch and a bounded decoder dictionary, rather than buffering
+the complete image in memory. Target writes still use the IndexedDB overlay.
+
+The web suite now has 187 passing tests. New tests cover decoded bytes and digest,
+CRC/index/header/footer damage, truncated input, concatenation and stream padding,
+size arithmetic above 4 GiB, unsupported checks, bounded batches, cancellation
+(including pending source I/O), quota/commit failures, cached source reopening with
+an overlay, and orphan cleanup without deleting active or referenced sources.
+Type checking and static generation pass.
+
+In the real browser at `http://127.0.0.1:5174/`, the existing 1,339,317,660-byte
+mPWRD artifact was selected directly as `.img.xz`. The app completed preparation
+and reported a 6,111,100,928-byte (5.69 GiB) boot image. Canceling a second import
+completed cleanly and left that prepared disk selected. After a full page reload,
+the saved disk reopened without a file picker or decompression. Its reverified
+raw SHA-256 was
+`775dd413607a7f07366fc49087e86cd07eea317a449c06012685716170f32f1b`,
+exactly matching the independent raw-image inspection recorded in
+[mpwrd-v0.2.1.json](mpwrd-v0.2.1.json). The browser detected GPT, the ESP at LBA
+16384 and `\\EFI\\BOOT\\BOOTX64.EFI`. The prepared disk was left ejected. This
+qualifies browser import/cache integrity above 4 GiB; it is not a new hardware
+boot, write or transport-speed result. No board restart or firmware change was
+needed.
