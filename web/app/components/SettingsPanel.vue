@@ -646,7 +646,7 @@ onBeforeUnmount(() => {
                     <AppIcon name="refresh" class="text-alert-400" /> Reset HID
                   </button>
                   <button type="button" class="kvm-btn" @click="releaseAll">
-                    <AppIcon name="unlink" /> Release all keys
+                    <AppIcon name="keyboard" /> Release all keys
                   </button>
                 </div>
                 <p class="kvm-hint mt-1.5">
@@ -729,7 +729,7 @@ onBeforeUnmount(() => {
                 <div class="kvm-label">Supported hardware</div>
                 <ul class="mt-2 space-y-2">
                   <li class="flex gap-2.5 rounded-lg border border-ink-600 bg-ink-900 p-3">
-                    <AppIcon name="film" class="mt-0.5 flex-none text-signal-400" />
+                    <AppIcon name="video" class="mt-0.5 flex-none text-signal-400" />
                     <div>
                       <div class="text-[13px] text-mist-100">
                         <strong class="font-semibold">MS2130</strong> HDMI capture — preferred
@@ -741,7 +741,7 @@ onBeforeUnmount(() => {
                     </div>
                   </li>
                   <li class="flex gap-2.5 rounded-lg border border-ink-600 bg-ink-900 p-3">
-                    <AppIcon name="usb" class="mt-0.5 flex-none text-signal-400" />
+                    <AppIcon name="cpu" class="mt-0.5 flex-none text-signal-400" />
                     <div>
                       <div class="text-[13px] text-mist-100">
                         <strong class="font-semibold">ESP32-S3</strong> running CH9329-compatible
@@ -760,7 +760,7 @@ onBeforeUnmount(() => {
               <!-- GPLv3 section 5(d): Appropriate Legal Notices. -->
               <div class="rounded-lg border border-ink-600 bg-ink-950 p-3">
                 <div class="flex items-center gap-2 text-[13px] font-semibold text-mist-100">
-                  <AppIcon name="lock" /> Licence
+                  <AppIcon name="file-text" /> Licence
                 </div>
                 <div class="mt-2 space-y-2 font-mono text-[11px] leading-relaxed text-mist-400">
                   <p>cheap-web-kvm — Copyright (C) 2026 Ben Meadors</p>
@@ -792,7 +792,7 @@ onBeforeUnmount(() => {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    <AppIcon name="folder" /> Full GPLv3 text
+                    <AppIcon name="file-text" /> Full GPLv3 text
                   </a>
                 </div>
                 <p class="kvm-hint mt-2.5">

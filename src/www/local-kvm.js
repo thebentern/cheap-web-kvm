@@ -69,7 +69,7 @@ async function requestSerialPort() {
 
         // Change button to indicate connected state
         document.getElementById('selectSerialPort').classList.add('negative');
-        document.querySelector('#selectSerialPort i').className = 'unlink icon';
+        document.querySelector('#selectSerialPort i').className = 'usb icon';
 
         // Start reading loop for incoming data
         readSerialLoop();
@@ -146,7 +146,7 @@ document.getElementById('selectSerialPort').addEventListener('click', function()
     if (serialPort) {
         disconnectSerialPort();
         document.getElementById('selectSerialPort').classList.remove('negative');
-        document.querySelector('#selectSerialPort i').className = 'keyboard icon';
+        document.querySelector('#selectSerialPort i').className = 'usb icon';
     } else {
         requestSerialPort();
     }

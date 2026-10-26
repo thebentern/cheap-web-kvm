@@ -122,7 +122,7 @@ const videoLive = computed(() => capture.status.value === 'live' && !capture.tes
 const inputTools: { panel: PanelName; icon: string; label: string; needsLink?: boolean }[] = [
   { panel: 'media', icon: 'hard-drive', label: 'Virtual media' },
   { panel: 'paste', icon: 'clipboard', label: 'Paste text', needsLink: true },
-  { panel: 'copy', icon: 'search', label: 'Copy text' },
+  { panel: 'copy', icon: 'scan-text', label: 'Copy text' },
   { panel: 'keyboard', icon: 'keyboard', label: 'Keyboard', needsLink: true },
   { panel: 'quickAccess', icon: 'bolt', label: 'Hotkeys', needsLink: true },
 ]
@@ -130,7 +130,7 @@ const inputTools: { panel: PanelName; icon: string; label: string; needsLink?: b
 type ViewAction = 'screenshot' | 'recorder' | 'fullscreen'
 const viewTools = computed(() => [
   { action: 'screenshot' as ViewAction, icon: 'camera', label: 'Screenshot', disabled: !capture.active.value, pressed: undefined },
-  { action: 'recorder' as ViewAction, icon: 'film', label: 'Screen recorder', disabled: false, pressed: panels.open.recorder },
+  { action: 'recorder' as ViewAction, icon: 'video', label: 'Screen recorder', disabled: false, pressed: panels.open.recorder },
   { action: 'fullscreen' as ViewAction, icon: props.fullscreen ? 'compress' : 'expand', label: props.fullscreen ? 'Exit fullscreen' : 'Fullscreen', disabled: false, pressed: props.fullscreen },
 ])
 
@@ -169,10 +169,11 @@ function toggleCtrlCmdSwap() {
           :disabled="connecting || (b.kind === 'serial' && !serialSupported)"
           :title="b.title"
           :aria-label="b.title"
+          :aria-pressed="b.live"
           @click="emit('toggle-link', b.kind)"
         >
           <AppIcon v-if="b.busy" name="refresh" class="animate-[kvm-spin_0.9s_linear_infinite]" />
-          <AppIcon v-else :name="b.live ? 'unlink' : b.icon" />
+          <AppIcon v-else :name="b.icon" />
         </button>
         <span class="kvm-status kvm-dock-status" :class="{ 'is-live': connected }" :title="connected ? portLabel : 'Keyboard and mouse are disconnected'" role="status">
           {{ connecting ? 'Connecting' : connected ? 'Control linked' : 'Control offline' }}
@@ -187,7 +188,7 @@ function toggleCtrlCmdSwap() {
         :aria-label="capture.active.value ? 'Video settings' : 'Start video'"
         @click="videoAction"
       >
-        <AppIcon :name="captureBusy ? 'refresh' : 'film'" :class="{ 'animate-[kvm-spin_0.9s_linear_infinite]': captureBusy }" />
+        <AppIcon :name="captureBusy ? 'refresh' : 'monitor'" :class="{ 'animate-[kvm-spin_0.9s_linear_infinite]': captureBusy }" />
       </button>
       <span class="kvm-status kvm-dock-status" :class="{ 'is-live': videoLive, 'is-error': capture.status.value === 'failed' }" role="status">{{ videoLabel }}</span>
 
@@ -204,9 +205,9 @@ function toggleCtrlCmdSwap() {
         <button type="button" class="kvm-btn kvm-btn-icon" :aria-pressed="settings.ctrlCmdSwap" title="Swap Ctrl and Cmd" aria-label="Swap Ctrl and Cmd" @click="toggleCtrlCmdSwap">
           <AppIcon name="exchange" />
         </button>
-        <button type="button" class="kvm-btn kvm-btn-icon" title="Status LED legend" aria-label="Status LED legend" aria-haspopup="dialog" @click="showLedLegend"><AppIcon name="record" /></button>
-        <NuxtLink to="/flash" class="kvm-btn kvm-btn-icon" title="Install firmware" aria-label="Install firmware"><AppIcon name="download" /></NuxtLink>
-        <NuxtLink to="/docs" class="kvm-btn kvm-btn-icon" title="Documentation" aria-label="Documentation"><AppIcon name="info" /></NuxtLink>
+        <button type="button" class="kvm-btn kvm-btn-icon" title="Status LED legend" aria-label="Status LED legend" aria-haspopup="dialog" @click="showLedLegend"><AppIcon name="led" /></button>
+        <NuxtLink to="/flash" class="kvm-btn kvm-btn-icon" title="Install firmware" aria-label="Install firmware"><AppIcon name="cpu" /></NuxtLink>
+        <NuxtLink to="/docs" class="kvm-btn kvm-btn-icon" title="Documentation" aria-label="Documentation"><AppIcon name="book-open" /></NuxtLink>
         <a :href="REPO" class="kvm-btn kvm-btn-icon" title="GitHub repository" aria-label="GitHub repository" target="_blank" rel="noopener noreferrer"><AppIcon name="github" /></a>
       </nav>
       <button ref="toolsToggle" type="button" class="kvm-btn kvm-tools-toggle" :aria-expanded="toolsOpen" aria-controls="console-tools" @click="toolsOpen = !toolsOpen" @keydown.esc.stop.prevent="closeTools">Tools</button>
@@ -238,9 +239,9 @@ function toggleCtrlCmdSwap() {
       <div class="kvm-tool-group">
         <button type="button" class="kvm-btn" :aria-pressed="settings.ctrlCmdSwap" @click="toggleCtrlCmdSwap"><AppIcon name="exchange" /> Ctrl / Cmd</button>
         <button type="button" class="kvm-btn" @click="panels.toggle('settings')"><AppIcon name="cog" /> Settings</button>
-        <button type="button" class="kvm-btn" aria-haspopup="dialog" @click.stop="showLedLegend"><AppIcon name="record" /> Status LED legend</button>
-        <NuxtLink to="/flash" class="kvm-btn"><AppIcon name="download" /> Install firmware</NuxtLink>
-        <NuxtLink to="/docs" class="kvm-btn"><AppIcon name="info" /> Setup guide</NuxtLink>
+        <button type="button" class="kvm-btn" aria-haspopup="dialog" title="Status LED legend" aria-label="Status LED legend" @click.stop="showLedLegend"><AppIcon name="led" /> LED legend</button>
+        <NuxtLink to="/flash" class="kvm-btn"><AppIcon name="cpu" /> Install firmware</NuxtLink>
+        <NuxtLink to="/docs" class="kvm-btn"><AppIcon name="book-open" /> Setup guide</NuxtLink>
         <a :href="REPO" class="kvm-btn" target="_blank" rel="noopener noreferrer"><AppIcon name="github" /> GitHub</a>
         <button type="button" class="kvm-btn" @click="emit('hide')"><AppIcon name="chevron-up" /> Hide toolbar</button>
       </div>

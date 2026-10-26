@@ -510,7 +510,7 @@ onBeforeUnmount(() => {
       <span
         class="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-signal-500/10 text-signal-400"
       >
-        <AppIcon name="search" />
+        <AppIcon name="scan-text" />
       </span>
       <div class="min-w-0 flex-1">
         <h3 class="text-sm font-semibold text-mist-100">Extracted text</h3>
@@ -589,7 +589,7 @@ onBeforeUnmount(() => {
           <AppIcon name="x" /> Close
         </button>
         <button class="kvm-btn kvm-btn-primary" :disabled="busy" @click="copyToClipboard">
-          <AppIcon name="clipboard" /> Copy to clipboard
+          <AppIcon name="copy" /> Copy to clipboard
         </button>
       </div>
     </div>

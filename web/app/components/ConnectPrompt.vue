@@ -37,7 +37,7 @@ const steps = [
         </li>
       </ol>
       <button type="button" class="kvm-btn kvm-btn-primary mt-6 w-full" :disabled="busy" @click="emit('start')">
-        <AppIcon :name="busy ? 'refresh' : 'film'" :class="{ 'animate-[kvm-spin_0.9s_linear_infinite]': busy }" />
+        <AppIcon :name="busy ? 'refresh' : 'monitor'" :class="{ 'animate-[kvm-spin_0.9s_linear_infinite]': busy }" />
         {{ busy ? 'Starting video…' : 'Start video' }}
       </button>
       <div class="setup-footer">
