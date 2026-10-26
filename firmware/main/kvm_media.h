@@ -5,7 +5,13 @@
 /* Initialize before USB; Wi-Fi starts separately after NVS. */
 esp_err_t kvm_media_init(void);
 esp_err_t kvm_media_network_start(void);
-/* Called by the network owner task. No USB calls or unbounded waits. */
+/* Only the session owner receives requests or may release the medium.
+ * Reply may alias the input when that buffer has full frame capacity. */
+typedef enum { MEDIA_SOURCE_NONE, MEDIA_SOURCE_HTTP, MEDIA_SOURCE_SERIAL } media_source_t;
+size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t len, uint8_t *reply);
+bool kvm_media_poll_from(media_source_t source, uint8_t *out, size_t *len);
+void kvm_media_disconnect_from(media_source_t source);
+/* Compatibility entry points use the HTTP source. */
 size_t kvm_media_command(const uint8_t *in, size_t len, uint8_t *reply);
 bool kvm_media_poll(uint8_t *out, size_t *len);
 void kvm_media_disconnect(void);

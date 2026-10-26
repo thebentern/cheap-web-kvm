@@ -28,6 +28,7 @@ const {
   inspection,
   activity,
   url,
+  transport,
   flags,
   preview,
 } = media
@@ -183,10 +184,18 @@ onMounted(() => {
               class="h-2 w-2 rounded-full"
               :class="connected ? 'bg-signal-400' : 'bg-ink-500'"
               aria-hidden="true"
-            />{{ connected ? 'Media connected' : 'Media disconnected' }}
+            />{{
+              connected
+                ? `Media connected over ${transport === 'usb' ? 'USB' : 'Wi-Fi'}`
+                : 'Media disconnected'
+            }}
           </p>
           <p v-if="!connected" class="kvm-hint mt-1">
-            Connect through the local HTTPS helper.
+            {{
+              transport === 'usb'
+                ? 'Use the board’s USB programming port.'
+                : 'Connect through the local HTTPS helper.'
+            }}
           </p>
         </div>
         <button
@@ -200,21 +209,49 @@ onMounted(() => {
         </button>
       </section>
 
+      <div
+        class="mt-3 grid grid-cols-2 gap-2"
+        role="group"
+        aria-label="Media connection type"
+      >
+        <button
+          class="kvm-btn media-choice"
+          :aria-pressed="transport === 'usb'"
+          :disabled="connected || connecting || locked"
+          @click="transport = 'usb'"
+        >
+          USB
+        </button>
+        <button
+          class="kvm-btn media-choice"
+          :aria-pressed="transport === 'wifi'"
+          :disabled="connected || connecting || locked"
+          @click="transport = 'wifi'"
+        >
+          Wi-Fi
+        </button>
+      </div>
       <details class="mt-3 border-b border-ink-600 pb-3">
         <summary class="cursor-pointer text-sm text-mist-300">
           Connection settings
         </summary>
         <div class="mt-3 space-y-3">
-          <label class="block text-sm"
+          <label v-if="transport === 'wifi'" class="block text-sm"
             >Helper address<input
               v-model="url"
               class="kvm-input mt-1 w-full"
               placeholder="wss://localhost:8443/media"
               :disabled="connected || locked"
           /></label>
-          <p class="kvm-hint">
+          <p v-if="transport === 'wifi'" class="kvm-hint">
             Set up the board’s network in Settings → Wi-Fi, then start the HTTPS
             helper. Leave the address blank when using the helper’s own web UI.
+          </p>
+          <p v-else class="kvm-hint">
+            Connect the programming port to this computer and the native USB
+            port to the target. USB media shares the serial cable with keyboard
+            and mouse control. At 115200 baud, transfers are slow; Wi-Fi is
+            faster.
           </p>
           <div class="flex flex-wrap gap-2">
             <button
@@ -225,6 +262,7 @@ onMounted(() => {
               Test connection speed
             </button>
             <button
+              v-if="transport === 'wifi'"
               class="kvm-btn"
               :disabled="!connected || busy"
               @click="kvm.link.connect('wifi')"

@@ -9,3 +9,6 @@ ${CC:-cc} -std=c11 -Wall -Wextra -Werror -Ifirmware/test/stubs -Ifirmware/main f
 
 ${CC:-cc} -std=c11 -Wall -Wextra -Werror -Ifirmware/main firmware/test/wifi_settings_test.c firmware/main/wifi_settings.c -o "$TEST_BINARY"
 "$TEST_BINARY"
+
+${CC:-cc} -std=c11 -Wall -Wextra -Werror -Ifirmware/main firmware/test/media_serial_test.c firmware/main/media_serial.c -o "$TEST_BINARY"
+"$TEST_BINARY"

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { decode, encode, FLAG, MAX_IO, OP, type Message } from './protocol'
+import { decode, encode, MAX_IO, OP, type Message } from './protocol'
+import { websocketTransport, type MediaTransport } from './transport'
+export type { MediaTransport } from './transport'
 export class MediaConnection {
-  private ws: WebSocket | null = null
+  private transport: MediaTransport | null = null
+  private generation = 0
   private next = 0
   private session = 0
   private pending = new Map<
@@ -14,7 +17,7 @@ export class MediaConnection {
     }
   >()
   private heartbeat?: ReturnType<typeof setInterval>
-  private serving = false
+  private serving: MediaTransport | null = null
   onState = (_flags: number) => {}
   onError = (_message: string) => {}
   onActivity = (_bytes: number, _write: boolean) => {}
@@ -24,47 +27,42 @@ export class MediaConnection {
       write(offset: number, data: Uint8Array): Promise<void>
     },
   ) {}
-  async connect(url: string) {
+  async connect(target: string | MediaTransport) {
     this.close()
-    const ws = new WebSocket(url)
-    this.ws = ws
-    ws.binaryType = 'arraybuffer'
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        ws.close()
-        reject(
-          new Error(
-            'Media connection timed out. Check Wi-Fi, helper token, and HTTPS certificate.',
-          ),
-        )
-      }, 5000)
-      ws.onopen = () => {
-        clearTimeout(timeout)
-        resolve()
-      }
-      ws.onerror = () => {
-        clearTimeout(timeout)
-        reject(
-          new Error(
-            'Cannot connect. Open the HTTPS helper and trust its certificate first.',
-          ),
-        )
-      }
-      ws.onclose = () => {
-        clearTimeout(timeout)
-        reject(new Error('Connection closed'))
-      }
-    })
-    ws.onmessage = (e) => {
-      void this.receive(ws, e.data)
+    const mine = this.generation
+    const transport =
+      typeof target === 'string' ? await websocketTransport(target) : target
+    if (mine !== this.generation) {
+      transport.close()
+      throw new Error('Media connection replaced')
     }
-    ws.onclose = () => {
-      if (this.ws === ws)
+    this.transport = transport
+    transport.onmessage = (data) => {
+      void this.receive(transport, data)
+    }
+    transport.onclose = () => {
+      if (this.transport === transport)
         this.fail(
           'Media connection lost. Target requests will fail; committed writes remain saved. Eject/unmount the target before recovery.',
         )
     }
-    const hello = await this.request(OP.HELLO)
+    let hello: Message
+    try {
+      try {
+        hello = await this.request(OP.HELLO)
+      } catch (error) {
+        if (
+          !transport.startupRetries ||
+          !/timed out/.test((error as Error).message) ||
+          transport !== this.transport
+        )
+          throw error
+        hello = await this.request(OP.HELLO)
+      }
+    } catch (error) {
+      if (this.transport === transport) this.close()
+      throw error
+    }
     if (
       hello.data.length !== 8 ||
       hello.data[0] !== 1 ||
@@ -79,12 +77,16 @@ export class MediaConnection {
     this.session = hello.session
     this.heartbeat = setInterval(() => {
       void this.request(OP.HEARTBEAT)
-        .then((m) => this.onState(m.data[0] ?? 0))
-        .catch((e) => this.fail(e.message))
+        .then((m) => {
+          if (transport === this.transport) this.onState(m.data[0] ?? 0)
+        })
+        .catch((e) => {
+          if (transport === this.transport) this.fail(e.message)
+        })
     }, 1000)
   }
   get live() {
-    return this.ws?.readyState === WebSocket.OPEN && this.session !== 0
+    return this.transport !== null && this.session !== 0
   }
   private fail(message: string) {
     this.close()
@@ -92,9 +94,15 @@ export class MediaConnection {
   }
   close() {
     if (this.heartbeat) clearInterval(this.heartbeat)
-    const ws = this.ws
-    this.ws = null
-    ws?.close()
+    this.generation++
+    const transport = this.transport
+    this.transport = null
+    this.serving = null
+    if (transport) {
+      transport.onmessage = () => {}
+      transport.onclose = () => {}
+      transport.close()
+    }
     this.session = 0
     for (const p of this.pending.values()) {
       clearTimeout(p.timer)
@@ -108,9 +116,8 @@ export class MediaConnection {
     offset = 0,
     flags = 0,
   ) {
-    const ws = this.ws
-    if (!ws || ws.readyState !== WebSocket.OPEN)
-      throw new Error('Connect the media backend first')
+    const transport = this.transport
+    if (!transport) throw new Error('Connect the media backend first')
     if (this.pending.size >= 4)
       throw new Error('Too many pending controls; wait for the current action')
     const id = ++this.next
@@ -124,21 +131,28 @@ export class MediaConnection {
         )
       }, 4000)
       this.pending.set(id, { op: op | 128, resolve, reject, timer })
-      ws.send(
-        encode({
-          op,
-          session: this.session,
-          id,
-          offset,
-          flags,
-          length: data.length,
-          data,
-        }),
-      )
+      Promise.resolve()
+        .then(() =>
+          transport.send(
+            encode({
+              op,
+              session: this.session,
+              id,
+              offset,
+              flags,
+              length: data.length,
+              data,
+            }),
+          ),
+        )
+        .catch((error) => {
+          if (transport === this.transport)
+            this.fail(`Media send failed: ${(error as Error).message}`)
+        })
     })
   }
-  private async receive(ws: WebSocket, input: ArrayBuffer) {
-    if (ws !== this.ws) return
+  private async receive(transport: MediaTransport, input: Uint8Array) {
+    if (transport !== this.transport) return
     let m: Message
     try {
       m = decode(input)
@@ -180,11 +194,11 @@ export class MediaConnection {
       ![OP.READ, OP.WRITE].includes(m.op as 16 | 17)
     )
       return
-    if (this.serving) {
+    if (this.serving === transport) {
       this.fail('Firmware exceeded the negotiated one-request window')
       return
     }
-    this.serving = true
+    this.serving = transport
     let data: Uint8Array = new Uint8Array(),
       flags = 0
     try {
@@ -198,21 +212,24 @@ export class MediaConnection {
         data = await this.storage.read(m.offset, m.length)
         if (data.length !== m.length) throw new Error('Short disk read')
       } else await this.storage.write(m.offset, m.data) // resolves only after strict storage commit
-      this.onActivity(m.length, m.op === OP.WRITE)
+      if (transport === this.transport)
+        this.onActivity(m.length, m.op === OP.WRITE)
     } catch (e) {
       flags = 4
       data = new Uint8Array()
-      this.onError(`Disk request failed: ${(e as Error).message}`)
+      if (transport === this.transport)
+        this.onError(`Disk request failed: ${(e as Error).message}`)
     } finally {
-      this.serving = false
+      if (this.serving === transport) this.serving = null
     }
     // Never send a stale response after a disconnect, replacement, or lease loss.
-    if (
-      ws === this.ws &&
-      ws.readyState === WebSocket.OPEN &&
-      m.session === this.session
-    )
-      ws.send(encode({ ...m, op: m.op | 128, flags, data }))
+    if (transport === this.transport && m.session === this.session)
+      try {
+        await transport.send(encode({ ...m, op: m.op | 128, flags, data }))
+      } catch (error) {
+        if (transport === this.transport)
+          this.fail(`Media send failed: ${(error as Error).message}`)
+      }
   }
   async benchmark(milliseconds = 2000) {
     const data = crypto.getRandomValues(new Uint8Array(MAX_IO)),
@@ -236,7 +253,7 @@ export class MediaConnection {
       bytesPerSecond: bytes / ((performance.now() - start) / 1000),
       maxMs,
       count,
-      transport: 'Wi-Fi WebSocket via HTTPS helper',
+      transport: this.transport?.label ?? 'Disconnected',
       measuredAt: new Date().toISOString(),
     }
   }

@@ -13,55 +13,70 @@ buffers live on the ESP32. The entire source never has to fit in ESP32 RAM or
 flash. An explicitly selected, separate embedded-image build is available only
 for USB bring-up.
 
-## Setup
+## Connect over USB or Wi-Fi
 
-1. Install firmware containing the runtime Wi-Fi settings interface. The normal
-   build includes it and starts Wi-Fi off until configured. In **Settings → Wi-Fi**
-   (also available in Virtual media), connect Serial through the UART/programming
-   port or use paired Bluetooth and load board settings.
-2. Choose **Hotspot** to create a separate Wi-Fi network, or **Router client** to
-   join an existing 2.4 GHz network. Router-client mode can keep a separate recovery
-   hotspot available. Save/apply; settings persist on the board. Read the hotspot
-   or DHCP client IP from status. See [Wi-Fi setup](WIFI.md) for passwords, recovery,
-   and helper-token controls. Existing build-time credentials are bootstrap values
-   only and are superseded by saved settings.
-3. Keep Espressif's `CONFIG_TINYUSB_MSC_ENABLED` disabled: the project enables MSC
-   via `kvm_tusb_config.h` without the SD/flash frontend. Existing configurations
-   may need the 1500 KiB factory app slot. Join the chosen network from the client
-   and helper host; UART/Bluetooth control still works independently.
-4. Generate the Nuxt UI with the root base URL and start the existing Go HTTPS
-   helper with the fixed ESP32 upstream:
+The target always connects to the board's **native USB port**, which presents its
+keyboard, mouse and virtual disk. Choose how this browser sends disk data to the
+board in **Virtual media → USB / Wi-Fi**. Eject and synchronize before switching.
+
+### USB
+
+1. Install firmware supporting wired media. Connect the board's separate
+   **USB programming/UART port** to this computer, and its native USB port to the
+   target. A board without a USB-UART bridge needs an adapter on UART0.
+2. Open the web UI in a browser with Web Serial support. Select **USB → Connect**
+   and choose the programming port. An existing serial control connection is reused.
+3. Choose a boot image or create/reopen a USB drive, then insert it into the target.
+
+USB media and keyboard/mouse control share the programming cable. Ejecting or
+disconnecting media leaves serial control available. Unplugging that cable while
+a disk is inserted makes the medium unavailable; unmount/power off the target and
+synchronize before recovery. Bluetooth remains a control link rather than a disk
+transport. No Wi-Fi setup, access token or HTTPS media helper is needed for USB;
+the UI still needs a secure context (hosted HTTPS or localhost).
+
+The default firmware UART is **115200 baud**. The wire ceiling is 11,520 bytes/s
+in one direction before framing, and an 8 KiB message occupies roughly 0.72 s.
+Large images and OS boot will be slow; input can wait behind an in-flight media
+frame. Higher baud rates require a matching board build and client setting and
+remain unqualified. Measure your actual setup rather than treating this as native
+USB bulk throughput. USB MSC on the target is separate from the USB-UART link.
+
+### Wi-Fi
+
+1. In **Settings → Wi-Fi**, connect Serial through the programming port or paired
+   Bluetooth and load settings. Select **Hotspot** or **Client**, enter credentials,
+   and save. Client can retain a separate recovery hotspot. Read its IP in status.
+   See [Wi-Fi setup](WIFI.md) for credentials and helper-token controls.
+2. Start the Go HTTPS helper with the board as its fixed upstream:
 
    ```sh
    cd web
    npm ci
    NUXT_APP_BASE_URL=/ npm run generate
    cd ../src
-   # Set KVM_MEDIA_TOKEN in this shell to the token configured above.
+   # Set KVM_MEDIA_TOKEN to the saved token from Settings → Wi-Fi → Advanced.
    go run . -www ../web/.output/public -media http://192.168.4.1
    ```
 
-   Open `https://localhost:8443/` and trust **your own** helper's certificate.
-   For a tablet, also join the ESP32 network and open the laptop's AP-assigned IP
-   on port 8443. Generate a certificate including that laptop IP with
-   `-tls-hosts localhost,127.0.0.1,LAPTOP_IP` on first run. Existing certificate
-   files are preserved; back them up and regenerate deliberately if hostnames
-   change. The certificate must be trusted on the tablet as well. Keep the helper
-   on your trusted local network; it is not an internet-facing service.
-5. Open **Virtual media → Connect media**. The default endpoint is the same-origin
-   `wss://.../media`. The helper validates the browser Origin and injects the
-   token into the ESP32 request. It proxies bounded network streams; files and
-   persistent disk state stay in the browser, including when the browser is on
-   a tablet. The helper does not need access to those local files.
-6. Select Serial/Bluetooth for control, or press **Use Wi-Fi HID**. Wi-Fi input
-   has its own bounded/coalescing queue and does not wait on disk persistence.
-   A tablet can use Wi-Fi input even without Web Serial or Web Bluetooth.
+3. Open `https://localhost:8443/`, trust your own helper certificate, then choose
+   **Virtual media → Wi-Fi → Connect**. Leave the helper address blank when using
+   its own UI. The helper validates Origin and adds the token; image files and
+   saved disk state remain in the browser.
+4. Use Serial/Bluetooth control or **Use Wi-Fi for keyboard & mouse**. Tablets can
+   use Wi-Fi without Web Serial or Web Bluetooth. For a tablet, connect it and the
+   helper computer to the same reachable network. Create a helper certificate
+   including that computer's IP with `-tls-hosts localhost,127.0.0.1,LAPTOP_IP`, and
+   trust it on the tablet. Existing certificate files are preserved.
 
-The hosted HTTPS Pages app cannot directly use the ESP32's unencrypted socket.
-Use the local HTTPS helper for this workflow. Do not disable browser security to
-work around mixed-content errors. A laptop helper is currently required, also
-for tablet use. Wi-Fi is an experimental media candidate, not a measured
-production default.
+Hosted HTTPS cannot directly access the board's unencrypted Wi-Fi socket. The
+HTTPS helper is required for Wi-Fi, including tablet use. Keep it on a trusted
+local network. Do not disable browser security to work around mixed-content errors.
+
+Both transports require the custom MSC build (`CONFIG_TINYUSB_MSC_ENABLED` stays
+disabled; `kvm_tusb_config.h` supplies MSC). The factory app slot is 1500 KiB.
+Only one transport owns media at a time. A second connection cannot take over a
+live session; disconnect or let the failed connection's lease expire first.
 
 ## Boot image
 
@@ -80,7 +95,7 @@ GPT CRCs and the fallback executable's PE machine type.
 
 Leave target writes disabled for compatible read-only/live environments. Ordinary
 OS disk images often need writes (first-boot setup, root filesystem, swap, logs).
-For those, grant persistent browser storage, enable **Allow target writes**, then
+For those, grant persistent browser storage, enable **Allow target to write**, then
 insert. All writes go to a persistent copy-on-write overlay. The selected source
 File is read-only and stays unchanged. OS boot may fail if you choose read-only
 for an image that requires a writable disk.
@@ -108,7 +123,7 @@ media does not prove that an eMMC installation has a discoverable bootloader.
 
 ## FAT32 thumb drive
 
-Choose **FAT32 thumb drive**, a whole-MiB capacity from **64 MiB to 32 GiB**, and a
+Choose **USB drive**, a whole-MiB capacity from **64 MiB to 32 GiB**, and a
 1–11 character ASCII label (letters, digits, spaces, hyphens or underscores).
 Creation uses a sparse disk with an MBR, a FAT32 LBA partition starting at sector
 2048, mirrored FATs, backup boot sector/FSInfo, and a volume-label root entry.

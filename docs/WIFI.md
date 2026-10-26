@@ -63,7 +63,8 @@ with the hardware entropy source enabled before the radio starts.
 
 ## Connect virtual media afterward
 
-Network configuration does not remove the current HTTPS-helper requirement:
+Wi-Fi media uses the HTTPS helper below. USB media uses the programming cable
+and does not require Wi-Fi or the helper:
 
 1. Use the hotspot IP or router-client IP shown in the panel as the helper's
    fixed upstream, for example `-media http://192.168.4.1` or `-media http://10.0.0.25`.

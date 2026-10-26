@@ -366,7 +366,7 @@ nothing on the native port, so `--info` reports `USB enumerated: no`.
 
 * [docs/PROTOCOL.md](docs/PROTOCOL.md): the wire protocol as the web UI sends
   it, including the Bluetooth transport. Read it before changing the parser.
-* [Virtual media](docs/VIRTUAL_MEDIA.md): Wi-Fi setup, FAT32 files, persistent
+* [Virtual media](docs/VIRTUAL_MEDIA.md): USB/Wi-Fi connection, FAT32 files, persistent
   overlays, exports, boot repetition and outstanding hardware validation.
 * [NOTICE](NOTICE): attribution and the changes made to upstream.
 

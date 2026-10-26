@@ -26,6 +26,7 @@ extern const uint8_t proof_end[] asm("_binary_local_proof_img_end");
 static SemaphoreHandle_t lock;
 static atomic_uint epoch;
 static uint32_t session, next_id, observed_epoch;
+static media_source_t owner;
 static uint64_t capacity;
 static atomic_bool present, writable, failed, prevented, changed, connected;
 static atomic_uint block_count;
@@ -76,6 +77,7 @@ static void fail_link(void)
         kvm_hid_release_link();
     }
     connected = false;
+    owner = MEDIA_SOURCE_NONE;
     present = false;
     failed = true;
     invalidate();
@@ -151,7 +153,7 @@ static void finish_usb(void *arg)
     xSemaphoreGive(lock);
 }
 /* Network task polls even when disconnected, so USB timeouts are bounded. */
-bool kvm_media_poll(uint8_t *out, size_t *len)
+bool kvm_media_poll_from(media_source_t source, uint8_t *out, size_t *len)
 {
     bool send = false;
     uint32_t defer_id = 0;
@@ -175,7 +177,7 @@ bool kvm_media_poll(uint8_t *out, size_t *len)
         if (io.done && !io.completion) {
             io.completion = true;
             defer_id = io.id;
-        } else if (!io.done && !io.sent) {
+        } else if (!io.done && !io.sent && owner == source) {
             media_msg_t m = {.op = io.op,
                              .session = session,
                              .id = io.id,
@@ -210,16 +212,30 @@ void kvm_media_network_change_end(void)
     network_changing = false;
     xSemaphoreGive(lock);
 }
-void kvm_media_disconnect(void)
+void kvm_media_disconnect_from(media_source_t source)
 {
+    bool owned = false;
     if (xSemaphoreTake(lock, portMAX_DELAY) == pdTRUE) {
-        fail_link();
-        prevented = false;
+        if (owner == source) {
+            owned = true;
+            fail_link();
+            prevented = false;
+        }
         xSemaphoreGive(lock);
     }
-    kvm_boot_cancel();
+    if (owned)
+        kvm_boot_cancel();
 }
-size_t kvm_media_command(const uint8_t *in, size_t n, uint8_t *out)
+void kvm_media_disconnect(void) { kvm_media_disconnect_from(MEDIA_SOURCE_HTTP); }
+bool kvm_media_poll(uint8_t *out, size_t *len)
+{
+    return kvm_media_poll_from(MEDIA_SOURCE_HTTP, out, len);
+}
+size_t kvm_media_command(const uint8_t *in, size_t len, uint8_t *reply)
+{
+    return kvm_media_command_from(MEDIA_SOURCE_HTTP, in, len, reply);
+}
+size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t n, uint8_t *out)
 {
     media_msg_t m;
     if (!media_decode(in, n, &m))
@@ -229,7 +245,7 @@ size_t kvm_media_command(const uint8_t *in, size_t n, uint8_t *out)
     if (xSemaphoreTake(lock, pdMS_TO_TICKS(10)) != pdTRUE)
         return 0;
     if (m.op == (M_READ | 0x80) || m.op == (M_WRITE | 0x80)) {
-        if (io.active && !io.done && m.session == session && m.id == io.id &&
+        if (owner == source && io.active && !io.done && m.session == session && m.id == io.id &&
             m.offset == io.offset && m.length == io.length && (m.op & 0x7f) == io.op &&
             io.epoch == atomic_load(&epoch)) {
             io.ok = m.flags == M_OK && pn == (io.op == M_READ ? io.length : 0);
@@ -246,7 +262,9 @@ size_t kvm_media_command(const uint8_t *in, size_t n, uint8_t *out)
     uint8_t payload[CH9329_MAX_PAYLOAD + 6];
     size_t payload_n = 0;
     uint64_t reply_offset = m.offset;
-    if (m.op != M_HELLO && (!connected || m.session != session))
+    if (source == MEDIA_SOURCE_NONE || (connected && owner != source))
+        status = M_BUSY;
+    else if (m.op != M_HELLO && (!connected || owner != source || m.session != session))
         status = M_STALE;
     else
         switch (m.op) {
@@ -259,6 +277,7 @@ size_t kvm_media_command(const uint8_t *in, size_t n, uint8_t *out)
             if (!session)
                 session = 1;
             connected = true;
+            owner = source;
             heartbeat = esp_timer_get_time();
             failed = false;
             payload[0] = MEDIA_VERSION;
@@ -268,7 +287,7 @@ size_t kvm_media_command(const uint8_t *in, size_t n, uint8_t *out)
             payload[4] = 0;
             payload[5] = 32; /* max transfer 8192 LE */
             payload[6] = 1;
-            payload[7] = 0; /* Wi-Fi; no production recommendation */
+            payload[7] = source == MEDIA_SOURCE_SERIAL ? 1 : 0; /* transport hint */
             payload_n = 8;
             break;
         case M_INSERT:

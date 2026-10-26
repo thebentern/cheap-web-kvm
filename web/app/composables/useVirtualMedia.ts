@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { reactive, ref, shallowRef } from 'vue'
+import { useSerialLink } from '~/composables/useSerialLink'
 import { MediaConnection } from '~/utils/media/client'
 import { FLAG, OP } from '~/utils/media/protocol'
 import { MediaHidQueue } from '~/utils/media/hidQueue'
@@ -30,6 +31,7 @@ const activity = reactive({
   benchmark: '',
 })
 const url = ref('')
+const transport = ref<'usb' | 'wifi'>('usb')
 const hidQueue = new MediaHidQueue(transactHid)
 let worker: Worker | null = null,
   connection: MediaConnection | null = null,
@@ -159,12 +161,15 @@ async function connect() {
           meta.value = await rpc('write', { offset, data })
         },
       })
+      const current = connection
       connection.onError = (message) => {
+        if (connection !== current) return
         error.value = message
         if (inserted.value) uncertain.value = true
         if (!connection?.live) connected.value = false
       }
       connection.onState = (state) => {
+        if (connection !== current) return
         flags.value = state
         if (
           inserted.value &&
@@ -177,6 +182,7 @@ async function connect() {
         }
       }
       connection.onActivity = (bytes, write) => {
+        if (connection !== current) return
         if (write) activity.written += bytes
         else activity.read += bytes
         activity.rate =
@@ -184,12 +190,25 @@ async function connect() {
           Math.max((performance.now() - transferStart) / 1000, 0.001)
         activity.last = `${write ? 'Committed write' : 'Read'} · ${bytes} bytes`
       }
-      await connection.connect(
-        url.value ||
-          `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/media`,
-      )
+      if (transport.value === 'usb') {
+        const serial = useSerialLink()
+        if (!serial.connected.value && !(await serial.connect(115200, true)))
+          throw new Error(
+            serial.lastError.value ?? 'USB connection was cancelled',
+          )
+        await connection.connect(serial.mediaTransport())
+      } else {
+        await connection.connect(
+          url.value ||
+            `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/media`,
+        )
+      }
       connected.value = true
       flags.value = 0
+    } catch (e) {
+      connection?.close()
+      connected.value = false
+      throw e
     } finally {
       connecting.value = false
     }
@@ -251,7 +270,11 @@ async function disconnect() {
     await releaseHid()
     connection?.close()
     connection = null
-    connected.value = false
+    try {
+      if (transport.value === 'usb') await useSerialLink().waitForMediaRelease()
+    } finally {
+      connected.value = false
+    }
   })
 }
 function download(file: File, name: string) {
@@ -344,6 +367,7 @@ export function useVirtualMedia() {
     flags,
     activity,
     url,
+    transport,
     preview,
     inspectFile: (name: string) =>
       run(async () => {

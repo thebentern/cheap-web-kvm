@@ -326,13 +326,15 @@ nor treats UART connection loss as a target power-cycle.
 
 UART baud remains 115200 by default. `CONFIG_KVM_UART_BAUD` permits build-time
 candidates up to 2000000; benchmark the actual bridge using
-`tools/benchmark_serial.py`. This is **not** a serial mass-storage transport.
+`tools/benchmark_serial.py` for HID timing. The virtual-media panel has a separate
+sector-transport echo benchmark.
 
 ## 11. Virtual media protocol v1
 
-This is separate from the CH9329 byte stream. It uses one binary WebSocket
-message per frame on the ESP32 `/media` endpoint. An opt-in WPA2 AP and the
-`X-KVM-Token` header authenticate the local helper. The HTTPS helper requires a
+Media frames use a separate format from CH9329 commands. Over USB UART they are
+multiplexed using the envelope in section 13. Over Wi-Fi, one binary WebSocket
+message carries each frame on the ESP32 `/media` endpoint. Runtime Wi-Fi settings
+select Hotspot or Client; the `X-KVM-Token` header authenticates the local helper. The HTTPS helper requires a
 same-origin HTTPS WebSocket request and injects that header; it never accepts an
 arbitrary client-provided upstream. Do not expose this endpoint to the internet.
 Wi-Fi is an unqualified experimental candidate until board measurement.
@@ -362,7 +364,7 @@ fail the operation. CRC is integrity checking, not cryptographic authentication.
 
 | Op | Direction | Fields and result |
 |---|---|---|
-| `01` HELLO | browser → ESP | Empty, session ignored. Accepted only with no inserted medium or pending IO. Reply: new session and 8 bytes `[1,1,00,02,00,20,1,0]`: version, one-request IO window/durable-write contract, 512-byte blocks LE, 8192-byte transfer ceiling LE, Wi-Fi backend, reserved. |
+| `01` HELLO | browser → ESP | Empty, session ignored. Accepted only with no inserted medium or pending IO. Reply: new session and 8 bytes `[1,1,00,02,00,20,1,0]`: version, one-request IO window/durable-write contract, 512-byte blocks LE, 8192-byte transfer ceiling LE, media capability, transport hint (0=Wi-Fi, 1=USB UART). |
 | `02` INSERT | browser → ESP | Empty; offset=capacity bytes, flags bit 0=writable. Capacity must be a positive multiple of 512, up to `FFFFFFFF` sectors. Fails while inserted, pending, or removal-prevented. Creates a medium-change indication without USB/HID disconnect. |
 | `03` EJECT | browser → ESP | Empty. Succeeds only with no pending IO and removal allowed. It is the browser's synchronization barrier; it does not flush the target OS cache. |
 | `04` ECHO | browser → ESP | Up to 8192 bytes, echoed exactly for measurement. Measures aggregate round-trip transport, not durable storage or USB. |
@@ -386,10 +388,11 @@ is never written.
 Only one disk IO request is in flight. The browser has at most four control
 requests outstanding; HID has a separate bounded 64-item queue and coalesces
 motion without crossing button edges. Boot cancellation bypasses that input
-queue. No Bluetooth or 115200-baud serial sector streaming is advertised.
+queue. Bluetooth remains control-only. Wired media uses the UART framing below and shares
+the programming cable with CH9329 control.
 
 TinyUSB READ10/WRITE10 callbacks enqueue bounded state and immediately return
-`TUD_MSC_RET_ASYNC`. The HTTP task carries messages, while the browser worker
+`TUD_MSC_RET_ASYNC`. The selected HTTP or UART transport carries messages, while the browser worker
 performs asynchronous File/IndexedDB operations. Completion is deferred to the USB
 task, checks request ID and bus epoch, then touches the USB buffer and calls
 `tud_msc_async_io_done`. Neither USB callbacks nor HID tasks wait on network or
@@ -476,3 +479,35 @@ replies cannot clear a concurrent HID reply. BLE writes use 20-byte fragments
 and notifications respect the negotiated ATT MTU; both parsers reassemble the
 same complete CH9329 frame. The first BLE write still uses an authenticated
 write-with-response to trigger pairing.
+
+
+## 13. USB programming-port media transport
+
+Wired media uses the existing USB-UART programming connection at the firmware's
+configured UART0 baud (default 115200). The native USB port remains the target's
+HID/MSC device. Media packets keep the version-1 `KVM1` payload and CRC, wrapped as:
+
+| Bytes | Meaning |
+|---|---|
+| 0–3 | ASCII `KVS1` |
+| 4–5 | Little-endian payload size, at most 8224 bytes |
+| 6 onward | One complete `KVM1` media packet |
+
+A zero-size envelope releases the UART media session without closing serial HID.
+The board returns a zero-size envelope after prior TX drains; the browser waits
+for this acknowledgment before rebinding media or closing the physical port.
+The stream parser distinguishes complete CH9329 and media frames, retaining
+partial reads and never scanning for new magic inside a valid frame. Truncated,
+oversized or CRC-invalid frames fail without completing disk IO. Both send paths
+serialize complete wire frames so HID replies and disk packets cannot interleave.
+
+The media session belongs to one transport. Only its owner can send commands,
+receive queued target IO or release it; unrelated Wi-Fi connection closure cannot
+disconnect wired media. Lease, epoch, strict write-commit and ejection rules are
+shared across transports. Physical UART disconnect fails media and pending controls.
+A browser media disconnect sends the release envelope and leaves the serial port
+available for keyboard/mouse control.
+
+At 115200 8N1 an 8224-byte packet takes about 0.72 s on the wire. Serial HID reply
+waits allow for a media frame ahead of them. This is a bandwidth/latency limitation
+of the programming bridge, not the target's USB bulk interface.

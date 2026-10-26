@@ -109,6 +109,12 @@ int main(void)
     media_msg_t m = command(M_HELLO, 0, 0);
     assert(!m.flags);
     session = m.session;
+    media_msg_t competing = {.op = M_HELLO, .id = ++id};
+    size_t competing_n = media_encode(frame, &competing, NULL, 0);
+    competing_n = kvm_media_command_from(MEDIA_SOURCE_SERIAL, frame, competing_n, reply);
+    assert(media_decode(reply, competing_n, &competing) && competing.flags == M_BUSY);
+    kvm_media_disconnect_from(MEDIA_SOURCE_SERIAL);
+    assert(command(M_STATUS, 0, 0).flags == M_OK);
     assert(kvm_media_network_change_begin());
     assert(command(M_INSERT, M_WRITABLE, 1024 * 1024).flags == M_BUSY);
     kvm_media_network_change_end();
@@ -182,6 +188,52 @@ int main(void)
     size_t n;
     kvm_media_poll(request, &n);
     assert(command(M_STATUS, 0, 0).flags == M_STALE);
+    /* Only the active transport can command, receive IO, or disconnect. */
+    media_msg_t serial = {.op = M_HELLO, .id = ++id};
+    n = media_encode(frame, &serial, NULL, 0);
+    n = kvm_media_command_from(MEDIA_SOURCE_SERIAL, frame, n, reply);
+    assert(media_decode(reply, n, &serial) && !serial.flags);
+    assert(reply[39] == 1); /* UART transport capability hint. */
+    session = serial.session;
+    assert(command(M_HELLO, 0, 0).flags == M_BUSY);
+    kvm_media_disconnect_from(MEDIA_SOURCE_HTTP);
+    serial = (media_msg_t){.op = M_INSERT, .id = ++id, .session = session,
+                           .offset = 1024 * 1024};
+    n = media_encode(frame, &serial, NULL, 0);
+    n = kvm_media_command_from(MEDIA_SOURCE_SERIAL, frame, n, reply);
+    assert(media_decode(reply, n, &serial) && !serial.flags);
+    assert(tud_msc_read10_cb(0, 160, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
+    assert(!kvm_media_poll_from(MEDIA_SOURCE_HTTP, request, &n));
+    assert(kvm_media_poll_from(MEDIA_SOURCE_SERIAL, request, &n));
+    assert(media_decode(request, n, &serial));
+    serial.op |= 128;
+    n = media_encode(frame, &serial, data, serial.length);
+    assert(!kvm_media_command_from(MEDIA_SOURCE_HTTP, frame, n, reply));
+    assert(completed == 5);
+    size_t raw_length = n;
+    assert(!kvm_media_poll_from(MEDIA_SOURCE_SERIAL, request, &n));
+    assert(!deferred); /* A valid CRC/session from the other transport is ignored. */
+    kvm_media_command_from(MEDIA_SOURCE_SERIAL, frame, raw_length, reply);
+    assert(!kvm_media_poll_from(MEDIA_SOURCE_SERIAL, request, &n));
+    assert(deferred);
+    void (*fn)(void *) = deferred;
+    deferred = NULL;
+    fn(deferred_arg);
+    assert(completion == sizeof(usb));
+    kvm_media_disconnect_from(MEDIA_SOURCE_SERIAL);
+    assert(!tud_msc_test_unit_ready_cb(0));
+    assert(command(M_HELLO, 0, 0).flags == M_OK);
+
+    /* UART reuses the parser's full-capacity buffer for in-place replies. */
+    session = command(M_HELLO, 0, 0).session;
+    media_msg_t echo = {.op = M_ECHO, .id = ++id, .session = session,
+                        .length = MEDIA_MAX_IO};
+    memset(data, 0x57, sizeof(data));
+    n = media_encode(frame, &echo, data, sizeof(data));
+    n = kvm_media_command(frame, n, frame);
+    assert(media_decode(frame, n, &echo) && echo.op == (M_ECHO | 128));
+    assert(n == MEDIA_HEADER + MEDIA_MAX_IO && !memcmp(frame + MEDIA_HEADER, data, sizeof(data)));
+
     /* Distinct pulses, bounded reboot window, validation, and deadline. */
     boot_config_t c = {0x45, 100, 80, 300, 1000};
     boot_repeat_t b;

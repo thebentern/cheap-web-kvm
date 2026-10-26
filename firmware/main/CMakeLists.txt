@@ -9,6 +9,7 @@ idf_component_register(
         "kvm_wifi.c"
         "wifi_settings.c"
         "media_protocol.c"
+        "media_serial.c"
         "boot_repeat.c"
         "ch9329.c"
         "kvm_ble.c"

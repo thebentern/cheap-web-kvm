@@ -52,7 +52,7 @@ size_t media_encode(uint8_t *p, const media_msg_t *m, const void *payload, size_
     put(p + 16, m->offset, 8);
     put(p + 24, m->length, 4);
     if (n)
-        memcpy(p + 32, payload, n);
+        memmove(p + 32, payload, n);
     uint32_t crc = media_crc(p, 28, 0xffffffff);
     crc = media_crc(p + 32, n, crc) ^ 0xffffffff;
     put(p + 28, crc, 4);

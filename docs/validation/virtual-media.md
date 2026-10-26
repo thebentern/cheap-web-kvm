@@ -16,7 +16,7 @@ discovery, F12 delivery, OS boot and target-to-client file transfer remain unver
   async read completion, 8 KiB read-ahead, write ACK timing, stale IDs, USB bus/BOT
   resets, read-only rejection, busy/prevented ejection, timeout/lease failure,
   and bounded boot repetition. It substitutes platform services, not USB hardware.
-- All 142 web tests pass. They exercise protocol integrity, random/unaligned cross-page IO,
+- All 161 web tests pass. They exercise protocol integrity, random/unaligned cross-page IO,
   IndexedDB close/reopen, source preservation, transaction abort, exclusive locks,
   strict write ACK ordering, late replies after disconnect, bounded input flow,
   FAT32 geometry, LFN/unicode/nested directories, capacity/name limits, mirror and
@@ -233,3 +233,29 @@ survived; the board rejoined the router and passed another 20 verified round tri
 Observed aggregate round-trip payload rates were 62,341 and 119,962 bytes/s, with
 worst RTTs of 1,120.5 and 315.2 ms respectively in these short samples. This is an echo measurement, not USB disk,
 durable-write, sustained-load, Bluetooth coexistence or boot throughput.
+
+
+### Wired USB programming-port media test
+
+A firmware build with UART media was flashed on the same ESP32-S3. At 115200 baud,
+20 × 8 KiB round trips matched payloads/CRCs/request IDs, with 20 simultaneous CH9329
+GET_INFO replies. The target's native USB was mounted throughout. The aggregate
+bidirectional payload rate was 11,136 bytes/s and worst round-trip 1,485.2 ms; this is
+wire echo throughput, not a USB disk benchmark or boot result.
+
+A competing authenticated Wi-Fi HELLO was rejected while USB owned the session.
+Closing that Wi-Fi socket left USB functional. Explicit USB release received its
+zero-length acknowledgment; Wi-Fi could then acquire/release media, USB could
+reconnect, and ordinary serial control still replied afterward. A bad CRC did not
+desynchronize the next valid command. Wi-Fi association and recovery AP continued
+to work with the wired transport enabled. New automated tests cover framing,
+partial reads, ownership, disconnects, durable write ACKs and stale async callbacks.
+
+
+The live browser reused its granted USB programming port, connected media, and
+created a disposable 64 MiB FAT32 drive named USB TEST. In read-only mode the physical
+target requested more than 1.5 MiB of sectors through the real browser storage
+worker over USB, at about 10.9 KiB/s. There was no Wi-Fi media connection or helper.
+The host asserted PREVENT MEDIUM REMOVAL; browser ejection correctly reported that
+lock. This proves live USB sector serving, not target file-hash validation, target
+writes, OS boot or long-duration performance. The expanded suite has 161 tests.

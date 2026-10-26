@@ -8,9 +8,11 @@
  * UART0; kvm_ble.c runs another on Bluetooth LE. */
 
 #include <string.h>
+#include <stdlib.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 
 #include "driver/uart.h"
 #include "esp_check.h"
@@ -22,12 +24,15 @@
 #include "kvm_boot.h"
 #include "kvm_hid.h"
 #include "kvm_wifi.h"
+#include "kvm_media.h"
+#include "media_serial.h"
+#include "esp_timer.h"
 
 static const char *TAG = "ch9329";
 
 #define CH9329_UART_NUM UART_NUM_0
 #define CH9329_BAUD_RATE CONFIG_KVM_UART_BAUD
-#define CH9329_RX_BUF_SIZE 1024
+#define CH9329_RX_BUF_SIZE 10240
 #define CH9329_TX_BUF_SIZE 512
 #define CH9329_READ_CHUNK 128
 #define CH9329_TASK_STACK 4096
@@ -327,16 +332,100 @@ void ch9329_parser_feed(ch9329_parser_t *p, uint8_t byte)
     }
 }
 
+/* RX never waits for a large disk response to drain the UART transmitter.
+ * Separate bounded queues allow short HID ACKs between media frames. */
+#define SERIAL_MEDIA_SLOTS 4
+typedef struct {
+    size_t len;
+    uint8_t bytes[];
+} serial_media_packet_t;
+typedef struct {
+    size_t len;
+    uint8_t bytes[CH9329_MAX_PAYLOAD + 6];
+} serial_hid_packet_t;
+static QueueHandle_t serial_ready, serial_hid;
+static media_serial_parser_t serial_parser;
+static ch9329_parser_t serial_hid_parser;
 static void uart_tx(const uint8_t *frame, size_t len)
 {
-    uart_write_bytes(CH9329_UART_NUM, frame, len);
+    serial_hid_packet_t packet = {.len = len};
+    if (len > sizeof(packet.bytes))
+        return;
+    memcpy(packet.bytes, frame, len);
+    if (xQueueSend(serial_hid, &packet, 0) != pdTRUE)
+        ESP_LOGW(TAG, "UART HID reply queue full");
+}
+static bool serial_queue_media(const uint8_t *data, size_t n)
+{
+    serial_media_packet_t *packet = NULL;
+    if (uxQueueSpacesAvailable(serial_ready))
+        packet = malloc(sizeof(*packet) + MEDIA_SERIAL_HEADER + n);
+    if (!packet)
+        return false;
+    memcpy(packet->bytes, "KVS1", 4);
+    packet->bytes[4] = n;
+    packet->bytes[5] = n >> 8;
+    if (n)
+        memcpy(packet->bytes + MEDIA_SERIAL_HEADER, data, n);
+    packet->len = n + MEDIA_SERIAL_HEADER;
+    if (xQueueSend(serial_ready, &packet, 0) != pdTRUE) {
+        free(packet);
+        return false;
+    }
+    return true;
+}
+static void serial_receive(bool media, const uint8_t *frame, size_t len)
+{
+    if (!media) {
+        ch9329_parser_init(&serial_hid_parser, uart_tx);
+        for (size_t i = 0; i < len; i++)
+            ch9329_parser_feed(&serial_hid_parser, frame[i]);
+        return;
+    }
+    if (!len) {
+        kvm_media_disconnect_from(MEDIA_SOURCE_SERIAL);
+        /* Discard queued responses for the released session. The TX task may
+         * finish one packet already in flight before this release ACK. */
+        serial_media_packet_t *old;
+        while (xQueueReceive(serial_ready, &old, 0) == pdTRUE)
+            free(old);
+        serial_queue_media(NULL, 0);
+        return;
+    }
+    /* The mux owns a full-size writable buffer. Reuse it for the reply, then
+     * queue only the actual response size instead of reserving four 8 KiB slots. */
+    size_t n = kvm_media_command_from(MEDIA_SOURCE_SERIAL, frame, len, serial_parser.data);
+    if (n && !serial_queue_media(serial_parser.data, n))
+        kvm_media_disconnect_from(MEDIA_SOURCE_SERIAL);
+}
+static void serial_tx_task(void *arg)
+{
+    (void)arg;
+    static uint8_t disk[MEDIA_SERIAL_HEADER + MEDIA_HEADER + MEDIA_MAX_IO];
+    for (;;) {
+        serial_hid_packet_t hid;
+        while (xQueueReceive(serial_hid, &hid, 0) == pdTRUE)
+            uart_write_bytes(CH9329_UART_NUM, hid.bytes, hid.len);
+        serial_media_packet_t *packet;
+        if (xQueueReceive(serial_ready, &packet, 0) == pdTRUE) {
+            uart_write_bytes(CH9329_UART_NUM, packet->bytes, packet->len);
+            free(packet);
+        }
+        size_t n;
+        if (kvm_media_poll_from(MEDIA_SOURCE_SERIAL, disk + MEDIA_SERIAL_HEADER, &n)) {
+            memcpy(disk, "KVS1", 4);
+            disk[4] = n;
+            disk[5] = n >> 8;
+            uart_write_bytes(CH9329_UART_NUM, disk, n + MEDIA_SERIAL_HEADER);
+        }
+        vTaskDelay(1);
+    }
 }
 
 static void ch9329_task(void *arg)
 {
     (void)arg;
-    ch9329_parser_t p;
-    ch9329_parser_init(&p, uart_tx);
+    media_serial_init(&serial_parser, serial_receive);
 
     uint8_t chunk[CH9329_READ_CHUNK];
 
@@ -356,7 +445,7 @@ static void ch9329_task(void *arg)
         }
         int n = uart_read_bytes(CH9329_UART_NUM, chunk, avail, 0);
         for (int i = 0; i < n; i++) {
-            ch9329_parser_feed(&p, chunk[i]);
+            media_serial_feed(&serial_parser, chunk[i], esp_timer_get_time());
         }
     }
 }
@@ -384,6 +473,12 @@ esp_err_t ch9329_start(void)
                                      UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE),
                         TAG, "uart_set_pin failed");
 
+    serial_ready = xQueueCreate(SERIAL_MEDIA_SLOTS, sizeof(serial_media_packet_t *));
+    serial_hid = xQueueCreate(16, sizeof(serial_hid_packet_t));
+    if (!serial_ready || !serial_hid)
+        return ESP_ERR_NO_MEM;
+    if (xTaskCreate(serial_tx_task, "media_serial", 3072, NULL, 4, NULL) != pdPASS)
+        return ESP_ERR_NO_MEM;
     if (xTaskCreate(ch9329_task, "ch9329", CH9329_TASK_STACK, NULL, CH9329_TASK_PRIO, NULL) !=
         pdPASS) {
         return ESP_ERR_NO_MEM;
