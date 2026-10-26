@@ -20,8 +20,7 @@ but changing that network will disconnect it.
   Enter its network name and password, save, and join it from the laptop/tablet.
   The default hotspot address is `192.168.4.1`.
 - **Client:** the board joins your existing **2.4 GHz personal
-  Wi-Fi network**. Enter its exact SSID and password. Choose “open network” only
-  for a network intentionally configured without a password. The router supplies
+  Wi-Fi network**. Enter its exact SSID and password. Open networks are not supported. The router supplies
   the board's address through DHCP; read it in the status panel. Enterprise Wi-Fi,
   static IP configuration, and nearby-network scanning are not provided.
 
@@ -45,8 +44,8 @@ fragment, invalid password or failed NVS commit does not apply a partial config.
 Separate control connections cannot mix each other's credential uploads.
 
 Names are at most 32 UTF-8 bytes. Passwords are 8–63 printable ASCII characters;
-an empty client password is allowed only when explicitly configuring an open
-network. Blank password inputs otherwise preserve saved passwords. The router's
+Client mode requires a saved or newly entered password. Blank password inputs
+preserve saved passwords. The router's
 saved password is never returned to the browser. New inputs and explicitly
 revealed hotspot credentials/helper tokens stay in memory and are not saved to
 browser settings or logs.

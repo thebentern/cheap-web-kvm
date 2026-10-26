@@ -187,7 +187,7 @@ failures and keep the feature experimental until those results exist.
 
 The settings UI now supports off, hotspot, and router-client/DHCP modes with an
 optional separate recovery hotspot. Native settings tests cover bounds, partial
-fragments, wrong-owner/transaction rejection, expiry, and open-client passwords.
+fragments, wrong-owner/transaction rejection, expiry, and rejection of open-client passwords.
 Browser tests cover 64-byte framing, long credential fragmentation, token paging,
 IP/status decoding, serial reply serialization and minimum-MTU BLE reassembly.
 Changing networks is blocked by both UI and firmware until media is ejected.

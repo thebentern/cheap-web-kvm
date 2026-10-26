@@ -25,7 +25,6 @@ const apSsid = ref(''),
   token = ref(''),
   shownToken = ref(''),
   shownApPassword = ref(''),
-  openNetwork = ref(false),
   hasStaPassword = ref(false)
 const status = ref<WifiStatus | null>(null)
 const locked = computed(
@@ -74,7 +73,6 @@ async function load() {
     apSsid.value = c.apSsid
     staSsid.value = c.staSsid
     hasStaPassword.value = c.staPasswordSet
-    openNetwork.value = c.mode === 2 && !c.staPasswordSet
     apPassword.value = ''
     staPassword.value = ''
     token.value = ''
@@ -99,12 +97,11 @@ async function save() {
       )
     if (
       mode.value === 2 &&
-      !openNetwork.value &&
       !staPassword.value &&
       !hasStaPassword.value
     )
       throw new Error(
-        'Enter the network password or explicitly select an open network.',
+        'Enter the network password. Open networks are not supported.',
       )
     await client.apply({
       mode: mode.value,
@@ -112,7 +109,7 @@ async function save() {
       apSsid: apSsid.value,
       staSsid: staSsid.value,
       apPassword: apPassword.value || undefined,
-      staPassword: openNetwork.value ? '' : staPassword.value || undefined,
+      staPassword: staPassword.value || undefined,
       token: token.value || undefined,
     })
     notice.value =
@@ -253,17 +250,12 @@ onBeforeUnmount(() => {
               class="kvm-input mt-1 w-full"
               autocomplete="new-password"
               maxlength="63"
-              :disabled="openNetwork"
               :placeholder="
                 hasStaPassword
                   ? 'Leave blank to keep saved password'
                   : 'Enter network password'
               "
           /></label>
-          <label class="block text-sm"
-            ><input v-model="openNetwork" type="checkbox" /> This is an open
-            network (no password)</label
-          >
           <label class="block text-sm"
             ><input v-model="recovery" type="checkbox" /> Keep recovery hotspot
             available while joining/using the router</label

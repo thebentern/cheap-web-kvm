@@ -441,7 +441,7 @@ enterprise authentication, static IP UI or network scanning is advertised.
 
 Fields: `1` mode (one byte), `2` hotspot SSID (≤32 bytes), `3` hotspot password
 (8–63 printable ASCII), `4` router SSID (≤32 bytes), `5` router password (8–63
-printable ASCII, or explicitly empty for open client networks), `6` helper token
+printable ASCII; required in Client mode), `6` helper token
 (16–80 printable non-space ASCII), `7` recovery hotspot (one byte, 0/1).
 SSIDs are UTF-8 in the browser. Password fields omitted from a transaction retain
 their saved values. All messages fit the existing 64-byte payload ceiling.

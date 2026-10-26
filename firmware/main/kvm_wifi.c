@@ -174,7 +174,7 @@ static esp_err_t apply(const wifi_settings_t *c)
         wifi_config_t w = {0};
         memcpy(w.sta.ssid, c->sta_ssid, strlen(c->sta_ssid));
         strlcpy((char *)w.sta.password, c->sta_password, sizeof(w.sta.password));
-        w.sta.threshold.authmode = c->sta_password[0] ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
+        w.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
         e = esp_wifi_set_config(WIFI_IF_STA, &w);
         if (e != ESP_OK)
             return e;

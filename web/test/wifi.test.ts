@@ -50,7 +50,7 @@ describe('Wi-Fi settings protocol', () => {
     expect(sent.at(-1)![3]).toBe(WIFI_CMD.APPLY)
     expect([...sent.at(-1)!.slice(5, 10)]).toEqual([1, 0x78, 0x56, 0x34, 0x12])
   })
-  it('preserves omitted passwords, explicitly clears an open-client password, and never commits rejected chunks', async () => {
+  it('preserves omitted passwords, rejects empty client passwords, and never commits rejected chunks', async () => {
     const sent: Uint8Array[] = []
     const client = new WifiClient(async (f, cmd) => {
       sent.push(f)
@@ -66,7 +66,7 @@ describe('Wi-Fi settings protocol', () => {
     const c = config()
     delete c.apPassword
     delete c.token
-    c.staPassword = ''
+    delete c.staPassword
     await client.apply(c)
     expect(
       sent.some(
@@ -77,7 +77,8 @@ describe('Wi-Fi settings protocol', () => {
       sent.some(
         (f) => f[6] === WIFI_FIELD.STA_PASSWORD && f[4] === 8 && f[12] === 0,
       ),
-    ).toBe(true)
+    ).toBe(false)
+    await expect(client.apply({ ...c, staPassword: '' })).rejects.toThrow(/password/)
     let committed = false
     const bad = new WifiClient(async (f, cmd) => {
       if (cmd === WIFI_CMD.APPLY) committed = true
@@ -127,13 +128,13 @@ describe('Wi-Fi settings protocol', () => {
   })
   it('validates modes, UTF-8 SSID bounds, passwords and helper tokens', () => {
     validateWifi(config())
-    validateWifi({ ...config(), staPassword: '' })
     for (const change of [
       { mode: 3 },
       { apSsid: '' },
       { staSsid: '' },
       { staSsid: '界'.repeat(11) },
       { apPassword: '' },
+      { staPassword: '' },
       { staPassword: 'short' },
       { token: 'short' },
       { token: 'a'.repeat(81) },

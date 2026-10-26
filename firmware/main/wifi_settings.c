@@ -26,7 +26,8 @@ bool wifi_settings_valid(const wifi_settings_t *c)
         return false;
     if (!text(c->sta_ssid, sizeof(c->sta_ssid), c->mode == WIFI_SETTING_CLIENT ? 1 : 0, 32, false))
         return false;
-    return text(c->sta_password, sizeof(c->sta_password), 0, 63, true) &&
+    return text(c->sta_password, sizeof(c->sta_password),
+                c->mode == WIFI_SETTING_CLIENT ? 8 : 0, 63, true) &&
            (!c->sta_password[0] || strlen(c->sta_password) >= 8);
 }
 void *wifi_setting_field(wifi_settings_t *c, uint8_t field, size_t *capacity, bool *string)

@@ -57,19 +57,19 @@ function ssid(value: string, required: boolean) {
 }
 export function validateWifi(c: WifiChanges) {
   if (![0, 1, 2].includes(c.mode))
-    throw new Error('Select Wi-Fi off, hotspot, or router-client mode.')
+    throw new Error('Select Wi-Fi off, hotspot, or Client mode.')
   ssid(c.apSsid, true)
   ssid(c.staSsid, c.mode === 2)
-  for (const [name, password, allowEmpty] of [
-    ['Hotspot', c.apPassword, false],
-    ['Router', c.staPassword, true],
+  for (const [name, password] of [
+    ['Hotspot', c.apPassword],
+    ['Client', c.staPassword],
   ] as const)
     if (
       password !== undefined &&
-      !((allowEmpty && password === '') || /^[\x20-\x7e]{8,63}$/.test(password))
+      !/^[\x20-\x7e]{8,63}$/.test(password)
     )
       throw new Error(
-        `${name} password must be 8–63 printable ASCII characters${allowEmpty ? ' (or select an open network)' : ''}.`,
+        `${name} password must be 8–63 printable ASCII characters.`,
       )
   if (c.token !== undefined && !/^[\x21-\x7e]{16,80}$/.test(c.token))
     throw new Error(

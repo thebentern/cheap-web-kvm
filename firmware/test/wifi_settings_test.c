@@ -21,7 +21,10 @@ int main(void)
     c.sta_ssid[32] = 0;
     assert(wifi_settings_valid(&c));
     c.sta_password[0] = 0;
+    assert(!wifi_settings_valid(&c));
+    c.mode = WIFI_SETTING_AP;
     assert(wifi_settings_valid(&c));
+    c.mode = WIFI_SETTING_CLIENT;
     strcpy(c.sta_password, "short");
     assert(!wifi_settings_valid(&c));
     c = config();
@@ -53,7 +56,7 @@ int main(void)
     p[7] = 0;
     assert(wifi_stage_chunk(&s, (void *)1, p, 8, 2));
     assert(s.value.sta_password[0] == 0);
-    assert(wifi_stage_complete(&s, (void *)1, s.id, 3));
+    assert(!wifi_stage_complete(&s, (void *)1, s.id, 3));
     p[1] = WF_TOKEN;
     p[7] = 81;
     assert(!wifi_stage_chunk(&s, (void *)1, p, 8, 3));
@@ -64,6 +67,6 @@ int main(void)
     p[1] = WF_RECOVERY;
     p[7] = 2;
     assert(!wifi_stage_chunk(&s, (void *)1, p, 10, 3));
-    puts("PASS: Wi-Fi modes, open client, recovery settings, bounds, fragmented credentials, "
+    puts("PASS: Wi-Fi modes, open-client rejection, recovery settings, bounds, fragmented credentials, "
          "owner/transaction isolation, timeout and incomplete-stage rejection");
 }
