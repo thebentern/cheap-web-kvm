@@ -73,7 +73,7 @@ bool wifi_stage_chunk(wifi_stage_t *s, const void *owner, const uint8_t *p, size
     bool string;
     void *dst = wifi_setting_field(&s->value, field, &cap, &string);
     if (id != s->id || !dst || total > (string ? cap - 1 : cap) || (!string && total != 1) ||
-        offset > total || bytes > total - offset || (total && bytes == 0) ||
+        offset > total || bytes > (size_t)(total - offset) || (total && bytes == 0) ||
         (string && memchr(p + 8, 0, bytes)))
         return false;
     if (!offset) {
