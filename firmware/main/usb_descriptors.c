@@ -140,7 +140,7 @@ static const tusb_desc_device_t s_device_desc = {
     .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
     .idVendor           = KVM_USB_VID,
     .idProduct          = KVM_USB_PID,
-    .bcdDevice          = 0x0200,
+    .bcdDevice          = 0x0201,
     .iManufacturer      = 0x01,
     .iProduct           = 0x02,
     .iSerialNumber      = 0x03,
@@ -160,9 +160,9 @@ static const uint8_t s_fs_config_desc[] = {
                        sizeof(s_kbd_report_desc), KVM_EP_KEYBOARD_IN,
                        CFG_TUD_HID_EP_BUFSIZE, KVM_EP_INTERVAL_MS),
 
-    /* Deliberately not a boot mouse: that protocol is a fixed 3-byte relative
-     * report and cannot carry absolute position. */
-    TUD_HID_DESCRIPTOR(KVM_HID_ITF_MOUSE, 0, HID_ITF_PROTOCOL_NONE,
+    /* BIOS uses the fixed 3-byte boot protocol. An OS switches to report
+     * protocol for the absolute pointer and wheel-capable relative reports. */
+    TUD_HID_DESCRIPTOR(KVM_HID_ITF_MOUSE, 0, HID_ITF_PROTOCOL_MOUSE,
                        sizeof(s_mouse_report_desc), KVM_EP_MOUSE_IN,
                        CFG_TUD_HID_EP_BUFSIZE, KVM_EP_INTERVAL_MS),
 

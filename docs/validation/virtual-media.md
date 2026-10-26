@@ -2,15 +2,16 @@
 
 **Software checks do not satisfy the physical acceptance criteria.** Follow-up
 testing used a connected ESP32-S3 over UART and router Wi-Fi; see the board
-checks below. A Wyse 3040 has not been validated. Networking starts off on a
-fresh ordinary install and is configurable in the UI. Successful Wyse USB
-discovery, F12 delivery, OS boot and target-to-client file transfer remain unverified.
+checks below. A Wyse 3040 has discovered the virtual disk in its UEFI boot list
+and read sectors over Wi-Fi media. Networking starts off on a fresh ordinary
+install and is configurable in the UI. Wyse mouse compatibility, F12 delivery,
+OS boot and target-to-client file transfer remain unverified.
 
 ## Software evidence
 
 - ESP-IDF 5.4 ESP32-S3 build with BLE, Wi-Fi and the custom HID+MSC configuration.
   Compiled descriptors verify interface 0 = boot keyboard with no report ID,
-  interface 1 = non-boot pointer with absolute/relative reports, interface 2 =
+  interface 1 = boot-compatible pointer with absolute/relative Report protocol, interface 2 =
   `08/06/50` SCSI BOT mass storage. Existing remote wakeup and report sizes pass.
 - Native C harness exercises the actual media backend and protocol: CRC/bounds,
   async read completion, 8 KiB read-ahead, write ACK timing, stale IDs, USB bus/BOT
@@ -444,3 +445,20 @@ production generation and the private quad-PSRAM board firmware build pass.
 The running browser's control was re-enabled without reloading the inserted
 disk. Applying the new bundled UI still requires a separately authorized board
 restart; these tests do not claim physical key delivery or OS boot acceptance.
+
+### BIOS boot-mouse compatibility
+
+The mouse interface now advertises HID Boot subclass and Mouse protocol while
+retaining both absolute and relative Report-protocol collections. USB device
+revision `0x0201` identifies this descriptor change. When the target selects
+Boot protocol, relative input becomes an unnumbered three-byte packet containing
+three buttons and signed X/Y motion; wheel data is omitted and `-128` deltas are
+clamped to the declared `-127` minimum. Absolute input supplies buttons without
+motion, so BIOS users select relative mouse mode in the web UI.
+
+The native HID harness compiles the actual driver and exercises both protocol
+formats, protocol changes during endpoint waits, GET_REPORT bounds and zero
+idle deltas, button release/reset, keyboard independence and endpoint failures.
+The full native media/Wi-Fi/serial/HID harness passes, as do web type checking,
+production generation, the private quad-PSRAM board build and compiled USB
+descriptor checks. Physical Wyse mouse movement still requires confirmation.

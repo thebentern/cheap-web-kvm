@@ -118,6 +118,8 @@ def main():
     vid = int.from_bytes(dev[8:10], "little")
     pid = int.from_bytes(dev[10:12], "little")
     check(True, f"idVendor=0x{vid:04x} idProduct=0x{pid:04x}")
+    release = int.from_bytes(dev[12:14], "little")
+    check(release == 0x0201, f"bcdDevice=0x{release:04x} identifies the boot-mouse USB personality")
 
     addr, size = syms["s_fs_config_desc"]
     cfg = grab(mem, addr, size)
@@ -138,8 +140,8 @@ def main():
         print(f"    interface {num}: class=0x{cls:02x} subclass=0x{sub:02x} protocol=0x{proto:02x}")
     check(itfs[0] == (0, 0x03, 0x01, 0x01),
           "interface 0 is HID, Boot subclass (1), Keyboard protocol (1)")
-    check(itfs[1][1] == 0x03 and itfs[1][2] == 0x00,
-          "interface 1 is HID, non-boot")
+    check(itfs[1] == (1, 0x03, 0x01, 0x02),
+          "interface 1 is HID, Boot subclass (1), Mouse protocol (2)")
 
     check(itfs[2] == (2, 0x08, 0x06, 0x50), "interface 2 is SCSI bulk-only mass storage")
 

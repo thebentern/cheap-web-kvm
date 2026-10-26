@@ -319,7 +319,9 @@ Bluetooth remains an alternative using a compatible browser:
 ![On-screen keyboard at iPad size](docs/images/ipad.png)
 
 A trackpad or mouse works as usual. Relative mouse mode is under Settings →
-Keyboard & mouse. Touch gestures:
+Keyboard & mouse. Use relative mode for BIOS/UEFI screens: click the video to
+capture mouse movement and press Esc to release it. Desktop operating systems
+can use the default absolute mode. Touch gestures:
 
 | Gesture | Absolute mouse mode (default) | Relative mouse mode |
 |---|---|---|

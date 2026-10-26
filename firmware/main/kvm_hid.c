@@ -97,15 +97,24 @@ typedef struct __attribute__((packed)) {
     int8_t wheel;
 } kvm_mouse_rel_report_t;
 
+/* HID boot mouse protocol has no report ID or wheel byte. */
+typedef struct __attribute__((packed)) {
+    uint8_t buttons;
+    int8_t dx;
+    int8_t dy;
+} kvm_mouse_boot_report_t;
+
 _Static_assert(sizeof(kvm_kbd_report_t) == 8, "boot keyboard report must be 8 bytes");
 _Static_assert(sizeof(kvm_mouse_abs_report_t) == 6, "absolute mouse report must be 6 bytes");
 _Static_assert(sizeof(kvm_mouse_rel_report_t) == 4, "relative mouse report must be 4 bytes");
+_Static_assert(sizeof(kvm_mouse_boot_report_t) == 3, "boot mouse report must be 3 bytes");
 
 /* Last report sent on each path, so Get_Report can be answered and so
  * hid_release_all() can clear buttons without moving the pointer. */
 static kvm_kbd_report_t s_last_kbd;
 static kvm_mouse_abs_report_t s_last_abs;
 static kvm_mouse_rel_report_t s_last_rel;
+static volatile uint8_t s_mouse_buttons;
 static bool s_abs_valid; /* an absolute position has been sent */
 
 bool kvm_hid_mounted(void) { return s_mounted; }
@@ -147,6 +156,28 @@ static bool hid_send(uint8_t instance, uint8_t report_id, const void *report, ui
         ESP_LOGW(TAG, "HID interface %u not writable, dropping report", instance);
         return false;
     }
+
+    /* SET_PROTOCOL can arrive while the endpoint is busy. Choose the format
+     * only after waiting, immediately before submitting this report. */
+    kvm_mouse_boot_report_t boot = {0};
+    if (instance == KVM_HID_ITF_MOUSE &&
+        tud_hid_n_get_protocol(instance) == HID_PROTOCOL_BOOT) {
+        if (report_id == KVM_REPORT_ID_MOUSE_REL && len == sizeof(kvm_mouse_rel_report_t)) {
+            const kvm_mouse_rel_report_t *rel = report;
+            boot.buttons = rel->buttons & 0x07;
+            boot.dx = rel->dx < -127 ? -127 : rel->dx;
+            boot.dy = rel->dy < -127 ? -127 : rel->dy;
+        } else if (report_id == KVM_REPORT_ID_MOUSE_ABS && len == sizeof(kvm_mouse_abs_report_t)) {
+            /* A BIOS boot mouse cannot interpret absolute coordinates. Keep
+             * button transitions usable; relative mode supplies its motion. */
+            boot.buttons = ((const kvm_mouse_abs_report_t *)report)->buttons & 0x07;
+        } else {
+            return false;
+        }
+        report_id = 0;
+        report = &boot;
+        len = sizeof(boot);
+    }
     if (!tud_hid_n_report(instance, report_id, report, len)) {
         ESP_LOGW(TAG, "tud_hid_n_report failed on interface %u", instance);
         return false;
@@ -161,6 +192,7 @@ static bool hid_send(uint8_t instance, uint8_t report_id, const void *report, ui
  * report keeps its last position so clearing does not fling the cursor. */
 static void hid_release_all(void)
 {
+    s_mouse_buttons = 0;
     memset(&s_last_kbd, 0, sizeof(s_last_kbd));
     hid_send(KVM_HID_ITF_KEYBOARD, 0, &s_last_kbd, sizeof(s_last_kbd));
 
@@ -288,6 +320,7 @@ static void kvm_hid_task(void *arg)
                 .wheel = evt.abs.wheel,
             };
             s_last_abs = report;
+            s_mouse_buttons = report.buttons;
             s_abs_valid = true;
             kvm_led_input(
                 hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_ABS, &report, sizeof(report)));
@@ -302,6 +335,7 @@ static void kvm_hid_task(void *arg)
                 .wheel = evt.rel.wheel,
             };
             s_last_rel = report;
+            s_mouse_buttons = report.buttons;
             kvm_led_input(
                 hid_send(KVM_HID_ITF_MOUSE, KVM_REPORT_ID_MOUSE_REL, &report, sizeof(report)));
             break;
@@ -398,13 +432,20 @@ uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id, hid_report_t
 {
     const void *src = NULL;
     uint16_t len = 0;
+    const kvm_mouse_boot_report_t boot = {.buttons = s_mouse_buttons & 0x07};
 
     if (report_type == HID_REPORT_TYPE_INPUT) {
         if (instance == KVM_HID_ITF_KEYBOARD) {
             src = &s_last_kbd;
             len = sizeof(s_last_kbd);
         } else if (instance == KVM_HID_ITF_MOUSE) {
-            if (report_id == KVM_REPORT_ID_MOUSE_ABS) {
+            if (tud_hid_n_get_protocol(instance) == HID_PROTOCOL_BOOT) {
+                if (report_id == 0) {
+                    /* A control read must not replay the last movement. */
+                    src = &boot;
+                    len = sizeof(boot);
+                }
+            } else if (report_id == KVM_REPORT_ID_MOUSE_ABS) {
                 src = &s_last_abs;
                 len = sizeof(s_last_abs);
             } else if (report_id == KVM_REPORT_ID_MOUSE_REL) {

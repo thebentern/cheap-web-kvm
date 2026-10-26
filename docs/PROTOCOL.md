@@ -151,6 +151,14 @@ Absolute and relative reporting are therefore not build-time alternatives — th
 device must offer both simultaneously. The firmware does this with two report
 IDs on one pointer interface (`1` = absolute, `2` = relative).
 
+The target USB pointer interface also advertises Boot Mouse compatibility.
+When a BIOS selects Boot protocol, the firmware sends unnumbered three-byte
+reports: the first three buttons, signed X movement and signed Y movement.
+Wheel and absolute-position data are unavailable in this protocol. Enable
+**Settings → Keyboard & mouse → Use relative mouse mode** for BIOS/UEFI use;
+the CH9329 command framing above does not change. Operating systems using
+Report protocol retain the absolute and relative report IDs and wheel data.
+
 ### 0x0F — Soft reset
 
 Sent once, 100 ms after the port opens, and again from Settings → Reset HID.

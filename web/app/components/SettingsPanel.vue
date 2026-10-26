@@ -396,17 +396,17 @@ onBeforeUnmount(() => {
               <AppIcon name="keyboard" class="text-signal-400" /> Keyboard &amp; mouse
             </h4>
             <p class="kvm-hint mt-1">
-              Input leaves over Web Serial or Bluetooth and reaches the target as real USB HID.
+              Input travels over USB, Bluetooth or Wi-Fi and reaches the target as a USB keyboard and mouse.
             </p>
 
             <div class="mt-4 space-y-5">
               <div>
                 <div class="kvm-label">Relative mouse mode</div>
                 <p class="kvm-hint mt-0.5">
-                  Sends deltas instead of absolute coordinates, for games and 3D applications that
-                  capture the pointer. Absolute is the default and works better through a laggy video
-                  feed — the pointer lands where you clicked even if the picture is a few frames
-                  behind. On a touch screen, relative mode turns the screen into a trackpad.
+                  Use this for BIOS/UEFI screens and applications that capture the mouse.
+                  Click the video to capture movement; press Esc to release it. Absolute mode is
+                  the default for desktop use. On a touch screen, relative mode turns the screen
+                  into a trackpad.
                 </p>
                 <label class="kvm-toggle mt-2">
                   <input v-model="settings.relativeMouseMode" type="checkbox" />

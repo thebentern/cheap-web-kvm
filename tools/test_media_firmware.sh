@@ -12,3 +12,5 @@ ${CC:-cc} -std=c11 -Wall -Wextra -Werror -Ifirmware/main firmware/test/wifi_sett
 
 ${CC:-cc} -std=c11 -Wall -Wextra -Werror -Ifirmware/main firmware/test/media_serial_test.c firmware/main/media_serial.c -o "$TEST_BINARY"
 "$TEST_BINARY"
+
+./tools/test_hid_firmware.sh
