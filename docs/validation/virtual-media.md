@@ -357,7 +357,7 @@ Wi-Fi credentials, Bluetooth bonds and the generated trust identity remain intac
 OCR payloads and installer binaries are excluded from the small on-board asset
 pack; the UI points users to the full hosted application for those functions.
 
-All 202 web tests pass, as do type checking, static generation, five asset-pack
+All 205 web tests pass, as do type checking, static generation, five asset-pack
 tests, eighteen firmware-packaging tests, native media/Wi-Fi/serial harnesses,
 native TLS identity/renewal/persistence failure tests and the HTTP/session harness.
 OpenSSL independently verifies the CA chain, client/AP IP SANs, hostname and exact
@@ -379,3 +379,37 @@ schedules, not disk throughput. Another twenty verified echoes completed alongsi
 872 USB serial vendor-echo frames in three seconds. Existing credentials survived
 the firmware updates, and the downloaded CA matched its fingerprint read over USB.
 [Machine-readable hardware checks](onboard-hosting.json) record the final sample.
+
+
+### Server certificate lifetime and renewal
+
+System trust validation exposed a separate failure after the initial direct TLS
+resource checks: macOS rejected the original 2020–2049 server certificate with
+`OtherTrustValidityPeriod`. Explicit-CA/OpenSSL chain verification alone did not
+exercise that system lifetime policy. The server leaf now uses an 800-day
+lifetime; the persistent CA retains its separate 2020–2049 validity. Apple's
+[trusted TLS certificate requirements](https://support.apple.com/en-us/103769)
+limit new server-certificate lifetimes to 825 days. This correction does not
+change the board's CA, private keys or client trust installation.
+
+The firmware renews a leaf with fewer than 30 days remaining, one with an oversized
+old lifetime, or one needing updated IP SANs. Lifetime is checked even if the
+address is unchanged; a renewal restarts HTTPS only once media is absent and idle.
+A build-time epoch supports first offline setup, and Client mode attempts SNTP
+through `pool.ntp.org`. Long offline use with an expired leaf and an old fallback
+clock still requires a usable current time source or a fresh firmware build;
+certificate checks remain enabled. Repeat system-trusted browser validation with
+the corrected leaf before treating the earlier explicit-CA resource checks as
+proof of browser/platform trust acceptance.
+
+The final server leaf was independently fetched from the actual board after the
+lifetime correction. macOS system trust evaluated it successfully for the board's
+LAN IP using the installed CA (no explicit command-line anchor or browser warning
+bypass). Its validity is 800 days and the CA fingerprint remains unchanged. The
+on-board console loaded over trusted HTTPS in the real browser, initialized its
+storage worker, paired with a secure cookie and reported media connected over
+Wi-Fi. The test connection was then disconnected to leave ownership available to
+the user's browser. A reported cold-start detection failure was also fixed: failed
+metadata probes remain retryable, Wi-Fi selection and Connect recheck the board,
+and missing authentication shows the token field before any WebSocket opens.
+Three added regression tests bring the web suite to 205 passing tests.

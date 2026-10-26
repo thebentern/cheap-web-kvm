@@ -15,7 +15,8 @@ export async function probeDeviceHost(): Promise<DeviceHostInfo | null> {
     const response = await fetch('/device/info', {
       credentials: 'same-origin',
       cache: 'no-store',
-      signal: AbortSignal.timeout(2000),
+      // The embedded server serializes TLS handshakes while core assets load.
+      signal: AbortSignal.timeout(10000),
     })
     if (
       !response.ok ||

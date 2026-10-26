@@ -248,7 +248,7 @@ onMounted(() => {
           class="kvm-btn media-choice"
           :aria-pressed="transport === 'usb'"
           :disabled="connected || connecting || locked"
-          @click="transport = 'usb'"
+          @click="media.selectTransport('usb')"
         >
           USB
         </button>
@@ -256,7 +256,7 @@ onMounted(() => {
           class="kvm-btn media-choice"
           :aria-pressed="transport === 'wifi'"
           :disabled="connected || connecting || locked"
-          @click="transport = 'wifi'"
+          @click="media.selectTransport('wifi')"
         >
           Wi-Fi
         </button>

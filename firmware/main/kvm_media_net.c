@@ -235,7 +235,7 @@ esp_err_t kvm_media_https_ensure(const uint8_t client_ip[4], const uint8_t ap_ip
     // A mismatched RAM build must retain basic control and certificate setup.
     if (!heap_caps_get_total_size(MALLOC_CAP_SPIRAM)) return ESP_ERR_NO_MEM;
     uint8_t ips[8]; memcpy(ips, client_ip, 4); memcpy(ips + 4, ap_ip, 4);
-    if (secure_server && !memcmp(ips, certificate_ips, sizeof(ips))) return ESP_OK;
+    if (secure_server && !memcmp(ips, certificate_ips, sizeof(ips)) && !device_tls_needs_renewal()) return ESP_OK;
     // Certificate replacement must never tear down an inserted virtual disk.
     if (!kvm_media_network_change_begin()) return ESP_ERR_INVALID_STATE;
     xSemaphoreTake(net_lock, portMAX_DELAY);

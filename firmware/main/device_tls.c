@@ -15,6 +15,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdatomic.h>
+#include <time.h>
+
+#ifndef KVM_BUILD_TIME
+#error "Define KVM_BUILD_TIME as the firmware build's Unix UTC timestamp"
+#endif
+#define DAY_SECONDS 86400LL
+#define MIN_CLOCK_TIME 1704067200LL /* 2024-01-01 */
+#define LEAF_LIFETIME (800LL * DAY_SECONDS)
+#define MAX_LEAF_LIFETIME (825LL * DAY_SECONDS)
+#define RENEW_BEFORE (30LL * DAY_SECONDS)
 
 #define KEY_CAPACITY 384
 #define CERT_CAPACITY 1536
@@ -32,6 +42,52 @@ typedef struct {
 static identity_t identity;
 static atomic_bool ready;
 static char hostname[HOST_CAPACITY], fingerprint[65];
+/* Only the serialized Wi-Fi certificate worker accesses these timestamps. */
+static int64_t issued_not_before, issued_not_after;
+
+static bool leap(int year) { return !(year % 4) && (year % 100 || !(year % 400)); }
+static int64_t utc_seconds(const mbedtls_x509_time *value)
+{
+    static const unsigned char days_in_month[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    if (value->year < 1970 || value->year > 9999 || value->mon < 1 || value->mon > 12 ||
+        value->day < 1 || value->day > 31) return 0;
+    int64_t days = 0;
+    for (int year = 1970; year < value->year; year++) days += leap(year) ? 366 : 365;
+    for (int month = 1; month < value->mon; month++)
+        days += days_in_month[month - 1] + (month == 2 && leap(value->year));
+    return (days + value->day - 1) * DAY_SECONDS + value->hour * 3600 + value->min * 60 + value->sec;
+}
+static int64_t current_time(int64_t persisted_not_before)
+{
+    int64_t actual = (int64_t)time(NULL);
+    int64_t now = KVM_BUILD_TIME > MIN_CLOCK_TIME ? KVM_BUILD_TIME : MIN_CLOCK_TIME;
+    if (actual >= MIN_CLOCK_TIME) {
+        if (actual > now) now = actual;
+    } else if (persisted_not_before + DAY_SECONDS > now) {
+        // A board without an RTC must not replace a valid persisted leaf on
+        // each offline reboot merely because its clock returned to 1970.
+        now = persisted_not_before + DAY_SECONDS;
+    }
+    return now;
+}
+static bool renewal_due(int64_t before, int64_t after)
+{
+    int64_t now = current_time(before);
+    return before <= 0 || after <= before || after - before > MAX_LEAF_LIFETIME ||
+           after - now < RENEW_BEFORE || before > now + DAY_SECONDS;
+}
+bool device_tls_needs_renewal(void)
+{
+    return !ready || renewal_due(issued_not_before, issued_not_after);
+}
+static int validity_string(int64_t seconds, char output[16])
+{
+    time_t epoch = (time_t)seconds;
+    struct tm utc;
+    if (!gmtime_r(&epoch, &utc) || strftime(output, 16, "%Y%m%d%H%M%S", &utc) != 14)
+        return MBEDTLS_ERR_X509_BAD_INPUT_DATA;
+    return 0;
+}
 
 static int random_bytes(void *context, unsigned char *bytes, size_t length)
 {
@@ -75,7 +131,8 @@ static int parse_key(mbedtls_pk_context *key, const char value[KEY_CAPACITY])
 static int certificate(char output[CERT_CAPACITY], const char *subject,
                        const char *issuer, mbedtls_pk_context *subject_key,
                        mbedtls_pk_context *issuer_key, bool ca,
-                       const char *dns, const uint8_t client[4], const uint8_t ap[4])
+                       const char *dns, const uint8_t client[4], const uint8_t ap[4],
+                       int64_t not_before, int64_t not_after)
 {
     mbedtls_x509write_cert cert;
     mbedtls_x509write_crt_init(&cert);
@@ -89,10 +146,13 @@ static int certificate(char output[CERT_CAPACITY], const char *subject,
     int error = mbedtls_x509write_crt_set_serial_raw(&cert, serial, sizeof(serial));
     if (!error) error = mbedtls_x509write_crt_set_subject_name(&cert, subject);
     if (!error) error = mbedtls_x509write_crt_set_issuer_name(&cert, issuer);
-    /* No network clock is needed to boot or provision a local trust anchor.
-     * This long validity is for a manually installed, device-specific private
-     * CA; no public certificate authority or embedded shared key is involved. */
-    if (!error) error = mbedtls_x509write_crt_set_validity(&cert, "20200101000000", "20491231235959");
+    char before[16], after[16];
+    if (!ca && !error) error = validity_string(not_before, before);
+    if (!ca && !error) error = validity_string(not_after, after);
+    /* The persistent private CA can be long lived. Server leaves stay below
+     * Apple's 825-day limit even when that private CA is manually trusted. */
+    if (!error) error = mbedtls_x509write_crt_set_validity(&cert,
+        ca ? "20200101000000" : before, ca ? "20491231235959" : after);
     if (!error) error = mbedtls_x509write_crt_set_basic_constraints(&cert, ca, ca ? 0 : -1);
     if (!error) error = mbedtls_x509write_crt_set_key_usage(&cert, ca
         ? MBEDTLS_X509_KU_KEY_CERT_SIGN | MBEDTLS_X509_KU_CRL_SIGN
@@ -129,7 +189,8 @@ static int certificate(char output[CERT_CAPACITY], const char *subject,
     return error;
 }
 static int validate(identity_t *candidate, mbedtls_pk_context *ca_key,
-                    mbedtls_pk_context *server_key, mbedtls_x509_crt *ca)
+                    mbedtls_pk_context *server_key, mbedtls_x509_crt *ca,
+                    int64_t *not_before, int64_t *not_after)
 {
     if (candidate->version != IDENTITY_VERSION ||
         memcmp(candidate->hostname, device_tls_hostname(), strlen(device_tls_hostname()) + 1) ||
@@ -146,6 +207,10 @@ static int validate(identity_t *candidate, mbedtls_pk_context *ca_key,
     if (!error) error = mbedtls_x509_crt_parse(&server,
         (const unsigned char *)candidate->server_cert, strlen(candidate->server_cert) + 1);
     if (!error) error = mbedtls_pk_check_pair(&server.pk, server_key, random_bytes, NULL);
+    if (!error) {
+        *not_before = utc_seconds(&server.valid_from);
+        *not_after = utc_seconds(&server.valid_to);
+    }
     if (!error) {
         uint32_t flags = 0;
         error = mbedtls_x509_crt_verify(&server, ca, NULL, candidate->hostname, &flags, NULL, NULL);
@@ -178,6 +243,7 @@ esp_err_t device_tls_prepare(const uint8_t client_ipv4[4], const uint8_t ap_ipv4
     mbedtls_pk_init(&server_key);
     mbedtls_x509_crt_init(&ca);
     int error = 0;
+    int64_t leaf_before = 0, leaf_after = 0;
     char ca_subject[96], server_subject[80];
     snprintf(ca_subject, sizeof(ca_subject), "CN=%s device CA,O=cheap-web-kvm", hostname);
     snprintf(server_subject, sizeof(server_subject), "CN=%s,O=cheap-web-kvm", hostname);
@@ -187,9 +253,9 @@ esp_err_t device_tls_prepare(const uint8_t client_ipv4[4], const uint8_t ap_ipv4
         error = generate_key(&ca_key, candidate->ca_key);
         if (!error) error = generate_key(&server_key, candidate->server_key);
         if (!error) error = certificate(candidate->ca_cert, ca_subject, ca_subject,
-                                         &ca_key, &ca_key, true, NULL, NULL, NULL);
+                                         &ca_key, &ca_key, true, NULL, NULL, NULL, 0, 0);
     } else {
-        error = validate(candidate, &ca_key, &server_key, &ca);
+        error = validate(candidate, &ca_key, &server_key, &ca, &leaf_before, &leaf_after);
         if (!error && ready &&
             (memcmp(identity.ca_key, candidate->ca_key, KEY_CAPACITY) ||
              memcmp(identity.server_key, candidate->server_key, KEY_CAPACITY) ||
@@ -199,10 +265,13 @@ esp_err_t device_tls_prepare(const uint8_t client_ipv4[4], const uint8_t ap_ipv4
     uint8_t client[4] = {0}, ap[4] = {0};
     if (client_ipv4) memcpy(client, client_ipv4, 4);
     if (ap_ipv4) memcpy(ap, ap_ipv4, 4);
-    if (!error && (create || memcmp(client, candidate->client_ip, 4) || memcmp(ap, candidate->ap_ip, 4))) {
+    if (!error && (create || renewal_due(leaf_before, leaf_after) ||
+                   memcmp(client, candidate->client_ip, 4) || memcmp(ap, candidate->ap_ip, 4))) {
         memset(candidate->server_cert, 0, sizeof(candidate->server_cert));
+        leaf_before = current_time(leaf_before) - DAY_SECONDS;
+        leaf_after = leaf_before + LEAF_LIFETIME;
         error = certificate(candidate->server_cert, server_subject, ca_subject,
-                              &server_key, &ca_key, false, hostname, client, ap);
+                              &server_key, &ca_key, false, hostname, client, ap, leaf_before, leaf_after);
         if (!error) {
             memcpy(candidate->client_ip, client, 4);
             memcpy(candidate->ap_ip, ap, 4);
@@ -233,6 +302,8 @@ esp_err_t device_tls_prepare(const uint8_t client_ipv4[4], const uint8_t ap_ipv4
             if (!ready)
                 for (size_t i = 0; i < sizeof(digest); i++)
                     snprintf(fingerprint + i * 2, 3, "%02x", digest[i]);
+            issued_not_before = leaf_before;
+            issued_not_after = leaf_after;
             ready = true;
             ESP_LOGI(TAG, "Device CA SHA-256: %s", fingerprint);
         }

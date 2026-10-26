@@ -24,7 +24,7 @@ const json = (value: unknown) =>
   })
 afterEach(() => vi.unstubAllGlobals())
 
-async function setup(onboard = true) {
+async function setup(onboard = true, initialInfoFailures = 0) {
   vi.resetModules()
   state.addresses = []
   state.close.mockClear()
@@ -32,10 +32,13 @@ async function setup(onboard = true) {
     acceptToken = true,
     allowCookies = true
   const fetch = vi.fn(async (path: string, options?: RequestInit) => {
-    if (path === '/device/info')
+    if (path === '/device/info') {
+      if (initialInfoFailures-- > 0)
+        throw new DOMException('Timed out', 'TimeoutError')
       return onboard
         ? json({ device: true, authenticated, httpsPort: 443 })
         : new Response(null, { status: 404 })
+    }
     if (path === '/device/session') {
       if (!acceptToken) return new Response(null, { status: 401 })
       if (allowCookies) authenticated = true
@@ -105,6 +108,35 @@ describe('direct on-board media connection', () => {
     media.transport.value = 'usb'
     await media.initialize()
     expect(media.transport.value).toBe('usb')
+  })
+  it('recovers a failed startup probe when Wi-Fi is selected and requires pairing before WSS', async () => {
+    const { media } = await setup(true, 1)
+    expect(media.onboard.value).toBe(false)
+    expect(media.transport.value).toBe('usb')
+    await media.selectTransport('wifi')
+    expect(media.onboard.value).toBe(true)
+    expect(media.deviceInfo.value?.authenticated).toBe(false)
+    await media.connect()
+    expect(media.connected.value).toBe(false)
+    expect(media.error.value).toMatch(/access token/)
+    expect(state.addresses).toHaveLength(0)
+    media.boardToken.value = TOKEN
+    await media.connect()
+    expect(media.connected.value).toBe(true)
+    expect(state.addresses).toEqual(['wss://kvm.local/media'])
+  })
+  it('rechecks an unknown host on Connect and preserves explicit USB after late identification', async () => {
+    const direct = await setup(true, 1)
+    direct.media.transport.value = 'wifi'
+    await direct.media.connect()
+    expect(direct.media.onboard.value).toBe(true)
+    expect(direct.media.error.value).toMatch(/access token/)
+    expect(state.addresses).toHaveLength(0)
+    const explicit = await setup(true, 1)
+    await explicit.media.selectTransport('usb')
+    await explicit.media.initialize()
+    expect(explicit.media.onboard.value).toBe(true)
+    expect(explicit.media.transport.value).toBe('usb')
   })
   it('explains certificate trust when browser storage is blocked', async () => {
     const { media } = await setup()

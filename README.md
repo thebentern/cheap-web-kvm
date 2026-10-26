@@ -287,7 +287,11 @@ its OCR control with a link to the full app. Its firmware-install action opens
 the hosted installer. Disk images and overlays stay in the browser's storage,
 which is separate for each origin; localhost files do not automatically appear
 at the board's HTTPS address. The board's per-device authority survives DHCP
-changes, while its leaf certificate is renewed for the current addresses. An NVS
+changes and normal renewal of its 800-day server certificate; client trust does
+not need reinstalling after that renewal. Client-mode network time and an initial
+firmware-build timestamp support issuing current certificates. A long-isolated
+board with an expired certificate and stale clock needs a usable time source or
+fresh firmware; offline operation does not extend certificate validity. An NVS
 erase requires verifying and trusting the replacement authority.
 
 ```bash

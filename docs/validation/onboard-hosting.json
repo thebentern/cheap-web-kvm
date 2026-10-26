@@ -56,5 +56,13 @@
       "max_rtt_ms": 11.348749976605177,
       "media_transport": false
     }
-  }
+  },
+  "macOS_system_ssl_policy_accepted": true,
+  "server_leaf_validity_days": 800,
+  "trust_ca_preserved_during_leaf_migration": true,
+  "real_browser_console_loaded": true,
+  "real_browser_storage_initialized": true,
+  "real_browser_cookie_pairing_and_wifi_connected": true,
+  "test_connection_left_disconnected": true,
+  "web_tests": 205
 }

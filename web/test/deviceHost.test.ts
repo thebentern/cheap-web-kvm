@@ -167,4 +167,30 @@ describe('on-board host detection and authentication', () => {
     expect(await first.refresh()).toBeNull()
     expect(first.onboard.value).toBe(true)
   })
+  it('retries a failed startup probe, deduplicates recovery and caches only a successful identity', async () => {
+    vi.resetModules()
+    let resolve!: (response: Response) => void
+    const fetch = vi
+      .fn()
+      .mockRejectedValueOnce(new DOMException('Timed out', 'TimeoutError'))
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((done) => {
+            resolve = done
+          }),
+      )
+    vi.stubGlobal('fetch', fetch)
+    const { useDeviceHost } = await import('../app/composables/useDeviceHost')
+    const first = useDeviceHost(),
+      second = useDeviceHost()
+    expect(await first.initialize()).toBeNull()
+    const retry = first.initialize(),
+      concurrent = second.refresh()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    resolve(json(identify()))
+    await Promise.all([retry, concurrent])
+    expect(first.onboard.value).toBe(true)
+    await second.initialize()
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
 })

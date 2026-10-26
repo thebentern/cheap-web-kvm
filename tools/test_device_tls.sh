@@ -13,7 +13,8 @@ cmake -S "$TLS_MBEDTLS_SOURCE" -B "$TLS_TEST_DIR/mbedtls" \
     > "$TLS_TEST_DIR/configure.log" 2>&1 || { cat "$TLS_TEST_DIR/configure.log"; exit 1; }
 cmake --build "$TLS_TEST_DIR/mbedtls" --parallel 4 \
     > "$TLS_TEST_DIR/build.log" 2>&1 || { cat "$TLS_TEST_DIR/build.log"; exit 1; }
-${CC:-cc} -std=c11 -Wall -Wextra -Werror \
+TLS_BUILD_EPOCH=$(date +%s)
+${CC:-cc} -std=c11 -D_POSIX_C_SOURCE=200809L -DKVM_BUILD_TIME="$TLS_BUILD_EPOCH" -Wall -Wextra -Werror \
     -Ifirmware/test/tls_stubs -Ifirmware/main -I"$TLS_MBEDTLS_SOURCE/include" \
     firmware/test/device_tls_test.c -L"$TLS_TEST_DIR/mbedtls/library" \
     -lmbedx509 -lmbedcrypto -o "$TLS_TEST_DIR/test"
@@ -33,3 +34,18 @@ openssl x509 -in "$TLS_TEST_DIR/device-ca.pem" -outform DER | \
     openssl dgst -sha256 -binary | od -An -v -tx1 | tr -d ' \n' > "$TLS_TEST_DIR/openssl-sha256.txt"
 cmp "$TLS_TEST_DIR/fingerprint.txt" "$TLS_TEST_DIR/openssl-sha256.txt"
 echo "OpenSSL independently verified the DNS/IP SANs, CA chain and fingerprint"
+
+# The predecessor is cryptographically sound and matches the IP; its rejection
+# below must therefore exercise platform policy beyond OpenSSL chain checks.
+openssl verify -CAfile "$TLS_TEST_DIR/device-ca.pem" \
+    -verify_ip 192.168.2.219 "$TLS_TEST_DIR/legacy-server.pem"
+if [ "$(uname -s)" = Darwin ]; then
+    security verify-cert -c "$TLS_TEST_DIR/server.pem" -r "$TLS_TEST_DIR/device-ca.pem" \
+        -p ssl -s 192.168.2.219
+    if security verify-cert -c "$TLS_TEST_DIR/legacy-server.pem" -r "$TLS_TEST_DIR/device-ca.pem" \
+        -p ssl -s 192.168.2.219 > /dev/null 2>&1; then
+        echo "macOS unexpectedly accepted the original overlong leaf certificate" >&2
+        exit 1
+    fi
+    echo "macOS SSL policy accepted the 800-day leaf and rejected its overlong predecessor"
+fi

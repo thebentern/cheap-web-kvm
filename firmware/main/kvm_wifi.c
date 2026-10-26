@@ -18,6 +18,7 @@
 #include "wifi_settings.h"
 #if CONFIG_KVM_DEVICE_WEB
 #include "device_tls.h"
+#include "esp_netif_sntp.h"
 #endif
 #include <stdatomic.h>
 #include <stdio.h>
@@ -29,6 +30,9 @@ static wifi_stage_t stage;
 static esp_netif_t *ap_netif;
 static atomic_bool stopping;
 static bool driver_initialized, pending;
+#if CONFIG_KVM_DEVICE_WEB
+static bool time_service;
+#endif
 /* State: off, hotspot, joining, connected, error. No passwords in status. */
 static uint8_t state, retries, ap_ip[4], sta_ip[4];
 static uint16_t reason;
@@ -132,6 +136,9 @@ static esp_err_t apply(const wifi_settings_t *c)
 {
     atomic_store(&stopping, true);
     kvm_media_http_stop();
+#if CONFIG_KVM_DEVICE_WEB
+    if (time_service) { esp_netif_sntp_deinit(); time_service = false; }
+#endif
     if (driver_initialized) {
         esp_wifi_stop();
         esp_wifi_deinit();
@@ -199,6 +206,14 @@ static esp_err_t apply(const wifi_settings_t *c)
             xSemaphoreGive(mutex);
         }
     }
+#if CONFIG_KVM_DEVICE_WEB
+    if (c->mode == WIFI_SETTING_CLIENT) {
+        esp_sntp_config_t clock = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+        clock.wait_for_sync = false;
+        // Time synchronization is optional; fresh builds work offline too.
+        time_service = esp_netif_sntp_init(&clock) == ESP_OK;
+    }
+#endif
     return kvm_media_http_start(c->token);
 }
 static void run(void *arg)

@@ -86,9 +86,22 @@ enough memory to start.
    the separate HDMI capture stick. Tablets do not need Web Serial/Bluetooth for
    control once the board's Wi-Fi and certificate trust are configured.
 
-The device keeps its own certificate authority and keys in NVS. DHCP address
-changes renew the server certificate for the current addresses while retaining
-the same trust authority, so they do not require reinstalling that authority.
+The device keeps its own certificate authority and keys in NVS. Its server
+certificate is issued with an 800-day lifetime, within the 825-day limit in
+[Apple’s TLS server certificate requirements](https://support.apple.com/en-us/103769). The authority itself
+has a separate 2020–2049 validity period. A DHCP address change, fewer than 30 days
+remaining on the server certificate, or an old oversized server lifetime triggers
+server-certificate renewal. Renewal keeps the same authority and keys, so it does
+not require reinstalling client trust. The board waits until media is ejected and
+idle before restarting HTTPS to apply a renewal.
+
+A fresh firmware build supplies its build timestamp as an initial offline clock.
+Client mode also attempts network time synchronization through `pool.ntp.org`;
+that depends on reachable DNS/NTP and is not available in an isolated hotspot.
+This is not a promise of indefinite offline renewal: after a long offline period,
+an expired certificate and an old build-time clock need a current firmware build
+or a usable current time source. Normal certificate verification remains enabled.
+
 Use the current IP reported by the board; the certificate's device hostname does
 not by itself guarantee that a router resolves that name. Erasing NVS removes
 this identity and requires verifying/trusting the replacement certificate.

@@ -8,16 +8,22 @@ import {
 
 const info = shallowRef<DeviceHostInfo | null>(null)
 let probe: Promise<DeviceHostInfo | null> | null = null
-function initialize() {
-  return (probe ??= probeDeviceHost().then((value) => {
-    info.value = value
-    return value
-  }))
+function refresh() {
+  if (!probe)
+    probe = probeDeviceHost()
+      .then((current) => {
+        if (current) info.value = current
+        return current
+      })
+      .finally(() => {
+        probe = null
+      })
+  return probe
 }
-async function refresh() {
-  const current = await probeDeviceHost()
-  if (current) info.value = current
-  return current
+function initialize() {
+  // A successful identity is stable. A failed/ordinary-host probe must remain
+  // retryable when the user opens media or chooses Wi-Fi after startup.
+  return info.value ? Promise.resolve(info.value) : refresh()
 }
 export function useDeviceHost() {
   return {

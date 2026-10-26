@@ -3,9 +3,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+static time_t test_clock;
+static time_t fake_time(time_t *out) { if (out) *out = test_clock; return test_clock; }
+#define time fake_time
 /* Include the implementation to model a power cycle without a test-only API
  * in production firmware. NVS and the hardware entropy/MAC APIs are stubbed. */
 #include "../main/device_tls.c"
+#undef time
 
 static unsigned char stored[sizeof(identity_t)], staged[sizeof(identity_t)];
 static size_t stored_size, staged_size;
@@ -68,6 +73,7 @@ static void reboot(void)
     memset(&identity, 0, sizeof(identity));
     memset(hostname, 0, sizeof(hostname));
     memset(fingerprint, 0, sizeof(fingerprint));
+    issued_not_before = issued_not_after = 0;
 }
 static void public_file(const char *directory, const char *name, const char *value)
 {
@@ -82,9 +88,13 @@ int main(int argc, char **argv)
     const uint8_t ap[] = {192, 168, 4, 1}, client[] = {192, 168, 2, 218};
     const uint8_t changed_client[] = {192, 168, 2, 219};
     assert(!device_tls_certificate() && !device_tls_private_key());
+    assert(device_tls_needs_renewal());
     assert(device_tls_prepare(client, ap) == ESP_OK);
     assert(!strcmp(device_tls_hostname(), "cheap-web-kvm-7da0.local"));
     assert(commits == 1 && stored_size == sizeof(identity_t));
+    assert(issued_not_after - issued_not_before == 800 * DAY_SECONDS);
+    assert(issued_not_before == KVM_BUILD_TIME - DAY_SECONDS);
+    assert(!device_tls_needs_renewal());
     assert(strlen(device_tls_fingerprint()) == 64);
     assert(strstr(device_tls_certificate(), "BEGIN CERTIFICATE"));
     assert(strstr(device_tls_trust_certificate(), "BEGIN CERTIFICATE"));
@@ -112,16 +122,56 @@ int main(int argc, char **argv)
     public_file(argv[1], "server.pem", device_tls_certificate());
     public_file(argv[1], "fingerprint.txt", device_tls_fingerprint());
 
+    // Upgrade the original overlong version-1 leaf without replacing the CA,
+    // its private key, or the already trusted server key.
+    identity_t legacy = identity;
+    mbedtls_pk_context ca_key, server_key;
+    mbedtls_pk_init(&ca_key); mbedtls_pk_init(&server_key);
+    assert(!parse_key(&ca_key, legacy.ca_key) && !parse_key(&server_key, legacy.server_key));
+    char ca_name[96], server_name[80];
+    snprintf(ca_name, sizeof(ca_name), "CN=%s device CA,O=cheap-web-kvm", device_tls_hostname());
+    snprintf(server_name, sizeof(server_name), "CN=%s,O=cheap-web-kvm", device_tls_hostname());
+    assert(!certificate(legacy.server_cert, server_name, ca_name, &server_key, &ca_key,
+                        false, device_tls_hostname(), changed_client, ap,
+                        1577836800LL, 2524607999LL));
+    mbedtls_pk_free(&ca_key); mbedtls_pk_free(&server_key);
+    public_file(argv[1], "legacy-server.pem", legacy.server_cert);
+    memcpy(stored, &legacy, sizeof(legacy));
+    reboot();
+    assert(device_tls_prepare(changed_client, ap) == ESP_OK && commits == 3);
+    assert(!strcmp(device_tls_fingerprint(), original_fingerprint));
+    assert(!memcmp(identity.ca_key, initial.ca_key, KEY_CAPACITY));
+    assert(!strcmp(device_tls_private_key(), initial.server_key));
+    assert(!strcmp(device_tls_trust_certificate(), initial.ca_cert));
+    assert(issued_not_after - issued_not_before == 800 * DAY_SECONDS);
+    assert(strcmp(device_tls_certificate(), legacy.server_cert));
+
+    test_clock = issued_not_after - 29 * DAY_SECONDS;
+    assert(device_tls_needs_renewal());
+    assert(device_tls_prepare(changed_client, ap) == ESP_OK && commits == 4);
+    assert(!device_tls_needs_renewal() && !strcmp(device_tls_fingerprint(), original_fingerprint));
+    identity_t renewed = identity;
+    test_clock = 0; reboot();
+    assert(device_tls_prepare(changed_client, ap) == ESP_OK && commits == 4);
+    assert(!strcmp(device_tls_certificate(), renewed.server_cert));
+    assert(!device_tls_needs_renewal());
+    test_clock = issued_not_after + DAY_SECONDS;
+    assert(device_tls_needs_renewal());
+    assert(device_tls_prepare(changed_client, ap) == ESP_OK && commits == 5);
+    assert(!device_tls_needs_renewal() && !strcmp(device_tls_fingerprint(), original_fingerprint));
+    test_clock = 0;
+
     identity_t valid = identity;
+    unsigned renewal_commits = commits;
     reboot();
     ((identity_t *)stored)->version = 0;
     assert(device_tls_prepare(changed_client, ap) == ESP_ERR_INVALID_STATE);
-    assert(commits == 2 && !device_tls_certificate() && !device_tls_trust_certificate());
+    assert(commits == renewal_commits && !device_tls_certificate() && !device_tls_trust_certificate());
     assert(((identity_t *)stored)->version == 0);
     memcpy(stored, &valid, sizeof(valid));
     ((identity_t *)stored)->server_key[50] ^= 1;
     assert(device_tls_prepare(changed_client, ap) == ESP_ERR_INVALID_STATE);
-    assert(commits == 2 && !device_tls_certificate());
+    assert(commits == renewal_commits && !device_tls_certificate());
 
     stored_size = 0;
     fail_commit = true;
@@ -131,6 +181,6 @@ int main(int argc, char **argv)
     fail_commit = false;
     assert(device_tls_prepare(client, ap) == ESP_OK);
     assert(strcmp(device_tls_fingerprint(), original_fingerprint));
-    assert(commits == 3);
-    puts("device TLS identity, persistence, DHCP renewal and failure tests passed");
+    assert(commits == renewal_commits + 1);
+    puts("device TLS identity, lifetime migration, expiry/DHCP renewal and failure tests passed");
 }

@@ -52,6 +52,11 @@ idf_component_register(
         esp_netif
 )
 
+# A fresh offline build can issue a standards-compliant short-lived TLS leaf
+# before network time is available. Reproducible builds may set SOURCE_DATE_EPOCH.
+string(TIMESTAMP kvm_build_time "%s" UTC)
+target_compile_definitions(${COMPONENT_LIB} PRIVATE KVM_BUILD_TIME=${kvm_build_time})
+
 # Cancel application I/O on a Bulk-Only Transport reset before buffer reuse.
 target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=mscd_control_xfer_cb")
 

@@ -350,10 +350,21 @@ With `CONFIG_KVM_DEVICE_WEB`, HTTP port 80 serves a setup page and the public
 per-device certificate authority at `GET /device/ca.crt`. Verify that authority's
 DER SHA-256 fingerprint independently over UART/bonded BLE before manually
 trusting it on a client. The HTTP page's own fingerprint is not an independent
-identity check. The authority and private server key are stored in NVS; DHCP
-changes renew the signed server certificate for the current IPs without changing
-that authority. `tools/device_certificate.py` verifies a downloaded authority
-against its USB readout and does not install trust.
+identity check. The authority and private server key are stored in NVS. The
+server leaf has an 800-day lifetime, below the 825-day ceiling documented in
+[Apple’s TLS server certificate requirements](https://support.apple.com/en-us/103769); the authority's
+2020–2049 validity is separate. `device_tls_needs_renewal()` detects fewer than
+30 days remaining or an oversized old leaf lifetime. The network maintenance path
+also renews after IP changes and checks lifetime even when IPs are unchanged.
+Renewal preserves the CA and keys. HTTPS is restarted for the new leaf only while
+media is absent and idle, keeping an inserted source's ownership intact.
+
+CMake supplies `KVM_BUILD_TIME` as a firmware-build epoch for the initial offline
+clock. Client mode attempts SNTP using `pool.ntp.org`. This fallback does not
+provide a current clock indefinitely without network time: an expired leaf with
+an old offline clock needs a fresh build or a usable current time source. It does
+not justify disabling client certificate checks. `tools/device_certificate.py`
+verifies a downloaded authority against its USB readout and does not install trust.
 
 HTTPS port 443 serves the compressed static console, `GET /device/info`,
 `POST /device/session`, and `/media`. Pairing posts `{"token":"…"}` using the

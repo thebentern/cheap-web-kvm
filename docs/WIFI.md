@@ -93,10 +93,25 @@ USB/Bluetooth and HTTP setup bring-up, but HTTPS may lack the memory it needs.
    the separate capture stick supplies video.
 
 The board stores a unique certificate authority and its keys in NVS. The trust
-identity survives restarts and DHCP changes; a changed IP renews the server
-certificate with the current address. An NVS erase creates a new identity, which
-requires checking and trusting its replacement. The server's device hostname is
-included in its certificate; name resolution depends on your LAN configuration.
+identity survives restarts and DHCP changes. It signs an 800-day server
+certificate, keeping that lifetime below the 825-day limit described in
+[Apple’s TLS server certificate requirements](https://support.apple.com/en-us/103769); the authority has a
+separate 2020–2049 validity period. A changed IP, fewer than 30 days remaining, or
+an older server certificate with an oversized lifetime causes renewal of the
+server certificate. The authority and keys stay the same, so clients do not
+reinstall trust after normal renewal. HTTPS restarts only when the medium is
+ejected and no media work is pending.
+
+A fresh build embeds a build-time timestamp for the initial offline clock. Client
+mode attempts SNTP through `pool.ntp.org` when the network can reach it; an
+isolated hotspot does not provide that time source. After a long offline interval,
+a certificate that has expired while the board still has an old build-time clock
+requires current firmware or a usable current time source. Do not assume
+indefinite offline certificate validity or bypass system verification.
+
+An NVS erase creates a new identity, which requires checking and trusting its
+replacement. The server's device hostname is included in its certificate; name
+resolution depends on your LAN configuration.
 
 Pairing creates a Secure, HttpOnly, SameSite=Strict browser cookie. The app does
 not save the access token in local settings. Pairing expires and is cleared by a

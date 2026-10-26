@@ -175,6 +175,16 @@ function cancelImport() {
   cancelingImport.value = true
   worker?.postMessage({ method: 'cancelImport' })
 }
+async function selectTransport(next: 'usb' | 'wifi') {
+  if (connected.value || busy.value || inserted.value || uncertain.value) return
+  hostDefaultsApplied = true
+  transport.value = next
+  if (next === 'wifi')
+    await run(async () => {
+      phase.value = 'Checking board'
+      await deviceHost.refresh()
+    })
+}
 async function connect() {
   return run(async () => {
     if (inserted.value || uncertain.value)
@@ -226,14 +236,12 @@ async function connect() {
           )
         await connection.connect(serial.mediaTransport())
       } else {
-        let device = await deviceHost.initialize()
-        if (device) {
-          device = await deviceHost.refresh()
-          if (!device)
-            throw new Error(
-              'Cannot reach the board. Check its Wi-Fi connection and reopen this HTTPS page.',
-            )
-        }
+        const knownBoard = deviceHost.onboard.value
+        const device = await deviceHost.refresh()
+        if (!device && knownBoard)
+          throw new Error(
+            'Cannot reach the board. Check its Wi-Fi connection and reopen this HTTPS page.',
+          )
         if (device && !device.authenticated) {
           try {
             await authenticateDevice(boardToken.value)
@@ -439,13 +447,14 @@ export function useVirtualMedia() {
           !uncertain.value
         )
           transport.value = 'wifi'
-        hostDefaultsApplied = true
+        if (device) hostDefaultsApplied = true
         await syncPersistent()
         await refresh()
       }),
     grantPersistence,
     open,
     cancelImport,
+    selectTransport,
     connect,
     disconnect,
     insert,
