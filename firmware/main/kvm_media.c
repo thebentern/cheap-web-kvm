@@ -153,6 +153,7 @@ static void finish_usb(void *arg)
 bool kvm_media_poll(uint8_t *out, size_t *len)
 {
     bool send = false;
+    uint32_t defer_id = 0;
     if (xSemaphoreTake(lock, pdMS_TO_TICKS(5)) != pdTRUE)
         return false;
     sync_reset();
@@ -172,7 +173,7 @@ bool kvm_media_poll(uint8_t *out, size_t *len)
         }
         if (io.done && !io.completion) {
             io.completion = true;
-            usbd_defer_func(finish_usb, (void *)(uintptr_t)io.id, false);
+            defer_id = io.id;
         } else if (!io.done && !io.sent) {
             media_msg_t m = {.op = io.op,
                              .session = session,
@@ -186,6 +187,10 @@ bool kvm_media_poll(uint8_t *out, size_t *len)
         }
     }
     xSemaphoreGive(lock);
+    /* Queue submission can wait for the USB task to drain its queue. Never
+     * hold the state mutex while waiting for that same task. */
+    if (defer_id)
+        usbd_defer_func(finish_usb, (void *)(uintptr_t)defer_id, false);
     return send;
 }
 void kvm_media_disconnect(void)

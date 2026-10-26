@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 int64_t mock_time;
+int mock_lock_depth;
 static unsigned completed, hid_frames;
 static int32_t completion;
 static void (*deferred)(void *);
@@ -29,6 +30,7 @@ bool tud_msc_async_io_done(int32_t n, bool isr)
 void usbd_defer_func(void (*fn)(void *), void *arg, bool isr)
 {
     (void)isr;
+    assert(!mock_lock_depth);
     assert(!deferred);
     deferred = fn;
     deferred_arg = arg;
