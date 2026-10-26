@@ -18,6 +18,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: src/go.mod
+          cache: false
       - run: npm ci
         working-directory: web
       - run: npm test
