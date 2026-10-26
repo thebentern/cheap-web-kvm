@@ -5,10 +5,12 @@ import { usePanels } from '~/composables/usePanels'
 import { useKvm } from '~/composables/useKvm'
 import { useVirtualMedia } from '~/composables/useVirtualMedia'
 import { useDialogFocus } from '~/composables/useDialogFocus'
+import { useSerialLink } from '~/composables/useSerialLink'
 import { frame } from '~/utils/ch9329'
 const panels = usePanels(),
   kvm = useKvm(),
-  media = useVirtualMedia()
+  media = useVirtualMedia(),
+  serial = useSerialLink()
 const root = ref<HTMLElement | null>(null)
 useDialogFocus(root, () => panels.hide('media'), { restoreAfterUpdate: true })
 const {
@@ -60,6 +62,9 @@ const size = (n: number) =>
       : n >= 1024
         ? `${(n / 1024).toFixed(1)} KiB`
         : `${n} B`
+function changeBaud(event: Event) {
+  serial.setBaudRate(Number((event.target as HTMLSelectElement).value))
+}
 function createDrive() {
   savedId.value = ''
   void media.open({ size: capacity.value * 1048576, label: label.value })
@@ -247,12 +252,35 @@ onMounted(() => {
             Set up the board’s network in Settings → Wi-Fi, then start the HTTPS
             helper. Leave the address blank when using the helper’s own web UI.
           </p>
-          <p v-else class="kvm-hint">
-            Connect the programming port to this computer and the native USB
-            port to the target. USB media shares the serial cable with keyboard
-            and mouse control. At 115200 baud, transfers are slow; Wi-Fi is
-            faster.
-          </p>
+          <div v-else class="space-y-2">
+            <label class="block text-sm"
+              >USB baud rate
+              <select
+                class="kvm-select mt-1 w-full"
+                :value="serial.baudRate.value"
+                :disabled="
+                  connected || connecting || locked || serial.baudLocked.value
+                "
+                @change="changeBaud"
+              >
+                <option
+                  v-for="rate in serial.baudRates"
+                  :key="rate"
+                  :value="rate"
+                >
+                  {{ rate.toLocaleString() }}
+                </option>
+              </select>
+            </label>
+            <p class="kvm-hint">
+              Must match the rate built into the board’s firmware. Disconnect
+              serial control before changing it.
+            </p>
+            <p class="kvm-hint">
+              Use the programming port for this computer and native USB for the
+              target. Media and keyboard control share the cable.
+            </p>
+          </div>
           <div class="flex flex-wrap gap-2">
             <button
               class="kvm-btn"

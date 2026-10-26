@@ -1,8 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { computed, ref, shallowRef } from 'vue'
+import { computed, readonly, ref, shallowRef } from 'vue'
 import { parseReply } from '~/utils/ch9329'
 import { SerialDemux, serialMediaFrame } from '~/utils/media/serial'
 import type { MediaTransport } from '~/utils/media/transport'
+
+export const SERIAL_BAUD_RATES = [115200, 460800, 921600, 2000000] as const
+const BAUD_STORAGE_KEY = 'kvm.serialBaudRate'
+const selectedBaudRate = ref<number>(115200)
+let baudLoaded = false
+function loadBaudRate() {
+  if (baudLoaded || typeof window === 'undefined') return
+  baudLoaded = true
+  try {
+    const saved = Number(window.localStorage.getItem(BAUD_STORAGE_KEY))
+    if (SERIAL_BAUD_RATES.some((value) => value === saved))
+      selectedBaudRate.value = saved
+  } catch {
+    // Storage is optional; the current tab can still choose a connection rate.
+  }
+}
 
 const REPLY_TIMEOUT_MS = 300
 const MEDIA_REPLY_TIMEOUT_MS = 2000
@@ -90,6 +106,22 @@ function writeFrame(frame: Uint8Array, mine = generation): Promise<void> {
 }
 
 export function useSerialLink() {
+  loadBaudRate()
+  const baudLocked = computed(
+    () => connected.value || connecting.value || mediaReleasePending,
+  )
+  function setBaudRate(value: number) {
+    if (baudLocked.value || !SERIAL_BAUD_RATES.some((rate) => rate === value))
+      return false
+    selectedBaudRate.value = value
+    try {
+      if (typeof window !== 'undefined')
+        window.localStorage.setItem(BAUD_STORAGE_KEY, String(value))
+    } catch {
+      // This rate remains selected even when browser storage is unavailable.
+    }
+    return true
+  }
   const supported = computed(
     () => typeof navigator !== 'undefined' && 'serial' in navigator,
   )
@@ -115,7 +147,10 @@ export function useSerialLink() {
     }
   }
 
-  async function connect(baudRate = 115200, reuseGranted = false) {
+  async function connect(
+    baudRate = selectedBaudRate.value,
+    reuseGranted = false,
+  ) {
     if (!supported.value) {
       lastError.value = 'Web Serial is not available in this browser'
       return false
@@ -142,8 +177,8 @@ export function useSerialLink() {
       port.value = p
       reader.value = p.readable!.getReader()
       writer.value = p.writable!.getWriter()
-      connected.value = true
       baud = baudRate
+      connected.value = true
       const info = p.getInfo?.()
       portLabel.value = info?.usbVendorId
         ? `${info.usbVendorId.toString(16).padStart(4, '0')}:${(info.usbProductId ?? 0).toString(16).padStart(4, '0')}`
@@ -326,6 +361,13 @@ export function useSerialLink() {
   }
 
   return {
+    baudRate: readonly(selectedBaudRate),
+    activeBaudRate: computed(() =>
+      connected.value ? baud : selectedBaudRate.value,
+    ),
+    baudRates: SERIAL_BAUD_RATES,
+    baudLocked,
+    setBaudRate,
     supported,
     connected,
     connecting,

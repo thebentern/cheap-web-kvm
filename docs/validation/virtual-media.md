@@ -16,7 +16,7 @@ discovery, F12 delivery, OS boot and target-to-client file transfer remain unver
   async read completion, 8 KiB read-ahead, write ACK timing, stale IDs, USB bus/BOT
   resets, read-only rejection, busy/prevented ejection, timeout/lease failure,
   and bounded boot repetition. It substitutes platform services, not USB hardware.
-- All 161 web tests pass. They exercise protocol integrity, random/unaligned cross-page IO,
+- All 169 web tests pass. They exercise protocol integrity, random/unaligned cross-page IO,
   IndexedDB close/reopen, source preservation, transaction abort, exclusive locks,
   strict write ACK ordering, late replies after disconnect, bounded input flow,
   FAT32 geometry, LFN/unicode/nested directories, capacity/name limits, mirror and
@@ -259,3 +259,27 @@ worker over USB, at about 10.9 KiB/s. There was no Wi-Fi media connection or hel
 The host asserted PREVENT MEDIUM REMOVAL; browser ejection correctly reported that
 lock. This proves live USB sector serving, not target file-hash validation, target
 writes, OS boot or long-duration performance. The expanded suite has 161 tests.
+
+
+### Higher USB serial baud
+
+The same board and USB bridge (`1a86:55d3`) were rebuilt with higher
+`CONFIG_KVM_UART_BAUD` values. A sustained 2,000,000-baud test timed out while
+waiting for an echo or concurrent HID reply, so that rate was rejected for this
+setup. The board was then flashed at 921,600 and its browser selection matched.
+The ordinary firmware and a fresh browser still default to 115,200.
+
+At 921,600, a 60-second test completed 218 verified 8 KiB round trips and 218 concurrent
+CH9329 GET_INFO replies without corruption or timeouts. Aggregate echo payload
+rate was 74,799 bytes/s; worst echo RTT 226.8 ms and worst HID reply 153.4 ms. Release,
+reconnect, CRC-error recovery and Wi-Fi/USB ownership checks also passed.
+
+The public `tools/benchmark_usb_media.py` then ran another 30 seconds: 154 verified
+round trips and 154 HID replies, 84,016.729 bytes/s aggregate including heartbeats,
+worst echo RTT 197.145 ms, worst HID reply 123.751 ms and acknowledged release.
+[Machine-readable result](usb-baud-921600.json). The live browser connected at the
+saved 921,600 setting and completed 11 verified echoes at approximately 0.08 MiB/s,
+with 194.7 ms worst RTT. These are transport echo measurements, not a new target
+write/OS-boot benchmark. The previous read-only test disk was synchronized after
+the approved board restart and left ejected. The baud selector/persistence tests
+bring the web suite to 169 passing tests.

@@ -1,0 +1,13 @@
+{
+  "baud": 921600,
+  "requested_seconds": 30.0,
+  "duration_seconds": 30.031,
+  "payload_bytes_each_way": 8192,
+  "verified_echo_round_trips": 154,
+  "hid_info_replies": 154,
+  "aggregate_payload_bytes_per_second": 84016.729,
+  "worst_media_rtt_ms": 197.145,
+  "worst_hid_rtt_ms": 123.751,
+  "release_acknowledged": true,
+  "accepted": true
+}

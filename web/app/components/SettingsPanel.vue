@@ -10,6 +10,7 @@ import { useCapture } from '~/composables/useCapture'
 import { useKvm } from '~/composables/useKvm'
 import { usePanels } from '~/composables/usePanels'
 import { useSettings } from '~/composables/useSettings'
+import { useSerialLink } from '~/composables/useSerialLink'
 import { useToasts } from '~/composables/useToasts'
 import { useDialogFocus } from '~/composables/useDialogFocus'
 
@@ -18,6 +19,11 @@ const kvm = useKvm()
 const panels = usePanels()
 const toasts = useToasts()
 const { settings, reset } = useSettings()
+const serial = useSerialLink()
+const serialBaudRate = computed({
+  get: () => serial.baudRate.value,
+  set: (value: number) => { serial.setBaudRate(value) },
+})
 
 type TabId = 'display' | 'audio' | 'input' | 'hotkeys' | 'advanced' | 'wifi' | 'about'
 
@@ -97,6 +103,7 @@ async function copyCaptureEvents() {
 const connected = computed(() => kvm.link.connected.value)
 const portLabel = computed(() => kvm.link.portLabel.value)
 const isBle = computed(() => kvm.link.kind.value === 'ble')
+const isWifi = computed(() => kvm.link.kind.value === 'wifi')
 
 /* -------------------------------------------------------- bluetooth passkey */
 // The board owns the PIN; this only reads and writes it, over whichever link is
@@ -567,19 +574,35 @@ onBeforeUnmount(() => {
               <div>
                 <div class="kvm-label">HID link</div>
                 <p class="kvm-hint mt-0.5">
-                  Serial always runs at 115200 baud. Bluetooth asks for the PIN below the first time
-                  this device pairs. Either way there is nothing to choose here.
+                  Serial speed must match the board’s firmware. Bluetooth uses its own connection
+                  and asks for the PIN below when this device first pairs.
                 </p>
                 <div class="mt-2 flex max-w-sm items-center gap-2 rounded-lg border border-ink-600 bg-ink-900 px-3 py-2">
                   <AppIcon
-                    :name="isBle ? 'bluetooth' : 'usb'"
+                    :name="isBle ? 'bluetooth' : isWifi ? 'wifi' : 'usb'"
                     :class="connected ? 'text-live-400' : 'text-mist-400'"
                   />
                   <span class="text-[13px] text-mist-200">
                     {{ connected ? portLabel || (isBle ? 'Bluetooth' : 'Serial port') : 'Not connected' }}
                   </span>
-                  <span class="kvm-hint ml-auto font-mono">{{ isBle ? 'BLE GATT' : '115200 8N1' }}</span>
+                  <span class="kvm-hint ml-auto font-mono">{{ isBle ? 'BLE GATT' : isWifi ? 'Wi-Fi' : `${serial.activeBaudRate.value} 8N1` }}</span>
                 </div>
+                <label class="mt-3 block text-sm">
+                  USB serial baud rate
+                  <select
+                    v-model.number="serialBaudRate"
+                    class="kvm-select mt-1 block w-full max-w-sm"
+                    :disabled="serial.baudLocked.value"
+                  >
+                    <option v-for="rate in serial.baudRates" :key="rate" :value="rate">
+                      {{ rate.toLocaleString() }} baud
+                    </option>
+                  </select>
+                </label>
+                <p class="kvm-hint mt-1">
+                  Applies on the next connection. Disconnect USB first to change it; selecting a rate
+                  here does not change the firmware’s speed.
+                </p>
               </div>
 
               <div>
@@ -726,7 +749,7 @@ onBeforeUnmount(() => {
                       </div>
                       <p class="kvm-hint mt-0.5">
                         Presents a boot-protocol HID keyboard and an absolute mouse to the target,
-                        and takes CH9329 frames from this browser over UART at 115200. A genuine
+                        and takes CH9329 frames from this browser over UART at the selected baud rate (115200 by default). A genuine
                         <strong class="font-medium text-mist-200">CH9329</strong> module works too.
                       </p>
                     </div>

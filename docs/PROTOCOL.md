@@ -13,13 +13,16 @@ written against this document.
 
 ## 1. Transport
 
-`115200 8N1`, no flow control. The UI opens the port with
+Default `115200 8N1`, no flow control. `CONFIG_KVM_UART_BAUD` selects the firmware
+rate; the browser's USB baud setting must match it. The UI opens the port with
 `navigator.serial.requestPort()` and `serialPort.open({ baudRate })`.
 
-The reference CH9329 design ships defaulted to 9600 baud and must be
-reconfigured before first use. This firmware comes up at 115200 directly, so
-that step does not exist here. The UI still offers a 9600 option in Settings →
-HID Baudrate; leave it on 115200.
+The reference CH9329 design ships at 9600 baud and needs initial reconfiguration.
+This firmware instead starts directly at its compiled UART rate (default 115200).
+The UI offers 115200, 460800, 921600 and 2000000 in USB connection settings and
+Settings → Advanced. It remembers the selection in this browser and applies it
+to the next serial connection; changes are blocked while the port is open.
+Selecting a browser rate does not change the firmware's rate.
 
 ### Bluetooth LE
 

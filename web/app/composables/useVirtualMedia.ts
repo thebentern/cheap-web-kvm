@@ -192,7 +192,7 @@ async function connect() {
       }
       if (transport.value === 'usb') {
         const serial = useSerialLink()
-        if (!serial.connected.value && !(await serial.connect(115200, true)))
+        if (!serial.connected.value && !(await serial.connect(undefined, true)))
           throw new Error(
             serial.lastError.value ?? 'USB connection was cancelled',
           )
