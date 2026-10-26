@@ -189,7 +189,7 @@ onBeforeUnmount(() => {
       <button
         class="kvm-btn"
         :disabled="busy || !kvm.link.connected.value"
-        @click="load"
+        @click="load()"
       >
         Load board settings
       </button>
