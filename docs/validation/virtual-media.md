@@ -510,3 +510,31 @@ panel preserves a disconnect error, including across visibility warnings.
 The automatic programming-mode attempt failed with no serial data before any
 flash write began. Manual BOOT/Reset entry is required before deployment and
 physical throughput measurement can continue.
+
+### Native USB deployment and real read baseline
+
+The programming bridge continued returning no data in download mode. Native USB
+ROM programming (`303A:1001`, MAC `58:E6:C5:45:7D:A0`) successfully wrote the
+`6960150` application at `0x10000`, with the flasher verifying its data. NVS and
+the trusted CA were preserved. An esptool watchdog reset started the application;
+runtime USB enumerated as `303A:4004`, serial `58E6C5457DA0`, revision `0x0201`.
+HTTPS diagnostics subsequently returned over the saved LAN connection.
+
+A disposable 64 MiB FAT32 disk with a 32 MiB known-pattern payload was served
+read-only by a Node WSS client. Its USB ancestry and size identified the Mac disk
+before access. Reading 2 MiB through the Mac's FAT32 mount, with `F_NOCACHE`
+enabled, took **33.962 s (61,750 B/s)**. This is real target USB MSC traffic and
+Wi-Fi sector serving, but uses a Node source rather than browser OPFS. Source
+response handoff averaged below 1 ms; board request turnaround averaged roughly
+125 ms. No saved image was scanned. The USB disk later disappeared from the Mac;
+the old disk number must not be reused for cleanup or another measurement.
+
+A filtered packet trace found variable gaps between separate TLS header/payload
+records even after the Mac had sent its TCP acknowledgment. It did not establish
+Nagle or delayed ACK as the general cause. A prepared follow-up sends each whole
+WebSocket binary frame through the existing HTTP/TLS transport in one call,
+backfilling its header into four reserved bytes without copying the payload.
+Short writes resume at the exact byte; zero, negative and impossible results
+fail the link. The 8 KiB protocol limit, single outstanding disk request and
+durable-write rules are unchanged. Native wire/partial-send/error tests and the
+private board build pass. A measured comparison still requires deployment.

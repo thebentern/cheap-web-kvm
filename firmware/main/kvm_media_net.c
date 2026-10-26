@@ -8,6 +8,7 @@
 #if CONFIG_KVM_MEDIA_WIFI
 
 #include "esp_http_server.h"
+#include "media_ws.h"
 #if CONFIG_KVM_DEVICE_WEB
 #include "device_web.h"
 #include "device_tls.h"
@@ -67,8 +68,25 @@ static TaskHandle_t pump_task;
 static char access_token[81];
 static atomic_int owner = -1;
 static _Atomic(httpd_handle_t) owner_server;
-static uint8_t rx[MEDIA_HEADER + MEDIA_MAX_IO], reply[MEDIA_HEADER + MEDIA_MAX_IO];
-static uint8_t tx[MEDIA_HEADER + MEDIA_MAX_IO];
+static uint8_t rx[MEDIA_HEADER + MEDIA_MAX_IO];
+static uint8_t reply[MEDIA_WS_PREFIX + MEDIA_WS_MAX_PAYLOAD];
+static uint8_t tx[MEDIA_WS_PREFIX + MEDIA_WS_MAX_PAYLOAD];
+typedef struct {
+    httpd_handle_t server;
+    int fd;
+} media_socket_t;
+static int socket_send(void *context, const uint8_t *data, size_t length)
+{
+    media_socket_t *socket = context;
+    /* Public socket API preserves the session's HTTPS send override. */
+    return httpd_socket_send(socket->server, socket->fd, (const char *)data, length, 0);
+}
+static esp_err_t send_binary(httpd_handle_t handle, int fd, uint8_t *buffer, size_t length)
+{
+    media_socket_t socket = {.server = handle, .fd = fd};
+    /* Keep the WebSocket header with its payload in the same TLS write. */
+    return media_ws_send_binary(buffer, length, socket_send, &socket) ? ESP_OK : ESP_FAIL;
+}
 static void closed(httpd_handle_t h, int fd)
 {
     xSemaphoreTake(net_lock, portMAX_DELAY);
@@ -98,8 +116,7 @@ static esp_err_t ws(httpd_req_t *req)
             return ESP_FAIL;
         }
         int fd = httpd_req_to_sockfd(req);
-        /* The HTTP server writes WebSocket headers and payloads separately.
-         * Send small read requests immediately instead of waiting for an ACK. */
+        /* Send small read requests immediately instead of waiting for an ACK. */
         int nodelay = 1;
         if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay)) != 0) {
             ESP_LOGE("media_net", "Cannot configure TCP_NODELAY: errno %d", errno);
@@ -128,11 +145,10 @@ static esp_err_t ws(httpd_req_t *req)
     err = httpd_ws_recv_frame(req, &frame, sizeof(rx));
     if (err != ESP_OK)
         return err;
-    size_t n = kvm_media_command(rx, frame.len, reply);
+    size_t n = kvm_media_command(rx, frame.len, reply + MEDIA_WS_PREFIX);
     if (!n)
         return ESP_OK;
-    httpd_ws_frame_t response = {.type = HTTPD_WS_TYPE_BINARY, .payload = reply, .len = n};
-    return httpd_ws_send_frame(req, &response);
+    return send_binary(req->handle, httpd_req_to_sockfd(req), reply, n);
 }
 /* Send from the HTTP task too: serializes control replies and USB requests on
  * the socket. A single outstanding work item bounds buffering when Wi-Fi stalls. */
@@ -147,11 +163,10 @@ static void send_work(void *arg)
         xSemaphoreGive(net_lock);
         return;
     }
-    if (kvm_media_poll(tx, &n)) {
+    if (kvm_media_poll(tx + MEDIA_WS_PREFIX, &n)) {
         int fd = atomic_load(&owner);
         if (fd >= 0) {
-            httpd_ws_frame_t f = {.type = HTTPD_WS_TYPE_BINARY, .payload = tx, .len = n};
-            if (httpd_ws_send_frame_async(handle, fd, &f) != ESP_OK)
+            if (send_binary(handle, fd, tx, n) != ESP_OK)
                 httpd_sess_trigger_close(handle, fd);
         } else
             kvm_media_disconnect();
@@ -174,7 +189,7 @@ static void pump(void *arg)
         xSemaphoreGive(net_lock);
         if (!handle) {
             size_t n;
-            if (kvm_media_poll(tx, &n))
+            if (kvm_media_poll(tx + MEDIA_WS_PREFIX, &n))
                 kvm_media_disconnect();
         }
         vTaskDelay(pdMS_TO_TICKS(2));

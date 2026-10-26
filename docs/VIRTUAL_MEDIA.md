@@ -344,7 +344,10 @@ For an actual board:
 
 Media sockets enable `TCP_NODELAY`: ESP-IDF sends a WebSocket header and its
 payload in separate writes, so a small sector request must not wait behind TCP's
-Nagle buffering and the peer's delayed acknowledgment. Wi-Fi modem power saving
+Nagle buffering and the peer's delayed acknowledgment. The media sender also
+combines the WebSocket header and payload in one transport call, so small READ
+requests use one TLS record. Partial socket writes are completed before another
+frame is sent. Wi-Fi modem power saving
 is explicitly disabled to favor latency on this USB-powered device. These settings
 do not increase the 8 KiB request limit or change write acknowledgment rules.
 
