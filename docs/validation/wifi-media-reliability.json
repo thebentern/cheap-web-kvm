@@ -1,0 +1,335 @@
+{
+  "date": "2026-10-26",
+  "candidateCommit": "f39f98073b896be6c8bc81e8abd60ff547ea6894",
+  "scope": "ESP32 trusted HTTPS/WSS transport; synthetic payloads, no saved-image scan",
+  "splitHeader": {
+    "gapMs": 20,
+    "before": [
+      {
+        "event": "cookie_pairing_ready",
+        "tlsValidated": true,
+        "cookieStoredInMemoryOnly": true
+      },
+      {
+        "event": "case_result",
+        "label": "unsplit-control",
+        "passed": true,
+        "split": "none",
+        "gapMs": 0,
+        "crcAndPayloadValidated": true,
+        "elapsedMs": 948.813
+      },
+      {
+        "event": "case_result",
+        "label": "split-short-mask",
+        "passed": false,
+        "split": "short-mask",
+        "failure": "reply_timeout",
+        "remoteCloseCode": null,
+        "elapsedMs": 2862.145
+      },
+      {
+        "event": "case_result",
+        "label": "split-extended-length",
+        "passed": false,
+        "split": "extended-length",
+        "failure": "reply_timeout",
+        "remoteCloseCode": null,
+        "elapsedMs": 2831.871
+      },
+      {
+        "event": "summary",
+        "controlPassed": true,
+        "shortMaskPassed": false,
+        "extendedLengthPassed": false,
+        "operations": [
+          "HELLO",
+          "ECHO",
+          "HEARTBEAT"
+        ],
+        "insertedAnyMedium": false,
+        "openedAnyImage": false
+      }
+    ],
+    "after": [
+      {
+        "event": "cookie_pairing_ready",
+        "tlsValidated": true,
+        "cookieStoredInMemoryOnly": true
+      },
+      {
+        "event": "case_result",
+        "label": "unsplit-control",
+        "passed": true,
+        "split": "none",
+        "gapMs": 0,
+        "crcAndPayloadValidated": true,
+        "elapsedMs": 1144.117
+      },
+      {
+        "event": "case_result",
+        "label": "split-short-mask",
+        "passed": true,
+        "split": "short-mask",
+        "gapMs": 20,
+        "crcAndPayloadValidated": true,
+        "elapsedMs": 1093.469
+      },
+      {
+        "event": "case_result",
+        "label": "split-extended-length",
+        "passed": true,
+        "split": "extended-length",
+        "gapMs": 20,
+        "crcAndPayloadValidated": true,
+        "elapsedMs": 1341.404
+      },
+      {
+        "event": "summary",
+        "controlPassed": true,
+        "shortMaskPassed": true,
+        "extendedLengthPassed": true,
+        "operations": [
+          "HELLO",
+          "ECHO",
+          "HEARTBEAT"
+        ],
+        "insertedAnyMedium": false,
+        "openedAnyImage": false
+      }
+    ]
+  },
+  "idleEchoBenchmark": {
+    "payloadBytesPerMessage": 8192,
+    "nominalRunSeconds": 5,
+    "bleAdvertising": true,
+    "diskInserted": false,
+    "before": [
+      {
+        "event": "qualification_result",
+        "passed": true,
+        "targetMiB": null,
+        "mode": "benchmark",
+        "frames": 19,
+        "payloadBytesSent": 155648,
+        "payloadBytesEchoed": 155648,
+        "seconds": 5.282323,
+        "oneDirectionPayloadBytesPerSecond": 29466,
+        "bidirectionalAggregatePayloadBytesPerSecond": 58932,
+        "meanRoundTripMs": 266.067,
+        "maxRoundTripMs": 1495.841,
+        "crcAndPayloadValidated": true,
+        "scope": "8KiB ECHO transport qualification; includes request/response application overhead, excludes disk, USB MSC, browser worker and OPFS",
+        "insertedAnyMedium": false,
+        "openedAnyImage": false
+      },
+      {
+        "event": "qualification_result",
+        "passed": true,
+        "targetMiB": null,
+        "mode": "benchmark",
+        "frames": 16,
+        "payloadBytesSent": 131072,
+        "payloadBytesEchoed": 131072,
+        "seconds": 5.119036,
+        "oneDirectionPayloadBytesPerSecond": 25605,
+        "bidirectionalAggregatePayloadBytesPerSecond": 51210,
+        "meanRoundTripMs": 302.641,
+        "maxRoundTripMs": 810.279,
+        "crcAndPayloadValidated": true,
+        "scope": "8KiB ECHO transport qualification; includes request/response application overhead, excludes disk, USB MSC, browser worker and OPFS",
+        "insertedAnyMedium": false,
+        "openedAnyImage": false
+      },
+      {
+        "event": "qualification_result",
+        "passed": true,
+        "targetMiB": null,
+        "mode": "benchmark",
+        "frames": 21,
+        "payloadBytesSent": 172032,
+        "payloadBytesEchoed": 172032,
+        "seconds": 5.169831,
+        "oneDirectionPayloadBytesPerSecond": 33276,
+        "bidirectionalAggregatePayloadBytesPerSecond": 66552,
+        "meanRoundTripMs": 238.223,
+        "maxRoundTripMs": 414.13,
+        "crcAndPayloadValidated": true,
+        "scope": "8KiB ECHO transport qualification; includes request/response application overhead, excludes disk, USB MSC, browser worker and OPFS",
+        "insertedAnyMedium": false,
+        "openedAnyImage": false
+      }
+    ],
+    "after": [
+      {
+        "event": "qualification_result",
+        "passed": true,
+        "targetMiB": null,
+        "mode": "benchmark",
+        "frames": 32,
+        "payloadBytesSent": 262144,
+        "payloadBytesEchoed": 262144,
+        "seconds": 5.19149,
+        "oneDirectionPayloadBytesPerSecond": 50495,
+        "bidirectionalAggregatePayloadBytesPerSecond": 100990,
+        "meanRoundTripMs": 152.903,
+        "maxRoundTripMs": 706.647,
+        "crcAndPayloadValidated": true,
+        "scope": "8KiB ECHO transport qualification; includes request/response application overhead, excludes disk, USB MSC, browser worker and OPFS",
+        "insertedAnyMedium": false,
+        "openedAnyImage": false
+      },
+      {
+        "event": "qualification_result",
+        "passed": true,
+        "targetMiB": null,
+        "mode": "benchmark",
+        "frames": 39,
+        "payloadBytesSent": 319488,
+        "payloadBytesEchoed": 319488,
+        "seconds": 5.222596,
+        "oneDirectionPayloadBytesPerSecond": 61174,
+        "bidirectionalAggregatePayloadBytesPerSecond": 122348,
+        "meanRoundTripMs": 125.208,
+        "maxRoundTripMs": 375.719,
+        "crcAndPayloadValidated": true,
+        "scope": "8KiB ECHO transport qualification; includes request/response application overhead, excludes disk, USB MSC, browser worker and OPFS",
+        "insertedAnyMedium": false,
+        "openedAnyImage": false
+      },
+      {
+        "event": "qualification_result",
+        "passed": true,
+        "targetMiB": null,
+        "mode": "benchmark",
+        "frames": 34,
+        "payloadBytesSent": 278528,
+        "payloadBytesEchoed": 278528,
+        "seconds": 5.014579,
+        "oneDirectionPayloadBytesPerSecond": 55544,
+        "bidirectionalAggregatePayloadBytesPerSecond": 111087,
+        "meanRoundTripMs": 139.523,
+        "maxRoundTripMs": 466.267,
+        "crcAndPayloadValidated": true,
+        "scope": "8KiB ECHO transport qualification; includes request/response application overhead, excludes disk, USB MSC, browser worker and OPFS",
+        "insertedAnyMedium": false,
+        "openedAnyImage": false
+      }
+    ],
+    "medianOneDirectionBefore": 29466,
+    "medianOneDirectionAfter": 55544,
+    "medianRatio": 1.885
+  },
+  "previousFailedBrowserSession": {
+    "freeHeap": 2088055,
+    "minimumHeap": 2004471,
+    "largestBlock": 2031616,
+    "tlsError": 0,
+    "tlsCode": 0,
+    "tlsFlags": 0,
+    "bleAdvertising": true,
+    "bleAdvertisingPauseRequested": false,
+    "wifiPowerSave": 0,
+    "wifiMode": 3,
+    "wifiRssi": -64,
+    "wifiChannel": 1,
+    "media": {
+      "reads": 6762,
+      "readBytes": 55394304,
+      "readTimeUs": 380381463,
+      "readMaxUs": 950511,
+      "cacheBytes": 27693056,
+      "accepts": 3,
+      "rejects": 2,
+      "lastMediaRejection": 4009
+    }
+  },
+  "limits": [
+    "ECHO sends full-size payloads in both directions; actual disk reads send small requests and full-size responses.",
+    "ECHO excludes USB MSC, browser worker and OPFS. The browser transfer optimization is not measured by this test.",
+    "Forced split-header tests establish a transport defect and its correction; full Wyse OS boot must be checked separately."
+  ],
+  "insertedMediaQualification": {
+    "result": {
+      "event": "echo_qualification_passed",
+      "targetMiB": 64,
+      "crcAndPayloadValidated": true,
+      "echoRunning": false,
+      "echoPayloadBytesSent": 67108864,
+      "echoPayloadBytesValidated": 67108864,
+      "echoBidirectionalAggregateBytes": 134217728,
+      "echoFrames": 8192,
+      "echoSeconds": 453.571,
+      "echoPayloadBytesPerSecond": 147957,
+      "echoBidirectionalAggregateBytesPerSecond": 295913,
+      "echoMeanRoundTripMs": 55.365,
+      "echoMaxRoundTripMs": 1389.071,
+      "lastSocketCloseCode": null,
+      "scope": "Inserted-media8KiB ECHO transport proof; target READs are reported separately and this does not prove a successful OS boot."
+    },
+    "cleanup": [
+      {
+        "event": "ejected",
+        "readBytes": 0,
+        "readRequests": 0,
+        "meanReadMs": 0,
+        "maxReadMs": 0,
+        "inserted": false,
+        "mayBeInserted": false,
+        "flags": 4
+      },
+      {
+        "event": "closed",
+        "readBytes": 0,
+        "readRequests": 0,
+        "meanReadMs": 0,
+        "maxReadMs": 0,
+        "inserted": false,
+        "mayBeInserted": false,
+        "flags": 4
+      }
+    ],
+    "finalDiagnostics": {
+      "uptimeMs": 1019457,
+      "freeHeap": 2036739,
+      "minimumHeap": 1878695,
+      "largestBlock": 1835008,
+      "tlsError": 32792,
+      "tlsCode": 1,
+      "tlsFlags": 0,
+      "bleAdvertising": true,
+      "bleAdvertisingPauseRequested": false,
+      "wifiPowerSave": 0,
+      "wifiMode": 3,
+      "wifiRssi": -60,
+      "wifiChannel": 1,
+      "media": {
+        "reads": 0,
+        "readBytes": 0,
+        "readTimeUs": 0,
+        "readMaxUs": 0,
+        "cacheBytes": 0,
+        "accepts": 7,
+        "rejects": 0,
+        "lastMediaRejection": 0
+      },
+      "network": {
+        "closes": 7,
+        "receiveErrors": 0,
+        "sendErrors": 0,
+        "invalidFrames": 0,
+        "lastFailure": 6,
+        "lastError": 0,
+        "lastErrno": 0,
+        "lastFrameType": 2,
+        "lastFrameFinal": 1,
+        "lastFrameLength": 32,
+        "lastCloseReads": 0,
+        "lastCloseReadKiB": 0
+      }
+    },
+    "consoleLoadedDuringTransfer": true,
+    "targetReadBytes": 0,
+    "scope": "Read-only disposable fixture inserted; 8KiB ECHO transport traffic, not USB MSC throughput or an OS boot."
+  }
+}

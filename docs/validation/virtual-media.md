@@ -625,3 +625,57 @@ the private Quad-PSRAM build and compiled descriptor checks pass.
 also passes. New tests cover physical identity checks before/after token reads,
 canceled/unsupported pairing, cookie failures, media locks, exact CLOSE bytes,
 partial sends and preservation of the original connection failure.
+
+### Split-header receive fix and sustained transfer qualification
+
+The subsequent browser failure reported WebSocket `1006` after 52.8 MiB of
+remote reads (55,394,304 bytes / 6,762 replies). Pairing and owner-rejection
+handling alone did not fix this failure. The maximum successful READ turnaround
+was 950,511 microseconds; that does not include the failed request.
+
+ESP-IDF 5.4's WebSocket parser requests its two-byte extended length and four-byte
+mask with individual receive calls, accepting any positive result as a complete
+field. A TLS read can legitimately return fewer bytes. The resulting incomplete
+header can misalign the stream. A controlled trusted-TLS test reproduced this on
+the installed board: an ordinary message passed, but the same valid message
+failed when either its mask or extended length crossed a TLS-record boundary
+with a 20 ms gap. No image or disk was involved in this fault test.
+
+Build `f39f980` adds a scoped receive wrapper that fills two/four/eight-byte
+WebSocket fields through IDF's original receiver, preserving TLS and pending
+bytes. It retains the original total receive-time budget for each field, restores
+the socket timeout, and rejects EOF/error without reporting an incomplete field
+as success. HTTP and pending-only reads remain unchanged. The compiled parser's
+calls were checked to reach the wrapper. All 138 positive split combinations,
+timeout/error exits and pass-through cases pass native tests. Both previously
+failing wire tests pass on the flashed board.
+
+TCP send/receive windows increased from 5,760 to 16,384 bytes, and the TLS output
+record limit increased from 4,096 to 16,384 bytes, allowing a complete 8 KiB media
+frame to fit. The browser worker also transfers its freshly allocated read buffer
+instead of copying it. Ownership tests check sender detachment, exact ranges,
+preserved cache pages and transfer-error recovery. No saved-image hash scan was
+introduced.
+
+Three five-second 8 KiB ECHO runs before and after the update, with Bluetooth
+discovery active and no disk inserted, gave median one-direction payload rates
+of **29,466 → 55,544 B/s** (bidirectional aggregate **58,932 → 111,087 B/s**), a
+**1.885×** increase. These are transport round trips, not USB disk throughput or
+boot-time measurements, and they exclude the browser worker optimization.
+
+A separate disposable read-only fixture was then inserted to exercise the radio
+policy used by real media. **8,192 validated 8 KiB echoes** transferred **64 MiB
+in each direction / 128 MiB total** over **453.571 seconds**, with no connection
+loss or content/CRC mismatch. Mean RTT was 55.365 ms; maximum RTT was 1,389.071 ms.
+Loading another HTTPS console during the run briefly reduced throughput without
+dropping the media connection. Media receive/send/invalid-frame error counters
+stayed zero. The test disk was normally ejected and the source closed; discovery
+resumed. The target did not read the fixture, so this run qualifies the media
+transport and radio policy rather than USB MSC reads or a complete Wyse boot.
+
+All 266 web tests, type checking, production generation, native media/HID tests,
+the private Quad-PSRAM build and compiled USB descriptor checks pass.
+[CI for the installed code](https://github.com/thebentern/cheap-web-kvm/actions/runs/40430703184)
+passes. [Machine-readable reliability evidence](wifi-media-reliability.json)
+records the scopes and measurements. Actual Wyse boot validation follows the
+transport qualification.
