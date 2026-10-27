@@ -4,7 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #define MEDIA_HEADER 32
-#define MEDIA_MAX_IO 8192
+#define MEDIA_MAX_IO 32768
+#define MEDIA_SERIAL_MAX_IO 8192
 #define MEDIA_VERSION 1
 /* Header is explicitly encoded little endian; never cast a wire buffer. */
 enum {

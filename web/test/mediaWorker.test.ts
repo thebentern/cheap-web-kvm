@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { indexedDB } from 'fake-indexeddb'
 import { FatVolume } from '../app/utils/media/fat'
+import { MAX_IO } from '../app/utils/media/protocol'
 describe('media storage worker ownership', () => {
   it('keeps metadata current, excludes client edits while inserted, and retrieves target-created files after ejection', async () => {
     const waiting = new Map<
@@ -105,17 +106,18 @@ describe('media storage worker ownership', () => {
       await expect(
         rpc('write', { offset: 0, data: new Uint8Array([1]) }),
       ).rejects.toThrow(/read-only/)
-      const first = await rpc('read', { offset: 0, length: 512 }),
+      const read = { offset: 2048 * 512 - 6, length: MAX_IO }
+      const first = await rpc('read', read),
         expected = first.slice()
       expect(expected.some((byte: number) => byte !== 0)).toBe(true)
       first.fill(0) // Main-thread mutation must not change the worker's page cache.
-      expect(await rpc('read', { offset: 0, length: 512 })).toEqual(expected)
+      expect(await rpc('read', read)).toEqual(expected)
       failNextTransfer = true
-      await expect(rpc('read', { offset: 0, length: 512 })).rejects.toThrow(
+      await expect(rpc('read', read)).rejects.toThrow(
         /Synthetic transfer rejection/,
       )
       expect(waiting.size).toBe(0)
-      expect(await rpc('read', { offset: 0, length: 512 })).toEqual(expected)
+      expect(await rpc('read', read)).toEqual(expected)
       expect(transferred.length).toBeGreaterThan(2)
       expect(transferred.every(({ exactRange }) => exactRange)).toBe(true)
       expect(transferred.every(({ source }) => source.byteLength === 0)).toBe(true)

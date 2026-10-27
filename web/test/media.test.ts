@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { writeFileSync } from 'node:fs'
 import { indexedDB } from 'fake-indexeddb'
-import { encode, decode, crc32, checkRange } from '../app/utils/media/protocol'
+import { encode, decode, crc32, checkRange, HEADER, MAX_IO } from '../app/utils/media/protocol'
 import {
   formatFat32,
   FatVolume,
@@ -30,6 +30,42 @@ class MemoryDisk implements Disk {
   }
 }
 describe('media framing', () => {
+  it('matches the reference CRC for empty, split, legacy and 32 KiB payloads', () => {
+    const reference = (bytes: Uint8Array) => {
+      let crc = 0xffffffff
+      for (const byte of bytes) {
+        crc ^= byte
+        for (let bit = 0; bit < 8; bit++)
+          crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0)
+      }
+      return (crc ^ 0xffffffff) >>> 0
+    }
+    expect(crc32([])).toBe(0)
+    for (const length of [0, 1, 3, 511, 512, 8192, MAX_IO]) {
+      const bytes = Uint8Array.from({ length }, (_, i) => (i * 17 + 31) & 255)
+      expect(crc32([bytes.subarray(0, 5), bytes.subarray(5, 801), bytes.subarray(801)])).toBe(reference(bytes))
+    }
+  })
+  it('round-trips a 32 KiB payload at a 64-bit offset and rejects absolute oversize frames', () => {
+    const input = {
+      op: 0x90, flags: 0, id: 42, session: 7,
+      offset: 8 * 1073741824,
+      length: MAX_IO,
+      data: Uint8Array.from({ length: MAX_IO }, (_, i) => i & 255),
+    }
+    expect(decode(encode(input))).toEqual(input)
+    const corrupt = encode(input)
+    corrupt[corrupt.length - 1]! ^= 1
+    expect(() => decode(corrupt)).toThrow(/integrity/)
+    expect(() => encode({ ...input, length: MAX_IO + 1, data: new Uint8Array() })).toThrow(/Invalid media frame/)
+    expect(() => encode({ ...input, data: new Uint8Array(MAX_IO + 1) })).toThrow(/Invalid media frame/)
+    expect(() => decode(new Uint8Array(HEADER + MAX_IO + 1))).toThrow(/truncated/)
+    const badLength = encode({ ...input, data: new Uint8Array() })
+    const view = new DataView(badLength.buffer)
+    view.setUint32(24, MAX_IO + 1, true)
+    view.setUint32(28, crc32([badLength.subarray(0, 28)]), true)
+    expect(() => decode(badLength)).toThrow(/bounds/)
+  })
   it('matches the standard CRC and preserves 64-bit offsets', () => {
     expect(crc32([new TextEncoder().encode('123456789')])).toBe(0xcbf43926)
     const input = {
@@ -223,7 +259,7 @@ describe('durable copy-on-write disk', () => {
       exportedRevision: -1,
     }
     let d = await PersistentDisk.open(meta, source, true)
-    const patch = new Uint8Array(8192).fill(42)
+    const patch = new Uint8Array(MAX_IO).fill(42)
     await d.write(65530, patch)
     expect(d.meta.revision).toBe(1)
     await expect(PersistentDisk.open(meta, source)).rejects.toThrow(
@@ -231,8 +267,8 @@ describe('durable copy-on-write disk', () => {
     )
     await d.close()
     d = await PersistentDisk.open(meta, source)
-    expect(await d.read(65530, 8192)).toEqual(patch)
-    expect((await d.read(65529, 8194))[0]).toBe(7)
+    expect(await d.read(65530, patch.length)).toEqual(patch)
+    expect((await d.read(65529, patch.length + 2))[0]).toBe(7)
     expect(
       new Uint8Array(await source.arrayBuffer()).every((b) => b === 7),
     ).toBe(true)

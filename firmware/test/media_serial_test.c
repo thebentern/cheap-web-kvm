@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 static unsigned received, releases, ch;
-static uint8_t got[MEDIA_HEADER + MEDIA_MAX_IO];
+static uint8_t got[MEDIA_HEADER + MEDIA_SERIAL_MAX_IO];
 static size_t got_len;
 static void receive(bool media, const uint8_t *p, size_t n)
 {
@@ -31,11 +31,11 @@ int main(void)
 {
     media_serial_parser_t parser;
     media_serial_init(&parser, receive);
-    uint8_t packet[MEDIA_HEADER + MEDIA_MAX_IO + 6] = {'K', 'V', 'S', '1', 0x20, 0x20};
+    uint8_t packet[MEDIA_HEADER + MEDIA_SERIAL_MAX_IO + 6] = {'K', 'V', 'S', '1', 0x20, 0x20};
     memset(packet + 6, 0x57, sizeof(packet) - 6);
     memcpy(packet + 12, "KVS1", 4);
     feed(&parser, packet, sizeof(packet), 0);
-    assert(received == 1 && got_len == MEDIA_HEADER + MEDIA_MAX_IO);
+    assert(received == 1 && got_len == MEDIA_HEADER + MEDIA_SERIAL_MAX_IO);
     assert(!memcmp(got, packet + 6, got_len));
     const uint8_t hid[] = {0x57, 0xab, 0, 2, 6, 'K', 'V', 'S', '1', 0, 0, 0};
     feed(&parser, hid, sizeof(hid), 10000);

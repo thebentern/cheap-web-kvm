@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MediaConnection, type MediaReadStats } from '../app/utils/media/client'
-import { encode, decode, OP, type Message } from '../app/utils/media/protocol'
+import { encode, decode, MAX_IO, SERIAL_MAX_IO, OP, type Message } from '../app/utils/media/protocol'
 import { websocketTransport } from '../app/utils/media/transport'
 class Socket {
   static OPEN = 1
@@ -45,6 +45,18 @@ class StalledHeartbeatSocket extends Socket {
     else super.send(bytes)
   }
 }
+function capabilitySocket(data: Uint8Array) {
+  return class extends Socket {
+    send(bytes: Uint8Array) {
+      const m = decode(bytes)
+      if (m.op !== OP.HELLO) return super.send(bytes)
+      this.sent.push(m)
+      this.receive({ ...m, op: m.op | 128, session: 123, length: data.length, data })
+    }
+  }
+}
+const capabilities = (ceiling = MAX_IO, window = 1) =>
+  new Uint8Array([1, window, 0, 2, ceiling & 255, ceiling >>> 8, 1, 0])
 const connections: MediaConnection[] = []
 afterEach(() => {
   for (const c of connections) c.close()
@@ -404,5 +416,89 @@ describe('client media flow and durability', () => {
     commit()
     await tick()
     expect(ws.sent).toHaveLength(1)
+  })
+})
+
+describe('negotiated media transfer ceilings', () => {
+  it.each([SERIAL_MAX_IO, 16384, MAX_IO])('requests 32 KiB and respects an advertised %s-byte ceiling', async (ceiling) => {
+    const { c, ws } = await connect(undefined, capabilitySocket(capabilities(ceiling)))
+    const hello = ws.sent.find((m) => m.op === OP.HELLO)!
+    expect(hello.offset).toBe(MAX_IO)
+    expect(hello.length).toBe(0)
+    expect(hello.data).toHaveLength(0)
+    await c.benchmark(0)
+    expect(ws.sent.find((m) => m.op === OP.ECHO)?.data).toHaveLength(ceiling)
+    expect(c.live).toBe(true)
+  })
+  it.each([0, 4096, SERIAL_MAX_IO + 1, MAX_IO + 512, 65535])('rejects an invalid %s-byte capability', async (ceiling) => {
+    await expect(connect(undefined, capabilitySocket(capabilities(ceiling)))).rejects.toThrow(/Incompatible media capabilities/)
+    expect(Socket.all.at(-1)!.readyState).toBe(3)
+  })
+  it('requires the one-request contract, complete capabilities and 512-byte blocks', async () => {
+    const wrongBlock = capabilities()
+    wrongBlock[3] = 1
+    for (const data of [capabilities(MAX_IO, 2), capabilities().subarray(0, 7), wrongBlock])
+      await expect(connect(undefined, capabilitySocket(data))).rejects.toThrow(/Incompatible media capabilities/)
+  })
+  it('serves 32 KiB random reads and waits for durable 32 KiB writes before ACK', async () => {
+    let commit!: () => void
+    const content = Uint8Array.from({ length: MAX_IO }, (_, i) => (i * 17) & 255)
+    const read = vi.fn(async () => content.slice())
+    const write = vi.fn(() => new Promise<void>((resolve) => { commit = resolve }))
+    const { c, ws } = await connect({ read, write }, capabilitySocket(capabilities()))
+    const offset = 8 * 1073741824 + 65530
+    ws.receive({ ...request(OP.READ), offset, length: MAX_IO })
+    await tick()
+    expect(read).toHaveBeenCalledWith(offset, MAX_IO)
+    expect(ws.sent.at(-1)?.data).toEqual(content)
+    ws.receive({ ...request(OP.WRITE, 51), offset, length: MAX_IO, data: content })
+    await tick()
+    expect(write).toHaveBeenCalledWith(offset, content)
+    expect(ws.sent.at(-1)?.op).toBe(OP.READ | 128)
+    commit()
+    await tick()
+    expect(ws.sent.at(-1)).toMatchObject({ op: OP.WRITE | 128, flags: 0, offset, length: MAX_IO })
+    expect(ws.sent.at(-1)?.data).toHaveLength(0)
+    expect(c.live).toBe(true)
+  })
+  it('refuses disk requests and outgoing controls above a legacy ceiling without accessing storage', async () => {
+    const read = vi.fn(async (_offset: number, length: number) => new Uint8Array(length)),
+      write = vi.fn(async () => {})
+    const { c, ws } = await connect({ read, write })
+    ws.receive({ ...request(OP.READ), length: SERIAL_MAX_IO + 512 })
+    await tick()
+    expect(read).not.toHaveBeenCalled()
+    expect(ws.sent.at(-1)?.flags).toBe(4)
+    ws.receive({ ...request(OP.WRITE, 51), length: SERIAL_MAX_IO + 512, data: new Uint8Array(SERIAL_MAX_IO + 512) })
+    await tick()
+    expect(write).not.toHaveBeenCalled()
+    expect(ws.sent.at(-1)?.flags).toBe(4)
+    const before = ws.sent.length
+    await expect(c.request(OP.ECHO, new Uint8Array(SERIAL_MAX_IO + 1))).rejects.toThrow(/negotiated 8192-byte/)
+    await expect(c.request(OP.HID, new Uint8Array(SERIAL_MAX_IO + 1))).rejects.toThrow(/negotiated 8192-byte/)
+    expect(ws.sent).toHaveLength(before)
+    expect(c.live).toBe(true)
+  })
+  it('rejects an oversized control reply instead of accepting data above the negotiated ceiling', async () => {
+    class OversizedReplySocket extends Socket {
+      send(bytes: Uint8Array) {
+        const m = decode(bytes)
+        if (m.op !== OP.ECHO) return super.send(bytes)
+        this.sent.push(m)
+        this.receive({ ...m, op: m.op | 128, length: MAX_IO, data: new Uint8Array(MAX_IO) })
+      }
+    }
+    const { c } = await connect(undefined, OversizedReplySocket)
+    await expect(c.request(OP.ECHO, new Uint8Array(512))).rejects.toThrow(/Invalid control reply length/)
+    expect(c.live).toBe(false)
+  })
+  it('resets the ceiling when reconnecting from a faster board to legacy firmware', async () => {
+    const { c } = await connect(undefined, capabilitySocket(capabilities()))
+    await c.benchmark(0)
+    vi.stubGlobal('WebSocket', Socket)
+    await c.connect('wss://legacy/media')
+    await c.benchmark(0)
+    expect(Socket.all.at(-1)!.sent.find((m) => m.op === OP.ECHO)?.data).toHaveLength(SERIAL_MAX_IO)
+    await expect(c.request(OP.ECHO, new Uint8Array(MAX_IO))).rejects.toThrow(/negotiated 8192-byte/)
   })
 })

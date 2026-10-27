@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { checksum } from '../ch9329'
-import { HEADER, MAX_IO } from './protocol'
+import { HEADER, SERIAL_MAX_IO } from './protocol'
 const MAGIC = [0x4b, 0x56, 0x53, 0x31] // KVS1
-const MAX_PACKET = HEADER + MAX_IO
+const MAX_PACKET = HEADER + SERIAL_MAX_IO
 export function serialMediaFrame(payload: Uint8Array) {
   if (
     payload.length > MAX_PACKET ||

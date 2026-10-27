@@ -2,12 +2,30 @@
 #include "boot_repeat.h"
 #include "ch9329.h"
 #include "kvm_media.h"
+#include "media_buffers.h"
+#include "esp_heap_caps.h"
 #include "tusb.h"
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 int64_t mock_time;
 int mock_lock_depth;
+static bool fail_pool;
+static unsigned pool_allocations;
+static uint8_t *allocated_pool;
+void *heap_caps_malloc(size_t size, unsigned caps)
+{
+    assert(caps == (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    assert(size == MEDIA_BUFFER_BYTES(MEDIA_MAX_IO));
+    pool_allocations++;
+    if (fail_pool)
+        return NULL;
+    allocated_pool = malloc(size + 16);
+    assert(allocated_pool);
+    memset(allocated_pool + size, 0xa7, 16);
+    return allocated_pool;
+}
 static unsigned completed, hid_frames;
 static bool ble_wifi_media_active;
 static unsigned ble_pauses;
@@ -92,6 +110,15 @@ static media_msg_t poll_request(void)
     assert(media_decode(request, n, &m));
     return m;
 }
+static uint32_t hello(media_source_t source, uint64_t desired)
+{
+    media_msg_t m = {.op = M_HELLO, .id = ++id, .session = session, .offset = desired};
+    size_t n = media_encode(frame, &m, NULL, 0);
+    n = kvm_media_command_from(source, frame, n, reply);
+    assert(media_decode(reply, n, &m) && m.flags == M_OK && m.length == 8);
+    session = m.session;
+    return reply[MEDIA_HEADER + 4] | (uint32_t)reply[MEDIA_HEADER + 5] << 8;
+}
 static void answer(media_msg_t m, uint16_t status)
 {
     m.op |= 128;
@@ -109,12 +136,24 @@ static void finish(void)
     deferred = NULL;
     fn(deferred_arg);
 }
-int main(void)
+int main(int argc, char **argv)
 {
+    fail_pool = argc == 2 && !strcmp(argv[1], "--fallback");
+    assert(argc == 1 || fail_pool);
     assert(media_crc((const uint8_t *)"123456789", 9, 0xffffffff) == (0xcbf43926 ^ 0xffffffff));
     assert(media_range(UINT64_C(1) << 40, (UINT64_C(1) << 40) - 512, 512));
     assert(!media_range(512, 511, 2));
     assert(kvm_media_init() == ESP_OK);
+    assert(kvm_media_max_io() == MEDIA_SERIAL_MAX_IO);
+    const media_buffers_t *buffers = media_buffers_get();
+    assert(pool_allocations == 1);
+    assert(buffers->max_io == (fail_pool ? MEDIA_SERIAL_MAX_IO : MEDIA_MAX_IO));
+    assert(buffers->cache == buffers->io + buffers->max_io);
+    assert(buffers->rx == buffers->cache + buffers->max_io);
+    assert(buffers->tx + MEDIA_WS_PREFIX + MEDIA_HEADER + buffers->max_io ==
+           buffers->io + MEDIA_BUFFER_BYTES(buffers->max_io));
+    media_buffers_init();
+    assert(pool_allocations == 1);
     assert(!ble_wifi_media_active);
     media_msg_t m = command(M_HELLO, 0, 0);
     assert(!m.flags);
@@ -283,12 +322,12 @@ int main(void)
     /* UART reuses the parser's full-capacity buffer for in-place replies. */
     session = command(M_HELLO, 0, 0).session;
     media_msg_t echo = {.op = M_ECHO, .id = ++id, .session = session,
-                        .length = MEDIA_MAX_IO};
+                        .length = MEDIA_SERIAL_MAX_IO};
     memset(data, 0x57, sizeof(data));
-    n = media_encode(frame, &echo, data, sizeof(data));
+    n = media_encode(frame, &echo, data, echo.length);
     n = kvm_media_command(frame, n, frame);
     assert(media_decode(frame, n, &echo) && echo.op == (M_ECHO | 128));
-    assert(n == MEDIA_HEADER + MEDIA_MAX_IO && !memcmp(frame + MEDIA_HEADER, data, sizeof(data)));
+    assert(n == MEDIA_HEADER + MEDIA_SERIAL_MAX_IO && !memcmp(frame + MEDIA_HEADER, data, echo.length));
 
     /* Target ejection and HTTP disconnect also restore discovery; a protected
      * target eject must leave it paused until the disk is actually removed. */
@@ -358,6 +397,100 @@ int main(void)
     assert(kvm_media_metrics(&metrics) && metrics.first_failure == MEDIA_FAILURE_BACKEND &&
            metrics.backend_errors == 1 && !metrics.io_timeouts && !metrics.disconnects);
 
+    /* Negotiation is opt-in, bounded, and always limited to 8 KiB on UART.
+     * The exact same tests run again with a failed PSRAM allocation. */
+    assert(hello(MEDIA_SOURCE_HTTP, 0) == MEDIA_SERIAL_MAX_IO);
+    assert(kvm_media_max_io() == MEDIA_SERIAL_MAX_IO);
+    assert(command(M_HELLO, 0, MEDIA_SERIAL_MAX_IO - 512).flags == M_INVALID);
+    assert(command(M_HELLO, 0, MEDIA_SERIAL_MAX_IO + 1).flags == M_INVALID);
+    assert(command(M_HELLO, 0, MEDIA_MAX_IO + 512).flags == M_INVALID);
+    memset(reply, 0x6d, sizeof(reply));
+    echo = (media_msg_t){.op = M_ECHO, .id = ++id, .session = session, .length = MEDIA_MAX_IO};
+    n = media_encode(frame, &echo, data, echo.length);
+    n = kvm_media_command(frame, n, reply);
+    assert(media_decode(reply, n, &echo) && echo.flags == M_INVALID && n == MEDIA_HEADER);
+    for (size_t i = MEDIA_HEADER; i < sizeof(reply); i++) assert(reply[i] == 0x6d);
+    /* An oversized response cannot complete or overwrite an 8 KiB request. */
+    assert(command(M_INSERT, 0, 1024 * 1024).flags == M_OK);
+    assert(tud_msc_read10_cb(0, 500, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
+    m = poll_request();
+    assert(m.length == MEDIA_SERIAL_MAX_IO);
+    stale = m; stale.length = MEDIA_MAX_IO;
+    answer(stale, M_OK);
+    assert(!kvm_media_poll(request, &n) && !deferred);
+    answer(m, M_OK); finish();
+    assert(completion == sizeof(usb));
+    assert(command(M_EJECT, 0, 0).flags == M_OK);
+    kvm_media_disconnect();
+    assert(hello(MEDIA_SOURCE_SERIAL, MEDIA_MAX_IO) == MEDIA_SERIAL_MAX_IO);
+    assert(tud_msc_read10_cb(0, 0, 0, usb, sizeof(usb)) == TUD_MSC_RET_ERROR); /* Not inserted. */
+    serial = (media_msg_t){.op = M_INSERT, .id = ++id, .session = session, .offset = 1024 * 1024};
+    n = media_encode(frame, &serial, NULL, 0);
+    n = kvm_media_command_from(MEDIA_SOURCE_SERIAL, frame, n, reply);
+    assert(media_decode(reply, n, &serial) && serial.flags == M_OK);
+    assert(tud_msc_read10_cb(0, 0, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
+    assert(kvm_media_poll_from(MEDIA_SOURCE_SERIAL, request, &n));
+    assert(media_decode(request, n, &serial) && serial.length == MEDIA_SERIAL_MAX_IO);
+    serial.op |= 128;
+    n = media_encode(frame, &serial, data, serial.length);
+    assert(!kvm_media_command_from(MEDIA_SOURCE_SERIAL, frame, n, reply));
+    finish();
+    assert(completion == sizeof(usb));
+    kvm_media_disconnect_from(MEDIA_SOURCE_SERIAL);
+
+    assert(hello(MEDIA_SOURCE_HTTP, 16384) == (fail_pool ? MEDIA_SERIAL_MAX_IO : 16384));
+    kvm_media_disconnect();
+    uint32_t selected = hello(MEDIA_SOURCE_HTTP, MEDIA_MAX_IO);
+    assert(selected == buffers->max_io);
+    assert(kvm_media_max_io() == selected);
+    assert(command(M_INSERT, M_WRITABLE, 1024 * 1024).flags == M_OK);
+    for (size_t i = 0; i < sizeof(data); i++) data[i] = (uint8_t)(i / sizeof(usb));
+    assert(tud_msc_read10_cb(0, 0, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
+    m = poll_request();
+    assert(m.length == selected);
+    stale = m; stale.id++;
+    answer(stale, M_OK);
+    assert(!kvm_media_poll(request, &n) && !deferred);
+    answer(m, M_OK); finish();
+    assert(usb[0] == 0 && usb[sizeof(usb) - 1] == 0);
+    for (uint32_t chunk = 1; chunk < selected / sizeof(usb); chunk++) {
+        assert(tud_msc_read10_cb(0, chunk * 8, 0, usb, sizeof(usb)) == sizeof(usb));
+        assert(usb[0] == chunk && usb[sizeof(usb) - 1] == chunk);
+    }
+    assert(kvm_media_metrics(&metrics) && metrics.reads == 1 &&
+           metrics.cache_bytes == selected - sizeof(usb));
+    /* The first request outside the full negotiated cache must fetch again. */
+    assert(tud_msc_read10_cb(0, selected / 512, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
+    m = poll_request(); assert(m.offset == selected && m.length == selected);
+    answer(m, M_OK); finish();
+    media_msg_t prior_read = m;
+    assert(tud_msc_write10_cb(0, selected / 512, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
+    m = poll_request(); assert(m.op == M_WRITE && m.length == sizeof(usb));
+    answer(prior_read, M_OK);
+    assert(!kvm_media_poll(request, &n) && !deferred);
+    answer(m, M_OK); finish();
+    /* A durable write invalidates all prefetched bytes before another read. */
+    assert(tud_msc_read10_cb(0, selected / 512, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
+    m = poll_request(); assert(m.length == selected);
+    answer(m, M_OK); finish();
+    /* Tail reads are clipped to capacity rather than the negotiated maximum. */
+    assert(tud_msc_read10_cb(0, 2040, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
+    m = poll_request(); assert(m.offset == 1024 * 1024 - sizeof(usb) && m.length == sizeof(usb));
+    answer(m, M_OK); finish();
+    assert(tud_msc_read10_cb(0, 2048, 0, usb, sizeof(usb)) == TUD_MSC_RET_ERROR);
+    assert(command(M_EJECT, 0, 0).flags == M_OK);
+    /* Full-size ECHO is also limited to the negotiated value. */
+    echo = (media_msg_t){.op = M_ECHO, .id = ++id, .session = session, .length = selected};
+    n = media_encode(frame, &echo, data, selected);
+    n = kvm_media_command(frame, n, reply);
+    assert(media_decode(reply, n, &echo) && echo.flags == M_OK && echo.length == selected);
+    assert(n == MEDIA_HEADER + selected && !memcmp(reply + MEDIA_HEADER, data, selected));
+    if (allocated_pool) {
+        for (size_t i = 0; i < 16; i++)
+            assert(allocated_pool[MEDIA_BUFFER_BYTES(MEDIA_MAX_IO) + i] == 0xa7);
+    }
+    assert(pool_allocations == 1);
+
     /* Distinct pulses, bounded reboot window, validation, and deadline. */
     boot_config_t c = {0x45, 100, 80, 300, 1000};
     boot_repeat_t b;
@@ -380,5 +513,5 @@ int main(void)
     c.interval = 80;
     assert(!boot_config_valid(&c));
     puts("PASS: protocol, async reads/write ACKs, prefetch, bounds, stale responses, bus/BOT "
-         "reset, ejection, disconnect deadlines, BLE discovery policy, boot repetition");
+         "reset, ejection, disconnect deadlines, BLE discovery policy, negotiated read-ahead/fallback, boot repetition");
 }

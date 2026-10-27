@@ -6,7 +6,7 @@
 /* KVS1 + uint16 LE byte length + one complete KVM1 frame. Zero releases UART. */
 typedef void (*media_serial_receive_t)(bool media, const uint8_t *data, size_t len);
 typedef struct {
-    uint8_t data[MEDIA_HEADER + MEDIA_MAX_IO];
+    uint8_t data[MEDIA_HEADER + MEDIA_SERIAL_MAX_IO];
     size_t used, expected;
     uint8_t kind, prefix, size_low;
     int64_t started;

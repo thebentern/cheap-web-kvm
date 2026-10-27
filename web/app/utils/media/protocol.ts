@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 export const HEADER = 32
-export const MAX_IO = 8192
+export const MAX_IO = 32768
+export const SERIAL_MAX_IO = 8192
 export const OP = {
   HELLO: 1,
   INSERT: 2,
@@ -31,13 +32,19 @@ export interface Message {
   length: number
   data: Uint8Array
 }
+const crcTable = Uint32Array.from({ length: 256 }, (_, byte) => {
+  let crc = byte
+  for (let bit = 0; bit < 8; bit++)
+    crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0)
+  return crc >>> 0
+})
 export function crc32(parts: Uint8Array[]) {
   let crc = 0xffffffff
-  for (const part of parts)
-    for (const b of part) {
-      crc ^= b
-      for (let j = 0; j < 8; j++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0)
-    }
+  for (let n = 0; n < parts.length; n++) {
+    const part = parts[n]!
+    for (let i = 0; i < part.length; i++)
+      crc = (crc >>> 8) ^ crcTable[(crc ^ part[i]!) & 255]!
+  }
   return (crc ^ 0xffffffff) >>> 0
 }
 export function encode(m: Omit<Message, 'data'> & { data?: Uint8Array }) {

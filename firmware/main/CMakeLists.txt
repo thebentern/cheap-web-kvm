@@ -28,6 +28,7 @@ idf_component_register(
         "kvm_wifi.c"
         "wifi_settings.c"
         "media_protocol.c"
+        "media_buffers.c"
         "media_ws.c"
         "media_ws_recv.c"
         "media_tls_guard.c"

@@ -357,6 +357,8 @@ static void uart_tx(const uint8_t *frame, size_t len)
 }
 static bool serial_queue_media(const uint8_t *data, size_t n)
 {
+    if (n > MEDIA_HEADER + MEDIA_SERIAL_MAX_IO)
+        return false;
     serial_media_packet_t *packet = NULL;
     if (uxQueueSpacesAvailable(serial_ready))
         packet = malloc(sizeof(*packet) + MEDIA_SERIAL_HEADER + n);
@@ -401,7 +403,7 @@ static void serial_receive(bool media, const uint8_t *frame, size_t len)
 static void serial_tx_task(void *arg)
 {
     (void)arg;
-    static uint8_t disk[MEDIA_SERIAL_HEADER + MEDIA_HEADER + MEDIA_MAX_IO];
+    static uint8_t disk[MEDIA_SERIAL_HEADER + MEDIA_HEADER + MEDIA_SERIAL_MAX_IO];
     for (;;) {
         serial_hid_packet_t hid;
         while (xQueueReceive(serial_hid, &hid, 0) == pdTRUE)

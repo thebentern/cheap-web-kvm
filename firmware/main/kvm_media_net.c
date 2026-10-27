@@ -10,6 +10,7 @@
 
 #include "esp_http_server.h"
 #include "media_ws.h"
+#include "media_buffers.h"
 #if CONFIG_KVM_DEVICE_WEB
 #include "device_web.h"
 #include "device_tls.h"
@@ -114,9 +115,7 @@ static TaskHandle_t pump_task;
 static char access_token[81];
 static atomic_int owner = -1;
 static _Atomic(httpd_handle_t) owner_server;
-static uint8_t rx[MEDIA_HEADER + MEDIA_MAX_IO];
-static uint8_t reply[MEDIA_WS_PREFIX + MEDIA_WS_MAX_PAYLOAD];
-static uint8_t tx[MEDIA_WS_PREFIX + MEDIA_WS_MAX_PAYLOAD];
+static uint8_t *rx, *reply, *tx;
 typedef struct {
     httpd_handle_t server;
     int fd;
@@ -215,13 +214,14 @@ static esp_err_t ws(httpd_req_t *req)
     atomic_store(&last_frame_type, frame.type);
     atomic_store(&last_frame_final, frame.final);
     atomic_store(&last_frame_length, frame.len > UINT32_MAX ? UINT32_MAX : (uint32_t)frame.len);
-    if (frame.type != HTTPD_WS_TYPE_BINARY || !frame.final || frame.len > sizeof(rx)) {
+    size_t receive_capacity = MEDIA_HEADER + kvm_media_max_io();
+    if (frame.type != HTTPD_WS_TYPE_BINARY || !frame.final || frame.len > receive_capacity) {
         atomic_fetch_add(&invalid_frames, 1);
         network_failure(NET_FAILURE_FRAME, ESP_ERR_INVALID_SIZE);
         return ESP_FAIL;
     }
     frame.payload = rx;
-    err = httpd_ws_recv_frame(req, &frame, sizeof(rx));
+    err = httpd_ws_recv_frame(req, &frame, receive_capacity);
     if (err != ESP_OK) {
         atomic_fetch_add(&receive_errors, 1);
         network_failure(NET_FAILURE_PAYLOAD, err);
@@ -306,6 +306,10 @@ void kvm_media_http_stop(void)
 }
 esp_err_t kvm_media_http_start(const char *token)
 {
+    const media_buffers_t *buffers = media_buffers_get();
+    rx = buffers->rx;
+    reply = buffers->reply;
+    tx = buffers->tx;
     if (!net_lock)
         net_lock = xSemaphoreCreateMutex();
     if (!net_lock)

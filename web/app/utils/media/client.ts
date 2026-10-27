@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { decode, encode, MAX_IO, OP, type Message } from './protocol'
+import { decode, encode, MAX_IO, SERIAL_MAX_IO, OP, type Message } from './protocol'
 import { websocketTransport, type MediaTransport } from './transport'
 export type { MediaTransport } from './transport'
 const CONTROL_TIMEOUT_MS = 4000
@@ -14,6 +14,7 @@ export class MediaConnection {
   private generation = 0
   private next = 0
   private session = 0
+  private maxIo = SERIAL_MAX_IO
   private pending = new Map<
     number,
     {
@@ -61,7 +62,7 @@ export class MediaConnection {
     let hello: Message
     try {
       try {
-        hello = await this.request(OP.HELLO)
+        hello = await this.request(OP.HELLO, undefined, MAX_IO)
       } catch (error) {
         if (
           !transport.startupRetries ||
@@ -70,7 +71,7 @@ export class MediaConnection {
           transport !== this.transport
         )
           throw error
-        hello = await this.request(OP.HELLO)
+        hello = await this.request(OP.HELLO, undefined, MAX_IO)
       }
     } catch (error) {
       if (mine === this.generation && this.transport === transport) this.close()
@@ -78,17 +79,21 @@ export class MediaConnection {
     }
     if (mine !== this.generation || transport !== this.transport)
       throw new Error('Media connection replaced')
+    const maxIo = (hello.data[4] ?? 0) | ((hello.data[5] ?? 0) << 8)
     if (
       hello.data.length !== 8 ||
       hello.data[0] !== 1 ||
+      hello.data[1] !== 1 ||
       hello.data[2] !== 0 ||
       hello.data[3] !== 2 ||
-      hello.data[4] !== 0 ||
-      hello.data[5] !== 32
+      maxIo < SERIAL_MAX_IO ||
+      maxIo > MAX_IO ||
+      maxIo % 512 !== 0
     ) {
       this.close()
       throw new Error('Incompatible media capabilities')
     }
+    this.maxIo = maxIo
     this.session = hello.session
     this.heartbeat = setInterval(() => {
       if (
@@ -139,6 +144,7 @@ export class MediaConnection {
       transport.close()
     }
     this.session = 0
+    this.maxIo = SERIAL_MAX_IO
     for (const p of this.pending.values()) {
       clearTimeout(p.timer)
       p.reject(reason)
@@ -153,6 +159,8 @@ export class MediaConnection {
   ) {
     const transport = this.transport
     if (!transport) throw new Error('Connect the media backend first')
+    if (data.length > this.maxIo)
+      throw new Error(`Media request exceeds the negotiated ${this.maxIo}-byte transfer limit`)
     if (this.pending.size >= 4)
       throw new Error('Too many pending controls; wait for the current action')
     const id = ++this.next
@@ -200,7 +208,7 @@ export class MediaConnection {
       const p = this.pending.get(m.id)
       if (!p || p.op !== m.op || (this.session && this.session !== m.session))
         return
-      if (m.length !== m.data.length) {
+      if (m.length !== m.data.length || m.length > this.maxIo) {
         this.fail('Invalid control reply length')
         return
       }
@@ -240,7 +248,7 @@ export class MediaConnection {
     try {
       if (
         !m.length ||
-        m.length > MAX_IO ||
+        m.length > this.maxIo ||
         m.data.length !== (m.op === OP.WRITE ? m.length : 0)
       )
         throw new Error('Invalid disk request length')
@@ -280,7 +288,7 @@ export class MediaConnection {
       }
   }
   async benchmark(milliseconds = 2000) {
-    const data = crypto.getRandomValues(new Uint8Array(MAX_IO)),
+    const data = crypto.getRandomValues(new Uint8Array(this.maxIo)),
       start = performance.now()
     let bytes = 0,
       count = 0,

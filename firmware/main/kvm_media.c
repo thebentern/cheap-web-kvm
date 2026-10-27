@@ -13,6 +13,7 @@
 #include "freertos/semphr.h"
 #include "kvm_boot.h"
 #include "kvm_ble.h"
+#include "media_buffers.h"
 #include "kvm_hid.h"
 #include "sdkconfig.h"
 #include "tusb.h"
@@ -29,6 +30,7 @@ static atomic_uint epoch;
 static uint32_t session, next_id, observed_epoch;
 static media_source_t owner;
 static uint64_t capacity;
+static atomic_uint max_io = MEDIA_SERIAL_MAX_IO;
 static atomic_bool present, writable, failed, prevented, changed, connected;
 static atomic_uint block_count;
 static int64_t heartbeat;
@@ -41,16 +43,20 @@ static struct {
     uint8_t op;
     int64_t deadline;
     uint8_t *usb;
-    uint8_t data[MEDIA_MAX_IO];
+    uint8_t *data;
     bool ok;
 } io;
-static uint8_t cache[MEDIA_MAX_IO];
+static uint8_t *cache;
 static uint64_t cache_offset;
 static uint32_t cache_length;
 static uint8_t hid_reply[CH9329_MAX_PAYLOAD + 6];
 static size_t hid_reply_len;
 static media_metrics_t metrics;
 static int64_t read_sent_at;
+uint32_t kvm_media_max_io(void)
+{
+    return atomic_load(&connected) ? atomic_load(&max_io) : MEDIA_SERIAL_MAX_IO;
+}
 bool kvm_media_metrics(media_metrics_t *out)
 {
     if (!out || !lock || xSemaphoreTake(lock, pdMS_TO_TICKS(5)) != pdTRUE)
@@ -115,6 +121,10 @@ static uint16_t state(void)
 }
 esp_err_t kvm_media_init(void)
 {
+    media_buffers_init();
+    const media_buffers_t *buffers = media_buffers_get();
+    io.data = buffers->io;
+    cache = buffers->cache;
     lock = xSemaphoreCreateMutex();
     ch9329_parser_init(&hid_parser, hid_tx);
 #if CONFIG_KVM_MEDIA_LOCAL_PROOF
@@ -271,6 +281,10 @@ size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t n
     if (xSemaphoreTake(lock, pdMS_TO_TICKS(10)) != pdTRUE)
         return 0;
     if (m.op == (M_READ | 0x80) || m.op == (M_WRITE | 0x80)) {
+        if (m.length > max_io || pn > max_io) {
+            xSemaphoreGive(lock);
+            return 0;
+        }
         if (owner == source && io.active && !io.done && m.session == session && m.id == io.id &&
             m.offset == io.offset && m.length == io.length && (m.op & 0x7f) == io.op &&
             io.epoch == atomic_load(&epoch)) {
@@ -313,9 +327,15 @@ size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t n
         status = M_BUSY;
     else if (m.op != M_HELLO && (!connected || owner != source || m.session != session))
         status = M_STALE;
+    else if (m.length > max_io || pn > max_io)
+        status = M_INVALID;
     else
         switch (m.op) {
-        case M_HELLO:
+        case M_HELLO: {
+            if (m.offset && (m.offset < MEDIA_SERIAL_MAX_IO || m.offset > MEDIA_MAX_IO || m.offset % 512)) {
+                status = M_INVALID;
+                break;
+            }
             if (pn || m.length || present || io.active) {
                 status = M_BUSY;
                 break;
@@ -323,6 +343,11 @@ size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t n
             session = esp_random();
             if (!session)
                 session = 1;
+            uint32_t selected = m.offset ? (uint32_t)m.offset : MEDIA_SERIAL_MAX_IO;
+            uint32_t available = source == MEDIA_SOURCE_SERIAL ? MEDIA_SERIAL_MAX_IO : media_buffers_get()->max_io;
+            if (selected > available)
+                selected = available;
+            atomic_store(&max_io, selected);
             connected = true;
             owner = source;
             memset(&metrics, 0, sizeof(metrics));
@@ -332,12 +357,13 @@ size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t n
             payload[1] = 1; /* async / durable-write protocol */
             payload[2] = 0;
             payload[3] = 2; /* block size 512 LE */
-            payload[4] = 0;
-            payload[5] = 32; /* max transfer 8192 LE */
+            payload[4] = (uint8_t)max_io;
+            payload[5] = (uint8_t)(max_io >> 8);
             payload[6] = 1;
             payload[7] = source == MEDIA_SOURCE_SERIAL ? 1 : 0; /* transport hint */
             payload_n = 8;
             break;
+        }
         case M_INSERT:
             if (pn || m.length || (m.flags & ~M_WRITABLE) || m.offset < 512 || m.offset % 512 ||
                 m.offset / 512 > UINT32_MAX)
@@ -493,7 +519,7 @@ static int32_t transfer(uint8_t lun, uint32_t lba, uint32_t off, void *buf, uint
     sync_reset();
     uint64_t address = (uint64_t)lba * 512 + off;
     int32_t result = TUD_MSC_RET_ERROR;
-    if (!ready(lun) || !media_range(capacity, address, n) || (write && !writable))
+    if (!ready(lun) || n > max_io || !media_range(capacity, address, n) || (write && !writable))
         goto done;
     if (io.active && io.epoch != atomic_load(&epoch)) {
         io.active = false;
@@ -530,8 +556,7 @@ static int32_t transfer(uint8_t lun, uint32_t lba, uint32_t off, void *buf, uint
     io.offset = address;
     io.usb_length = n;
     io.length = write ? n
-                      : (uint32_t)((capacity - address) < MEDIA_MAX_IO ? (capacity - address)
-                                                                       : MEDIA_MAX_IO);
+                      : (uint32_t)((capacity - address) < max_io ? (capacity - address) : max_io);
     io.op = write ? M_WRITE : M_READ;
     io.deadline = esp_timer_get_time() + IO_TIMEOUT_US;
     io.usb = buf;

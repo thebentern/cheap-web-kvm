@@ -7,6 +7,7 @@ import {
   encode,
   HEADER,
   MAX_IO,
+  SERIAL_MAX_IO,
   OP,
   type Message,
 } from '../app/utils/media/protocol'
@@ -57,7 +58,7 @@ describe('bounded USB serial framing', () => {
       (b) => media.push(b),
     )
     cleanup.push(() => parser.reset())
-    expect(() => serialMediaFrame(new Uint8Array(HEADER + MAX_IO + 1))).toThrow(
+    expect(() => serialMediaFrame(new Uint8Array(HEADER + SERIAL_MAX_IO + 1))).toThrow(
       /length/,
     )
     parser.feed(new Uint8Array([75, 86, 83, 49, 255, 255]))
@@ -66,6 +67,23 @@ describe('bounded USB serial framing', () => {
     parser.feed(frame(0x82, [0]))
     expect(controls).toEqual([frame(0x82, [0])])
     expect(media).toHaveLength(0)
+  })
+  it('keeps UART framing at 8 KiB while the network protocol permits 32 KiB', () => {
+    const media: Uint8Array[] = [], controls: Uint8Array[] = []
+    const parser = new SerialDemux((bytes) => controls.push(bytes), (bytes) => media.push(bytes))
+    cleanup.push(() => parser.reset())
+    const full = encode({ ...packet(), length: SERIAL_MAX_IO, data: new Uint8Array(SERIAL_MAX_IO).fill(42) })
+    parser.feed(serialMediaFrame(full))
+    expect(media).toEqual([full])
+    const larger = encode({ ...packet(), length: MAX_IO, data: new Uint8Array(MAX_IO).fill(42) })
+    expect(() => serialMediaFrame(larger)).toThrow(/length/)
+    const oversized = new Uint8Array(6 + larger.length)
+    oversized.set([75, 86, 83, 49, larger.length & 255, larger.length >>> 8])
+    oversized.set(larger, 6)
+    parser.feed(oversized)
+    parser.feed(frame(0x82, [0]))
+    expect(media).toEqual([full])
+    expect(controls).toEqual([frame(0x82, [0])])
   })
 })
 
@@ -145,6 +163,14 @@ async function serialBoard(
 }
 
 describe('USB media on the real serial composable', () => {
+  it('requests faster negotiation but benchmarks only the advertised 8 KiB serial ceiling', async () => {
+    const { c, mediaSent } = await serialBoard()
+    const hello = mediaSent.find((m) => m.op === OP.HELLO)!
+    expect(hello.offset).toBe(MAX_IO)
+    expect(hello.data).toHaveLength(0)
+    await c.benchmark(0)
+    expect(mediaSent.find((m) => m.op === OP.ECHO)?.data).toHaveLength(SERIAL_MAX_IO)
+  })
   it('serves durable media writes while HID transactions remain independent, and releases only media', async () => {
     let commit!: () => void
     const { link, c, incoming, mediaSent, wireSent } = await serialBoard({

@@ -8,7 +8,7 @@ Bluetooth HID remain compatible with older clients. Video still comes from the
 HDMI capture stick.
 
 The normal disk backend is a browser-selected image or a browser-created FAT32
-volume. Only requested sectors, an 8 KiB read-ahead cache, and bounded transport
+volume. Only requested sectors, a bounded read-ahead cache, and bounded transport
 buffers live on the ESP32. The entire source never has to fit in ESP32 RAM or
 flash. An explicitly selected, separate embedded-image build is available only
 for USB bring-up.
@@ -349,7 +349,8 @@ For an actual board:
   in the browser before connecting. Test media echo for at least 30 seconds at each
   candidate with control traffic active, then verify target sector reads. Use
   921600 in both firmware and browser to restore the standard configuration.
-- With Wi-Fi firmware, choose **Measure link** while ejected. It verifies 8 KiB
+- With Wi-Fi firmware, choose **Test connection speed** while ejected. It verifies echoes
+  at the connection's negotiated size (up to 32 KiB; older firmware uses 8 KiB)
   echoes and reports aggregate round-trip payload throughput and worst RTT.
   This measures the browser/board path (plus the helper if used), **not USB or durable write speed**.
 - During sustained target reads/writes record the panel's actual transfer counts,
@@ -366,8 +367,14 @@ Nagle buffering and the peer's delayed acknowledgment. The media sender also
 combines the WebSocket header and payload in one transport call, so small READ
 requests use one TLS record. Partial socket writes are completed before another
 frame is sent. Wi-Fi modem power saving
-is explicitly disabled to favor latency on this USB-powered device. These settings
-do not increase the 8 KiB request limit or change write acknowledgment rules.
+is explicitly disabled to favor latency on this USB-powered device.
+
+Current clients request a 32 KiB Wi-Fi read-ahead window, amortizing each network
+and storage-worker round trip across more sectors. The board allocates the larger
+buffers from PSRAM; if unavailable, it retains the 8 KiB limit. Older clients and
+USB UART also retain 8 KiB. Only one disk request remains outstanding, writes still
+wait for strict storage commit, and every write or medium change invalidates the
+read-ahead cache. The client validates the advertised limit before using it.
 
 The panel's read rate uses recent byte deltas and falls to zero when idle.
 **Disk details & download** also shows browser response timing: receiving a READ
