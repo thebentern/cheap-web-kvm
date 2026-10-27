@@ -679,3 +679,50 @@ the private Quad-PSRAM build and compiled USB descriptor checks pass.
 passes. [Machine-readable reliability evidence](wifi-media-reliability.json)
 records the scopes and measurements. Actual Wyse boot validation follows the
 transport qualification.
+
+### Userspace boot: heartbeat congestion and TLS accept stalls
+
+The real Wyse boot subsequently loaded Linux and its initrd, reaching
+118,007,808 successful remote-read bytes. It then lost the virtual medium during
+userspace startup. The browser's exact error was **Too many pending controls**;
+the network receive/send/invalid-frame counters remained zero. Its green control
+indicator used USB, so it did not establish that Wi-Fi media was still connected.
+The maximum successful READ turnaround reached 2.603 seconds, close to the old
+three-second IO cutoff. This later failure means the first framing correction
+and transport-only stress test were insufficient to establish a complete OS boot.
+
+A second controlled fault test opened an authenticated, disk-free WSS connection,
+then held one additional TCP connection to HTTPS without sending a ClientHello.
+That new connection blocked the HTTP server task for six seconds. An existing
+valid ECHO waited 6,007 ms and returned stale-session status `3`; the periodic
+heartbeat also returned stale. IDF 5.4's synchronous server handshake retries
+`WANT_READ`/`WANT_WRITE` without a total limit, so the per-receive socket timeout
+does not bound the whole handshake. The old client also scheduled new heartbeats
+while previous ones remained pending, eventually closing its own connection when
+the four-control window filled.
+
+The prepared follow-up permits only one pending heartbeat, with a 12-second
+heartbeat-only reply deadline and unchanged four-second ordinary controls. Disk
+IO receives a bounded ten-second window; unfinished IO retains that window rather
+than being canceled by the five-second idle lease. Post-deadline replies are
+rejected even if polling was delayed. First-cause counters distinguish an IO
+timeout, idle expiry, backend error and disconnect before cleanup obscures them.
+
+A scoped server-session/BIO wrapper adds a two-second total handshake budget,
+checked at network IO and SDK return. It preserves certificate/configuration
+handling in the real SDK, isolates state by task and descriptor, and restores
+the accepted socket's original timeouts. It does not close descriptors or alter
+already-established TLS streams. Native tests cover retry/progress loops,
+restoration/error paths and task/socket isolation; delayed READ/WRITE tests keep
+their original stale-ID, reset and strict-commit guards. All 270 web tests and the
+private board build/descriptor checks pass. The six-second fault test must be
+repeated on the deployed follow-up before claiming it is resolved in hardware.
+[CI for the follow-up](https://github.com/thebentern/cheap-web-kvm/actions/runs/40438444302)
+also passes. The programming port was absent during the deployment attempt, so
+no firmware was written; the connected board has not yet received this follow-up.
+
+The OS also reports a write-protected disk. Its filesystem check exits with
+operational-error status `8`, which does not itself prove filesystem corruption.
+A normal writable OS-disk boot should use the browser's copy-on-write overlay;
+the original cached image remains unchanged. This setting is separate from the
+transport fixes and requires safe target shutdown/ejection before changing it.

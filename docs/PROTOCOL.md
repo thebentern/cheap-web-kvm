@@ -459,7 +459,12 @@ SYNCHRONIZE CACHE (`35`) succeeds only with a usable medium and no pending IO;
 otherwise it fails. Partial SCSI writes can have committed earlier chunks even
 when a later chunk fails. The driver never promises rollback.
 
-IO deadline is 3 s; heartbeat period 1 s, lease 5 s. On timeout/disconnect the
+IO deadline is 10 s. The idle lease remains 5 s; unfinished IO retains its full
+deadline, and matching successful replies renew the lease. The browser schedules
+heartbeats every second with at most one in flight and a 12 s reply deadline;
+other controls retain 4 s. The HTTPS server bounds new handshakes through a 2 s
+total budget checked at TLS BIO calls and SDK return, preserving certificate
+verification and existing-session timeouts. On timeout/disconnect the
 medium becomes unavailable and pending IO fails. A transaction already in the
 browser may still finish after a timeout; its data stays persisted, but its stale
 ACK cannot revive the medium. User recovery requires target unmount/power-off,

@@ -331,5 +331,231 @@
     "consoleLoadedDuringTransfer": true,
     "targetReadBytes": 0,
     "scope": "Read-only disposable fixture inserted; 8KiB ECHO transport traffic, not USB MSC throughput or an OS boot."
+  },
+  "subsequentBrowserBoot": {
+    "clientError": "Too many pending controls; wait for the current action",
+    "diagnostics": {
+      "uptimeMs": 2761531,
+      "freeHeap": 2036923,
+      "minimumHeap": 1878695,
+      "largestBlock": 1835008,
+      "tlsError": 0,
+      "tlsCode": 80,
+      "tlsFlags": 0,
+      "bleAdvertising": true,
+      "bleAdvertisingPauseRequested": false,
+      "wifiPowerSave": 0,
+      "wifiMode": 3,
+      "wifiRssi": -68,
+      "wifiChannel": 1,
+      "media": {
+        "reads": 14410,
+        "readBytes": 118007808,
+        "readTimeUs": 533172675,
+        "readMaxUs": 2603182,
+        "cacheBytes": 57611776,
+        "accepts": 8,
+        "rejects": 0,
+        "lastMediaRejection": 0
+      },
+      "network": {
+        "closes": 8,
+        "receiveErrors": 0,
+        "sendErrors": 0,
+        "invalidFrames": 0,
+        "lastFailure": 6,
+        "lastError": 0,
+        "lastErrno": 0,
+        "lastFrameType": 2,
+        "lastFrameFinal": 1,
+        "lastFrameLength": 8224,
+        "lastCloseReads": 14410,
+        "lastCloseReadKiB": 115242
+      }
+    },
+    "screenFindings": [
+      "Linux kernel and initrd loaded",
+      "Write Protect is on; e2fsck operational error8",
+      "Medium not present and READ IO errors during userspace startup"
+    ],
+    "scope": "Real browser-backed Wyse boot; initial framing fix did not address this later heartbeat/accept-stall failure."
+  },
+  "tlsAcceptStallBefore": [
+    {
+      "event": "cookie_pairing_ready",
+      "tlsValidated": true,
+      "cookieStoredInMemoryOnly": true
+    },
+    {
+      "event": "control_sent",
+      "label": "baseline-hello",
+      "op": 1,
+      "id": 1,
+      "dataBytes": 0,
+      "atMs": 1238.572
+    },
+    {
+      "event": "control_reply",
+      "label": "baseline-hello",
+      "op": 1,
+      "id": 1,
+      "flags": 0,
+      "dataBytes": 8,
+      "elapsedMs": 20.585,
+      "atMs": 1258.056,
+      "crcValidated": true
+    },
+    {
+      "event": "control_sent",
+      "label": "baseline-heartbeat",
+      "op": 5,
+      "id": 2,
+      "dataBytes": 0,
+      "atMs": 1259.216
+    },
+    {
+      "event": "control_reply",
+      "label": "baseline-heartbeat",
+      "op": 5,
+      "id": 2,
+      "flags": 0,
+      "dataBytes": 1,
+      "elapsedMs": 61.965,
+      "atMs": 1320.572,
+      "crcValidated": true
+    },
+    {
+      "event": "control_sent",
+      "label": "baseline-echo",
+      "op": 4,
+      "id": 3,
+      "dataBytes": 8192,
+      "atMs": 1321.956
+    },
+    {
+      "event": "control_reply",
+      "label": "baseline-echo",
+      "op": 4,
+      "id": 3,
+      "flags": 0,
+      "dataBytes": 8192,
+      "elapsedMs": 1054.743,
+      "atMs": 2375.699,
+      "crcValidated": true
+    },
+    {
+      "event": "baseline_ready",
+      "elapsedMs": 1054.743,
+      "atMs": 2375.904,
+      "insertedAnyMedium": false
+    },
+    {
+      "event": "plain_tcp_connected_no_client_hello",
+      "holdMs": 6000,
+      "atMs": 2525.318,
+      "sentBytes": 0
+    },
+    {
+      "event": "control_sent",
+      "label": "echo-during-incomplete-handshake",
+      "op": 4,
+      "id": 4,
+      "dataBytes": 8192,
+      "atMs": 2679.517
+    },
+    {
+      "event": "control_sent",
+      "label": "periodic-heartbeat",
+      "op": 5,
+      "id": 5,
+      "dataBytes": 0,
+      "atMs": 3377.388
+    },
+    {
+      "event": "plain_tcp_hold_complete",
+      "atMs": 8527.427
+    },
+    {
+      "event": "plain_tcp_closed",
+      "atMs": 8600.861
+    },
+    {
+      "event": "control_reply",
+      "label": "echo-during-incomplete-handshake",
+      "op": 4,
+      "id": 4,
+      "flags": 3,
+      "dataBytes": 0,
+      "elapsedMs": 6007.323,
+      "atMs": 8685.101,
+      "crcValidated": true
+    },
+    {
+      "event": "control_reply",
+      "label": "periodic-heartbeat",
+      "op": 5,
+      "id": 5,
+      "flags": 3,
+      "dataBytes": 0,
+      "elapsedMs": 5308.457,
+      "atMs": 8685.445,
+      "crcValidated": true
+    },
+    {
+      "event": "control_sent",
+      "label": "post-probe-heartbeat",
+      "op": 5,
+      "id": 6,
+      "dataBytes": 0,
+      "atMs": 8936.034
+    },
+    {
+      "event": "control_reply",
+      "label": "post-probe-heartbeat",
+      "op": 5,
+      "id": 6,
+      "flags": 3,
+      "dataBytes": 0,
+      "elapsedMs": 73.541,
+      "atMs": 9009.142,
+      "crcValidated": true
+    },
+    {
+      "event": "stall_probe_result",
+      "baselineEchoMs": 1054.743,
+      "duringEchoMs": 6007.323,
+      "duringEchoStatus": 3,
+      "postHeartbeatStatus": 3,
+      "heartbeatReplies": 1,
+      "heartbeatFailures": 1,
+      "remoteCloseCode": null,
+      "exceedsBrowser4sControlDeadline": true,
+      "activePeerHealthy": false,
+      "insertedAnyMedium": false,
+      "openedAnyImage": false,
+      "scope": "One incomplete new TCP443 connection versus an authenticated existing disk-free WSS owner; no ClientHello, INSERT, HID or disk traffic"
+    }
+  ],
+  "preparedFollowUp": {
+    "candidateCommit": "d97b3d3579da722bb65638080d3164899f4192f2",
+    "status": "Built and software-tested; not installed",
+    "checks": {
+      "webTestsPassed": 270,
+      "typecheck": "pass",
+      "productionGeneration": "pass",
+      "nativeMediaHidTlsTests": "pass",
+      "privateQuadPsramBuild": "pass",
+      "compiledUsbDescriptors": "pass"
+    },
+    "lastDeploymentAttempt": {
+      "result": "No firmware written",
+      "reason": "Programming USB port absent"
+    },
+    "hardwareValidationRequired": [
+      "Repeat incomplete HTTPS handshake fault without losing the existing media session",
+      "Recheck split WebSocket headers",
+      "Safely enable persistent writable overlay and complete a Wyse OS boot"
+    ],
+    "savedUserImagesScanned": false
   }
 }

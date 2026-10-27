@@ -619,6 +619,10 @@ onMounted(() => {
               Insert into target
             </button>
           </div>
+          <p v-if="meta.kind === 'boot'" class="kvm-hint mt-2">
+            Enable writes for a full OS disk. Changes are saved separately;
+            your original image stays unchanged.
+          </p>
           <div v-if="writeMode && !persistent" class="mt-3">
             <p class="kvm-hint">
               Allow browser storage to keep target writes before inserting.

@@ -295,8 +295,13 @@ this avoids presenting a partly updated FAT as a clean filesystem. Target-create
 filesystem corruption is also reported when parsing detects it; an actual disk
 checker remains advisable after an unclean target shutdown.
 
-Media IO has a 3-second deadline. Heartbeats run every second with a 5-second
-lease; matching successful IO replies also renew that lease. A timeout,
+Media IO has a 10-second deadline. Heartbeats run every second with at most one
+waiting for a reply. The idle lease is 5 seconds; an outstanding disk request
+retains its full IO deadline, and matching successful IO replies renew the lease.
+Heartbeat replies have a 12-second client deadline; other controls retain their
+4-second deadline. New HTTPS handshakes have a separate 2-second IO budget so
+an incomplete new connection cannot indefinitely block the existing media stream.
+A timeout,
 suspension, failed storage commit, or socket loss makes the
 medium unavailable and fails pending requests; it never fabricates zeros or
 reports a failed write as successful. Already committed writes remain saved.
