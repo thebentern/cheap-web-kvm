@@ -591,3 +591,37 @@ re-enumeration allowed testing to continue. An earlier exclusive-open log named
 Edge, but subsequent inspection found no current Edge claim, so that log does
 not establish the mount failure's cause. Edge remained open during the successful
 measurements.
+
+### Direct browser pairing and connection rejection
+
+Build `5fb3e72` was installed on the connected board with application-flash
+verification, preserving NVS. In the actual Edge console, **Pair with USB**
+reused the previously granted programming port, read the physical certificate
+identity, paired the browser without manual token entry, and connected Wi-Fi
+media. The physical connection remained open. **Use Wi-Fi for keyboard & mouse**
+then switched control successfully, and the console showed control linked and
+live video while the target began reading its boot image. Board diagnostics
+recorded 239 successful remote reads / 1,942,528 bytes at one observation.
+No saved image was scanned, and this is not evidence of a completed OS boot.
+
+Two additional authenticated clients (same-origin cookie and helper-token
+authentication) received a valid WebSocket CLOSE `4009` while the browser owned
+media. Diagnostics retained one accepted owner and counted two rejections; the
+active browser continued serving the target. This checks that rejected clients
+do not replace or disconnect the owner. The earlier generic browser failure did
+not preserve enough evidence to establish which rejection or transport failure
+triggered it.
+
+The server previously emitted HTTP error bytes after IDF had already upgraded
+the connection. Rejections now use WebSocket CLOSE frames (`4001` authorization,
+`4009` existing owner). The client preserves the original failure through pending
+HELLO/control requests and displays fixed safe descriptions; arbitrary server
+reason text is not shown. Public diagnostics contain only counters and numeric
+rejection codes, never credentials.
+
+All 265 web tests, type checking, static generation, native media/HID tests,
+the private Quad-PSRAM build and compiled descriptor checks pass.
+[CI for the installed code](https://github.com/thebentern/cheap-web-kvm/actions/runs/40427074041)
+also passes. New tests cover physical identity checks before/after token reads,
+canceled/unsupported pairing, cookie failures, media locks, exact CLOSE bytes,
+partial sends and preservation of the original connection failure.
