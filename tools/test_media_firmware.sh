@@ -16,4 +16,7 @@ ${CC:-cc} -std=c11 -Wall -Wextra -Werror -Ifirmware/main firmware/test/media_ser
 ${CC:-cc} -std=c11 -Wall -Wextra -Werror -Ifirmware/main firmware/test/media_ws_test.c firmware/main/media_ws.c -o "$TEST_BINARY"
 "$TEST_BINARY"
 
+${CC:-cc} -std=c11 -Wall -Wextra -Werror -Ifirmware/test/ws_recv_stubs -Ifirmware/test/stubs -Ifirmware/main firmware/test/media_ws_recv_test.c firmware/main/media_ws_recv.c -o "$TEST_BINARY"
+"$TEST_BINARY"
+
 ./tools/test_hid_firmware.sh

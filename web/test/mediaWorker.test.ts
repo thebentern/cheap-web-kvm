@@ -9,13 +9,31 @@ describe('media storage worker ownership', () => {
       { resolve: (v: any) => void; reject: (e: Error) => void }
     >()
     let id = 0
+    let failNextTransfer = false
+    const transferred: { source: ArrayBuffer; exactRange: boolean }[] = []
     const scope: any = {
-      postMessage(m: any) {
+      postMessage(m: any, transfer: Transferable[] = []) {
         if (!m.id) return
+        if (failNextTransfer && transfer.length) {
+          failNextTransfer = false
+          throw new DOMException('Synthetic transfer rejection', 'DataCloneError')
+        }
+        const source = m.value instanceof Uint8Array ? m.value.buffer : null
+        if (source)
+          transferred.push({
+            source,
+            exactRange:
+              m.value.byteOffset === 0 &&
+              m.value.byteLength === source.byteLength &&
+              transfer.length === 1 &&
+              transfer[0] === source,
+          })
+        // Model real worker ownership transfer, including sender detachment.
+        const delivered = structuredClone(m, { transfer })
         const p = waiting.get(m.id)!
         waiting.delete(m.id)
-        if (m.error) p.reject(new Error(m.error))
-        else p.resolve(m.value)
+        if (delivered.error) p.reject(new Error(delivered.error))
+        else p.resolve(delivered.value)
       },
     }
     vi.stubGlobal('indexedDB', indexedDB)
@@ -87,6 +105,20 @@ describe('media storage worker ownership', () => {
       await expect(
         rpc('write', { offset: 0, data: new Uint8Array([1]) }),
       ).rejects.toThrow(/read-only/)
+      const first = await rpc('read', { offset: 0, length: 512 }),
+        expected = first.slice()
+      expect(expected.some((byte: number) => byte !== 0)).toBe(true)
+      first.fill(0) // Main-thread mutation must not change the worker's page cache.
+      expect(await rpc('read', { offset: 0, length: 512 })).toEqual(expected)
+      failNextTransfer = true
+      await expect(rpc('read', { offset: 0, length: 512 })).rejects.toThrow(
+        /Synthetic transfer rejection/,
+      )
+      expect(waiting.size).toBe(0)
+      expect(await rpc('read', { offset: 0, length: 512 })).toEqual(expected)
+      expect(transferred.length).toBeGreaterThan(2)
+      expect(transferred.every(({ exactRange }) => exactRange)).toBe(true)
+      expect(transferred.every(({ source }) => source.byteLength === 0)).toBe(true)
       await rpc('eject')
       await rpc('close')
     } finally {

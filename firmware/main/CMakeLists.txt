@@ -29,6 +29,7 @@ idf_component_register(
         "wifi_settings.c"
         "media_protocol.c"
         "media_ws.c"
+        "media_ws_recv.c"
         "media_serial.c"
         "boot_repeat.c"
         "ch9329.c"
@@ -60,6 +61,15 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE KVM_BUILD_TIME=${kvm_build_t
 
 # Cancel application I/O on a Bulk-Only Transport reset before buffer reuse.
 target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=mscd_control_xfer_cb")
+
+# IDF 5.4 assumes fixed WebSocket header fields arrive in a single recv call.
+if(CONFIG_KVM_MEDIA_WIFI AND CONFIG_HTTPD_WS_SUPPORT)
+    # Pull this wrapper-only object out of main's archive before IDF resolves
+    # its HTTP server references; the wrapper has no normal application entry.
+    target_link_options(${COMPONENT_LIB} INTERFACE
+        "-Wl,--undefined=__wrap_httpd_recv_with_opt"
+        "-Wl,--wrap=httpd_recv_with_opt")
+endif()
 
 if(CONFIG_KVM_MEDIA_LOCAL_PROOF)
     set(proof "${PROJECT_DIR}/local-proof.img")

@@ -19,6 +19,7 @@
 #include "esp_wifi.h"
 #endif
 #include "esp_log.h"
+#include "esp_timer.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -34,6 +35,19 @@ static httpd_handle_t server;
 enum { MEDIA_REJECT_NONE, MEDIA_REJECT_TRANSPORT = 1011, MEDIA_REJECT_AUTH = 4001,
        MEDIA_REJECT_OWNER = 4009 };
 static atomic_uint handshake_accepts, handshake_rejects, last_media_rejection;
+enum { NET_FAILURE_NONE, NET_FAILURE_HEADER, NET_FAILURE_FRAME,
+       NET_FAILURE_PAYLOAD, NET_FAILURE_REPLY, NET_FAILURE_READ, NET_FAILURE_CLOSED };
+static atomic_uint network_closes, receive_errors, send_errors, invalid_frames;
+static atomic_uint last_frame_type, last_frame_final, last_frame_length;
+static atomic_uint last_close_reads, last_close_read_kib;
+static atomic_int owner_failure, last_network_failure, last_network_error, last_network_errno;
+static void network_failure(int stage, int error)
+{
+    atomic_store(&last_network_errno, stage == NET_FAILURE_CLOSED ? 0 : errno);
+    atomic_store(&last_network_error, error);
+    atomic_store(&last_network_failure, stage);
+    atomic_store(&owner_failure, stage);
+}
 #if CONFIG_KVM_DEVICE_WEB
 static httpd_handle_t secure_server;
 static uint8_t certificate_ips[8];
@@ -67,17 +81,23 @@ static esp_err_t diagnostics(httpd_req_t *req)
         wifi_rssi = ap.rssi;
         wifi_channel = ap.primary;
     }
-    char body[512];
-    int n = snprintf(body, sizeof(body), "{\"freeHeap\":%u,\"minimumHeap\":%u,\"largestBlock\":%u,\"tlsError\":%d,\"tlsCode\":%d,\"tlsFlags\":%d,\"bleAdvertising\":%s,\"bleAdvertisingPauseRequested\":%s,"
+    char body[1024];
+    int n = snprintf(body, sizeof(body), "{\"uptimeMs\":%" PRIi64 ",\"freeHeap\":%u,\"minimumHeap\":%u,\"largestBlock\":%u,\"tlsError\":%d,\"tlsCode\":%d,\"tlsFlags\":%d,\"bleAdvertising\":%s,\"bleAdvertisingPauseRequested\":%s,"
         "\"wifiPowerSave\":%d,\"wifiMode\":%d,\"wifiRssi\":%d,\"wifiChannel\":%u,"
-        "\"media\":{\"reads\":%" PRIu32 ",\"readBytes\":%" PRIu64 ",\"readTimeUs\":%" PRIu64 ",\"readMaxUs\":%" PRIu64 ",\"cacheBytes\":%" PRIu64 ",\"accepts\":%u,\"rejects\":%u,\"lastMediaRejection\":%u}}",
+        "\"media\":{\"reads\":%" PRIu32 ",\"readBytes\":%" PRIu64 ",\"readTimeUs\":%" PRIu64 ",\"readMaxUs\":%" PRIu64 ",\"cacheBytes\":%" PRIu64 ",\"accepts\":%u,\"rejects\":%u,\"lastMediaRejection\":%u},"
+        "\"network\":{\"closes\":%u,\"receiveErrors\":%u,\"sendErrors\":%u,\"invalidFrames\":%u,\"lastFailure\":%d,\"lastError\":%d,\"lastErrno\":%d,\"lastFrameType\":%u,\"lastFrameFinal\":%u,\"lastFrameLength\":%u,\"lastCloseReads\":%u,\"lastCloseReadKiB\":%u}}",
+        esp_timer_get_time() / 1000,
         (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT), (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
         (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), atomic_load(&tls_last_error), atomic_load(&tls_code), atomic_load(&tls_flags),
         kvm_ble_advertising_active() ? "true" : "false",
         kvm_ble_advertising_pause_requested() ? "true" : "false",
         wifi_power_save, wifi_mode, wifi_rssi, wifi_channel,
         metrics.reads, metrics.read_bytes, metrics.read_time_us, metrics.read_max_us, metrics.cache_bytes,
-        atomic_load(&handshake_accepts), atomic_load(&handshake_rejects), atomic_load(&last_media_rejection));
+        atomic_load(&handshake_accepts), atomic_load(&handshake_rejects), atomic_load(&last_media_rejection),
+        atomic_load(&network_closes), atomic_load(&receive_errors), atomic_load(&send_errors), atomic_load(&invalid_frames),
+        atomic_load(&last_network_failure), atomic_load(&last_network_error), atomic_load(&last_network_errno),
+        atomic_load(&last_frame_type), atomic_load(&last_frame_final), atomic_load(&last_frame_length),
+        atomic_load(&last_close_reads), atomic_load(&last_close_read_kib));
     if (n < 0 || (size_t)n >= sizeof(body))
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Diagnostics unavailable");
     httpd_resp_set_type(req, "application/json");
@@ -129,6 +149,14 @@ static void closed(httpd_handle_t h, int fd)
     xSemaphoreTake(net_lock, portMAX_DELAY);
     if (atomic_load(&owner) == fd && atomic_load(&owner_server) == h) {
         // The other HTTP task cannot claim a replacement until teardown ends.
+        if (!atomic_load(&owner_failure)) network_failure(NET_FAILURE_CLOSED, 0);
+        atomic_fetch_add(&network_closes, 1);
+        media_metrics_t metrics;
+        if (kvm_media_metrics(&metrics)) {
+            atomic_store(&last_close_reads, metrics.reads);
+            uint64_t kib = metrics.read_bytes / 1024;
+            atomic_store(&last_close_read_kib, kib > UINT32_MAX ? UINT32_MAX : (uint32_t)kib);
+        }
         kvm_media_disconnect();
         atomic_store(&owner_server, NULL);
         atomic_store(&owner, -1);
@@ -166,6 +194,7 @@ static esp_err_t ws(httpd_req_t *req)
         }
         atomic_store(&owner_server, req->handle);
         atomic_store(&owner, fd);
+        atomic_store(&owner_failure, NET_FAILURE_NONE);
         atomic_fetch_add(&handshake_accepts, 1);
         xSemaphoreGive(net_lock);
         return ESP_OK;
@@ -174,18 +203,35 @@ static esp_err_t ws(httpd_req_t *req)
         return ESP_FAIL;
     httpd_ws_frame_t frame = {0};
     esp_err_t err = httpd_ws_recv_frame(req, &frame, 0);
-    if (err != ESP_OK)
+    if (err != ESP_OK) {
+        atomic_fetch_add(&receive_errors, 1);
+        network_failure(NET_FAILURE_HEADER, err);
         return err;
-    if (frame.type != HTTPD_WS_TYPE_BINARY || !frame.final || frame.len > sizeof(rx))
+    }
+    atomic_store(&last_frame_type, frame.type);
+    atomic_store(&last_frame_final, frame.final);
+    atomic_store(&last_frame_length, frame.len > UINT32_MAX ? UINT32_MAX : (uint32_t)frame.len);
+    if (frame.type != HTTPD_WS_TYPE_BINARY || !frame.final || frame.len > sizeof(rx)) {
+        atomic_fetch_add(&invalid_frames, 1);
+        network_failure(NET_FAILURE_FRAME, ESP_ERR_INVALID_SIZE);
         return ESP_FAIL;
+    }
     frame.payload = rx;
     err = httpd_ws_recv_frame(req, &frame, sizeof(rx));
-    if (err != ESP_OK)
+    if (err != ESP_OK) {
+        atomic_fetch_add(&receive_errors, 1);
+        network_failure(NET_FAILURE_PAYLOAD, err);
         return err;
+    }
     size_t n = kvm_media_command(rx, frame.len, reply + MEDIA_WS_PREFIX);
     if (!n)
         return ESP_OK;
-    return send_binary(req->handle, httpd_req_to_sockfd(req), reply, n);
+    err = send_binary(req->handle, httpd_req_to_sockfd(req), reply, n);
+    if (err != ESP_OK) {
+        atomic_fetch_add(&send_errors, 1);
+        network_failure(NET_FAILURE_REPLY, err);
+    }
+    return err;
 }
 /* Send from the HTTP task too: serializes control replies and USB requests on
  * the socket. A single outstanding work item bounds buffering when Wi-Fi stalls. */
@@ -203,8 +249,11 @@ static void send_work(void *arg)
     if (kvm_media_poll(tx + MEDIA_WS_PREFIX, &n)) {
         int fd = atomic_load(&owner);
         if (fd >= 0) {
-            if (send_binary(handle, fd, tx, n) != ESP_OK)
+            if (send_binary(handle, fd, tx, n) != ESP_OK) {
+                atomic_fetch_add(&send_errors, 1);
+                network_failure(NET_FAILURE_READ, ESP_FAIL);
                 httpd_sess_trigger_close(handle, fd);
+            }
         } else
             kvm_media_disconnect();
     }

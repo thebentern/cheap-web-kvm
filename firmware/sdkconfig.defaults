@@ -62,6 +62,12 @@ CONFIG_TINYUSB_MSC_ENABLED=n
 CONFIG_HTTPD_WS_SUPPORT=y
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=2048
 CONFIG_LWIP_MAX_SOCKETS=16
+# Fit a complete 8 KiB media response in one TCP window and TLS record.
+# Large buffers can use PSRAM; disk requests remain bounded to one at a time.
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=16384
+CONFIG_LWIP_TCP_WND_DEFAULT=16384
+CONFIG_LWIP_TCP_RECVMBOX_SIZE=12
+CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=16384
 
 # Wi-Fi + BLE + MSC needs more than the 1 MiB default factory app slot.
 CONFIG_PARTITION_TABLE_CUSTOM=y

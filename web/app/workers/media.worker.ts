@@ -277,7 +277,15 @@ self.onmessage = (e) => {
   }
   queue = queue.then(async () => {
     try {
-      self.postMessage({ id, value: await call(method, args ?? {}) })
+      const value = await call(method, args ?? {})
+      // Disk.read returns a fresh exact-length buffer, never a cached page.
+      // Transfer its ownership instead of copying every block to the main thread.
+      self.postMessage(
+        { id, value },
+        method === 'read' && value instanceof Uint8Array
+          ? [value.buffer as ArrayBuffer]
+          : [],
+      )
     } catch (e) {
       self.postMessage({ id, error: (e as Error).message, meta: metadata() })
     }

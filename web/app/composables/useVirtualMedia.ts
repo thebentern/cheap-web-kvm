@@ -97,7 +97,7 @@ function rpc<T = any>(method: string, args?: unknown): Promise<T> {
       error.value =
         'Storage worker failed. Eject/unmount the target before reloading; committed writes are preserved.'
       uncertain.value ||= inserted.value
-      connection?.close()
+      connection?.close(new Error(error.value))
       stopActivity()
       connected.value = false
       for (const p of pending.values()) p.reject(new Error(error.value!))

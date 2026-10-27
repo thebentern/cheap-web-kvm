@@ -4,6 +4,7 @@ const state = vi.hoisted(() => ({
   addresses: [] as string[],
   close: vi.fn(),
   connections: [] as any[],
+  workers: [] as any[],
   events: [] as string[],
   token: '',
   physicalFingerprint: '',
@@ -51,8 +52,8 @@ vi.mock('../app/utils/media/client', () => ({
       if (state.mediaFailure) throw new Error(state.mediaFailure)
       state.addresses.push(address)
     }
-    close() {
-      state.close()
+    close(reason?: Error) {
+      state.close(reason)
     }
   },
 }))
@@ -71,6 +72,7 @@ async function setup(onboard = true, initialInfoFailures = 0) {
   vi.resetModules()
   state.addresses = []
   state.connections = []
+  state.workers = []
   state.close.mockClear()
   state.events = []
   state.token = TOKEN
@@ -156,6 +158,9 @@ async function setup(onboard = true, initialInfoFailures = 0) {
   })
   class Worker {
     onmessage?: (event: { data: unknown }) => void
+    constructor() {
+      state.workers.push(this)
+    }
     postMessage(message: { id: number; method: string }) {
       if (!['saved', 'insert', 'eject'].includes(message.method))
         throw new Error(`Unexpected worker operation ${message.method}`)
@@ -239,6 +244,19 @@ describe('direct on-board media connection', () => {
     expect(media.error.value).toBe(reason)
     hide()
     expect(media.error.value).toBe(reason)
+    expect(media.uncertain.value).toBe(true)
+  })
+  it('closes media with the storage worker failure cause instead of a generic close error', async () => {
+    const { media } = await setup()
+    media.boardToken.value = TOKEN
+    await media.connect()
+    media.inserted.value = true
+    state.workers.at(-1)!.onerror()
+    const reason = state.close.mock.calls.at(-1)![0] as Error
+    expect(reason).toBeInstanceOf(Error)
+    expect(reason.message).toBe(media.error.value)
+    expect(reason.message).toMatch(/Storage worker failed/)
+    expect(media.connected.value).toBe(false)
     expect(media.uncertain.value).toBe(true)
   })
   it('shows recent read speed, clears it while idle, and stops sampling on ejection', async () => {
