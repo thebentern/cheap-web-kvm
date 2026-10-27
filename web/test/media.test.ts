@@ -11,6 +11,7 @@ import {
 } from '../app/utils/media/fat'
 import {
   PersistentDisk,
+  PAGE_SIZE,
   fingerprint,
   type Disk,
   type Volume,
@@ -30,7 +31,7 @@ class MemoryDisk implements Disk {
   }
 }
 describe('media framing', () => {
-  it('matches the reference CRC for empty, split, legacy and 32 KiB payloads', () => {
+  it('matches the reference CRC for empty, split, legacy and 128 KiB payloads', () => {
     const reference = (bytes: Uint8Array) => {
       let crc = 0xffffffff
       for (const byte of bytes) {
@@ -46,7 +47,7 @@ describe('media framing', () => {
       expect(crc32([bytes.subarray(0, 5), bytes.subarray(5, 801), bytes.subarray(801)])).toBe(reference(bytes))
     }
   })
-  it('round-trips a 32 KiB payload at a 64-bit offset and rejects absolute oversize frames', () => {
+  it('round-trips a 128 KiB payload at a 64-bit offset and rejects absolute oversize frames', () => {
     const input = {
       op: 0x90, flags: 0, id: 42, session: 7,
       offset: 8 * 1073741824,
@@ -246,7 +247,7 @@ beforeEach(() => {
 })
 describe('durable copy-on-write disk', () => {
   it('persists unaligned cross-page writes atomically across close/reopen and preserves source', async () => {
-    const source = new File([new Uint8Array(131072).fill(7)], 'disk.img'),
+    const source = new File([new Uint8Array(4 * PAGE_SIZE).fill(7)], 'disk.img'),
       hash = await fingerprint(source)
     const meta: Volume = {
       id: crypto.randomUUID(),

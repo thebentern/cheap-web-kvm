@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { decode, encode, MAX_IO, SERIAL_MAX_IO, OP, type Message } from './protocol'
+import { decode, encode, MAX_IO, LEGACY_WIFI_MAX_IO, SERIAL_MAX_IO, OP, type Message } from './protocol'
 import { websocketTransport, type MediaTransport } from './transport'
 export type { MediaTransport } from './transport'
 const CONTROL_TIMEOUT_MS = 4000
@@ -60,9 +60,21 @@ export class MediaConnection {
         )
     }
     let hello: Message
+    const negotiate = async () => {
+      try {
+        return await this.request(OP.HELLO, undefined, MAX_IO)
+      } catch (error) {
+        // Older firmware rejects ceilings above 32 KiB before selecting one.
+        if (
+          !(error instanceof Error) || error.message !== 'Invalid media request' ||
+          mine !== this.generation || transport !== this.transport
+        ) throw error
+        return this.request(OP.HELLO, undefined, LEGACY_WIFI_MAX_IO)
+      }
+    }
     try {
       try {
-        hello = await this.request(OP.HELLO, undefined, MAX_IO)
+        hello = await negotiate()
       } catch (error) {
         if (
           !transport.startupRetries ||
@@ -71,7 +83,7 @@ export class MediaConnection {
           transport !== this.transport
         )
           throw error
-        hello = await this.request(OP.HELLO, undefined, MAX_IO)
+        hello = await negotiate()
       }
     } catch (error) {
       if (mine === this.generation && this.transport === transport) this.close()
@@ -79,13 +91,17 @@ export class MediaConnection {
     }
     if (mine !== this.generation || transport !== this.transport)
       throw new Error('Media connection replaced')
-    const maxIo = (hello.data[4] ?? 0) | ((hello.data[5] ?? 0) << 8)
+    const units = (hello.data[4] ?? 0) | ((hello.data[5] ?? 0) << 8)
+    // Capability bit 1 uses 512-byte units so the existing 8-byte reply can
+    // represent 64/128 KiB. Legacy replies continue to report bytes.
+    const maxIo = units * (hello.data[6] === 3 ? 512 : 1)
     if (
       hello.data.length !== 8 ||
       hello.data[0] !== 1 ||
       hello.data[1] !== 1 ||
       hello.data[2] !== 0 ||
       hello.data[3] !== 2 ||
+      ![1, 3].includes(hello.data[6] ?? 0) ||
       maxIo < SERIAL_MAX_IO ||
       maxIo > MAX_IO ||
       maxIo % 512 !== 0
@@ -288,8 +304,11 @@ export class MediaConnection {
       }
   }
   async benchmark(milliseconds = 2000) {
-    const data = crypto.getRandomValues(new Uint8Array(this.maxIo)),
-      start = performance.now()
+    const data = new Uint8Array(this.maxIo)
+    // Web Crypto limits each getRandomValues call to 65,536 bytes.
+    for (let offset = 0; offset < data.length; offset += 65536)
+      crypto.getRandomValues(data.subarray(offset, offset + 65536))
+    const start = performance.now()
     let bytes = 0,
       count = 0,
       maxMs = 0

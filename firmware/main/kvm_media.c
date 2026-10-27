@@ -37,8 +37,8 @@ static int64_t heartbeat;
 static bool wifi_input_used;
 static bool network_changing;
 static struct {
-    bool active, sent, done, completion;
-    uint32_t id, epoch, length, usb_length;
+    bool active, sent, done, completion, speculative, discard;
+    uint32_t id, epoch, length, usb_length, usb_offset;
     uint64_t offset;
     uint8_t op;
     int64_t deadline;
@@ -53,6 +53,97 @@ static uint8_t hid_reply[CH9329_MAX_PAYLOAD + 6];
 static size_t hid_reply_len;
 static media_metrics_t metrics;
 static int64_t read_sent_at;
+static uint64_t sequential_end;
+static unsigned sequential_reads;
+static uint32_t sequential_bytes;
+static uint32_t read_ahead = MEDIA_LEGACY_WIFI_MAX_IO;
+static bool prefetch_enabled(void)
+{
+#if CONFIG_KVM_MEDIA_PREFETCH
+    return owner == MEDIA_SOURCE_HTTP && max_io > MEDIA_SERIAL_MAX_IO;
+#else
+    return false;
+#endif
+}
+static void reset_read_pattern(void)
+{
+    sequential_reads = 0;
+    sequential_bytes = 0;
+    sequential_end = 0;
+    read_ahead = max_io < MEDIA_LEGACY_WIFI_MAX_IO ? max_io : MEDIA_LEGACY_WIFI_MAX_IO;
+}
+static void observe_read(uint64_t address, uint32_t length)
+{
+    if (!prefetch_enabled())
+        return;
+    if (!sequential_reads || address != sequential_end) {
+        reset_read_pattern();
+        sequential_reads = 1;
+    } else if (sequential_reads < 2)
+        sequential_reads++;
+    sequential_bytes += length;
+    if (sequential_bytes > MEDIA_MAX_IO)
+        sequential_bytes = MEDIA_MAX_IO;
+    sequential_end = address + length;
+}
+static void begin_io(uint8_t op, uint64_t offset, uint32_t length,
+                     void *usb, uint32_t usb_length, bool speculative)
+{
+    io.active = true;
+    io.sent = io.done = io.completion = io.ok = io.discard = false;
+    io.speculative = speculative;
+    io.id = ++next_id;
+    if (!io.id)
+        io.id = ++next_id;
+    io.epoch = atomic_load(&epoch);
+    io.op = op;
+    io.offset = offset;
+    io.length = length;
+    io.usb = usb;
+    io.usb_length = usb_length;
+    io.usb_offset = 0;
+    io.deadline = esp_timer_get_time() + IO_TIMEOUT_US;
+}
+/* Drain a sent speculative READ before any other remote disk operation. */
+static bool cancel_prefetch(void)
+{
+    if (!io.active)
+        return true;
+    if (!io.speculative)
+        return false;
+    if (io.sent && !io.done) {
+        io.discard = true;
+        return false;
+    }
+    io.active = false;
+    return true;
+}
+static void promote_read_cache(void)
+{
+    /* These equally-sized buffers alternate: network writes only io.data,
+     * while USB copies from cache. No full-window copy is needed. */
+    uint8_t *previous = cache;
+    cache = io.data;
+    io.data = previous;
+    cache_offset = io.offset;
+    cache_length = io.length;
+    if (prefetch_enabled())
+        read_ahead = io.length;
+}
+static void maybe_prefetch(uint64_t consumed_end)
+{
+    uint64_t next = cache_offset + cache_length;
+    if (!prefetch_enabled() || io.active || sequential_reads < 2 ||
+        sequential_bytes < MEDIA_LEGACY_WIFI_MAX_IO / 2 || !cache_length ||
+        consumed_end > next || next >= capacity)
+        return;
+    uint32_t length = read_ahead * 2;
+    if (length > max_io)
+        length = max_io;
+    if (length > capacity - next)
+        length = (uint32_t)(capacity - next);
+    begin_io(M_READ, next, length, NULL, 0, true);
+}
 uint32_t kvm_media_max_io(void)
 {
     return atomic_load(&connected) ? atomic_load(&max_io) : MEDIA_SERIAL_MAX_IO;
@@ -75,6 +166,7 @@ static ch9329_parser_t hid_parser;
 static void invalidate(void)
 {
     cache_length = 0;
+    reset_read_pattern();
     changed = true;
 }
 static void sync_reset(void)
@@ -82,7 +174,16 @@ static void sync_reset(void)
     uint32_t current = atomic_load(&epoch);
     if (current != observed_epoch) {
         observed_epoch = current;
-        io.active = false;
+        if (io.active && io.epoch != current &&
+            (io.speculative || prefetch_enabled()) && io.sent && !io.done) {
+            // The old request still occupies the browser's one-request window.
+            io.speculative = true;
+            io.discard = true;
+            io.usb = NULL;
+            io.usb_length = 0;
+            io.epoch = current;
+        } else if (io.active && io.epoch != current)
+            io.active = false;
         prevented = false;
         invalidate();
     }
@@ -110,8 +211,12 @@ static void fail_link(media_failure_t reason)
     failed = true;
     invalidate();
     if (io.active) {
-        io.done = true;
-        io.ok = false;
+        if (io.speculative)
+            io.active = false;
+        else {
+            io.done = true;
+            io.ok = false;
+        }
     }
 }
 static uint16_t state(void)
@@ -121,7 +226,8 @@ static uint16_t state(void)
 }
 esp_err_t kvm_media_init(void)
 {
-    media_buffers_init();
+    if (!media_buffers_init())
+        return ESP_ERR_NO_MEM;
     const media_buffers_t *buffers = media_buffers_get();
     io.data = buffers->io;
     cache = buffers->cache;
@@ -171,10 +277,8 @@ static void finish_usb(void *arg)
             int32_t result = TUD_MSC_RET_ERROR;
             if (io.ok && present) {
                 if (io.op == M_READ) {
-                    memcpy(io.usb, io.data, io.usb_length);
-                    memcpy(cache, io.data, io.length);
-                    cache_offset = io.offset;
-                    cache_length = io.length;
+                    memcpy(io.usb, io.data + io.usb_offset, io.usb_length);
+                    promote_read_cache();
                 }
                 result = io.usb_length;
             }
@@ -193,11 +297,8 @@ bool kvm_media_poll_from(media_source_t source, uint8_t *out, size_t *len)
         return false;
     sync_reset();
     int64_t now = esp_timer_get_time();
-    if (io.active && io.epoch != atomic_load(&epoch)) {
-        io.active = false;
-        cache_length = 0;
-        prevented = false;
-    }
+    if (io.active && io.epoch != atomic_load(&epoch))
+        sync_reset();
     /* An outstanding disk request owns its full bounded IO window. A delayed
      * idle heartbeat must not remove media while that request can still finish. */
     bool waiting = io.active && !io.done;
@@ -208,7 +309,7 @@ bool kvm_media_poll_from(media_source_t source, uint8_t *out, size_t *len)
         fail_link(MEDIA_FAILURE_LEASE);
 #endif
     if (io.active) {
-        if (io.done && !io.completion) {
+        if (io.done && !io.speculative && !io.completion) {
             io.completion = true;
             defer_id = io.id;
         } else if (!io.done && !io.sent && owner == source) {
@@ -280,6 +381,7 @@ size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t n
     size_t pn = n - 32;
     if (xSemaphoreTake(lock, pdMS_TO_TICKS(10)) != pdTRUE)
         return 0;
+    sync_reset();
     if (m.op == (M_READ | 0x80) || m.op == (M_WRITE | 0x80)) {
         if (m.length > max_io || pn > max_io) {
             xSemaphoreGive(lock);
@@ -302,7 +404,8 @@ size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t n
             if (io.ok && io.sent)
                 heartbeat = esp_timer_get_time();
             if (io.ok && io.op == M_READ) {
-                memcpy(io.data, p, pn);
+                if (!io.discard)
+                    memcpy(io.data, p, pn);
                 if (io.sent) {
                     uint64_t elapsed = (uint64_t)(esp_timer_get_time() - read_sent_at);
                     metrics.reads++;
@@ -315,6 +418,8 @@ size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t n
             io.done = true;
             if (!io.ok)
                 fail_link(MEDIA_FAILURE_BACKEND);
+            else if (io.speculative && io.discard)
+                io.active = false;
         }
         xSemaphoreGive(lock);
         return 0;
@@ -348,6 +453,7 @@ size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t n
             if (selected > available)
                 selected = available;
             atomic_store(&max_io, selected);
+            reset_read_pattern();
             connected = true;
             owner = source;
             memset(&metrics, 0, sizeof(metrics));
@@ -357,9 +463,12 @@ size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t n
             payload[1] = 1; /* async / durable-write protocol */
             payload[2] = 0;
             payload[3] = 2; /* block size 512 LE */
-            payload[4] = (uint8_t)max_io;
-            payload[5] = (uint8_t)(max_io >> 8);
-            payload[6] = 1;
+            /* Bit 1 selects 512-byte capability units for ceilings that do
+             * not fit the legacy 16-bit byte field. Old clients ask <=32 KiB. */
+            uint32_t units = selected > UINT16_MAX ? selected / 512 : selected;
+            payload[4] = (uint8_t)units;
+            payload[5] = (uint8_t)(units >> 8);
+            payload[6] = selected > UINT16_MAX ? 3 : 1;
             payload[7] = source == MEDIA_SOURCE_SERIAL ? 1 : 0; /* transport hint */
             payload_n = 8;
             break;
@@ -385,7 +494,7 @@ size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t n
                 status = M_INVALID;
             else if (prevented)
                 status = M_PROTECTED;
-            else if (io.active)
+            else if (!cancel_prefetch())
                 status = M_BUSY;
             else {
                 present = false;
@@ -521,11 +630,9 @@ static int32_t transfer(uint8_t lun, uint32_t lba, uint32_t off, void *buf, uint
     int32_t result = TUD_MSC_RET_ERROR;
     if (!ready(lun) || n > max_io || !media_range(capacity, address, n) || (write && !writable))
         goto done;
-    if (io.active && io.epoch != atomic_load(&epoch)) {
-        io.active = false;
-        cache_length = 0;
-    }
-    if (io.active) {
+    if (io.active && io.epoch != atomic_load(&epoch))
+        sync_reset();
+    if (io.active && !io.speculative) {
         result = TUD_MSC_RET_BUSY;
         goto done;
     }
@@ -540,26 +647,48 @@ static int32_t transfer(uint8_t lun, uint32_t lba, uint32_t off, void *buf, uint
         address + n <= cache_offset + cache_length) {
         memcpy(buf, cache + (address - cache_offset), n);
         metrics.cache_bytes += n;
+        observe_read(address, n);
+        maybe_prefetch(address + n);
         result = n;
         goto done;
     }
+    if (!write && io.active && !io.discard && address >= io.offset &&
+        address + n <= io.offset + io.length) {
+        observe_read(address, n);
+        if (io.done) {
+            promote_read_cache();
+            io.active = false;
+            memcpy(buf, cache + (address - cache_offset), n);
+            metrics.cache_bytes += n;
+            maybe_prefetch(address + n);
+            result = n;
+        } else {
+            // USB caught up with the in-flight prefetch. Attach this demand
+            // without sending another request or changing its wire identity.
+            io.speculative = false;
+            io.usb = buf;
+            io.usb_length = n;
+            io.usb_offset = (uint32_t)(address - io.offset);
+            result = TUD_MSC_RET_ASYNC;
+        }
+        goto done;
+    }
+    if (write) {
+        cache_length = 0;
+        reset_read_pattern();
+    }
+    if (!cancel_prefetch()) {
+        result = TUD_MSC_RET_BUSY;
+        goto done;
+    }
     cache_length = 0;
-    io.active = true;
-    io.sent = false;
-    io.done = false;
-    io.completion = false;
-    io.ok = false;
-    io.id = ++next_id;
-    if (!io.id)
-        io.id = ++next_id;
-    io.epoch = atomic_load(&epoch);
-    io.offset = address;
-    io.usb_length = n;
-    io.length = write ? n
-                      : (uint32_t)((capacity - address) < max_io ? (capacity - address) : max_io);
-    io.op = write ? M_WRITE : M_READ;
-    io.deadline = esp_timer_get_time() + IO_TIMEOUT_US;
-    io.usb = buf;
+    if (!write)
+        observe_read(address, n);
+    uint32_t window = prefetch_enabled() ? read_ahead : atomic_load(&max_io);
+    uint32_t length = write ? n : (uint32_t)((capacity - address) < window ? capacity - address : window);
+    if (length < n)
+        length = n;
+    begin_io(write ? M_WRITE : M_READ, address, length, buf, n, false);
     if (write)
         memcpy(io.data, buf, n);
     result = TUD_MSC_RET_ASYNC;
@@ -582,7 +711,7 @@ bool tud_msc_start_stop_cb(uint8_t lun, uint8_t power, bool start, bool eject)
         return false;
     if (xSemaphoreTake(lock, 0) != pdTRUE)
         return false;
-    bool ok = !io.active && !(eject && !start && prevented);
+    bool ok = !(eject && !start && prevented) && cancel_prefetch();
     if (ok && eject && !start) {
         present = false;
         kvm_ble_set_wifi_media_active(false);
@@ -609,7 +738,7 @@ int32_t tud_msc_scsi_cb(uint8_t lun, const uint8_t cmd[16], void *buf, uint16_t 
     (void)n;
     /* Every successful WRITE10 is already durable. No volatile write cache. */
     if (cmd[0] == 0x35 && xSemaphoreTake(lock, 0) == pdTRUE) {
-        bool ok = ready(lun) && !io.active;
+        bool ok = ready(lun) && cancel_prefetch();
         xSemaphoreGive(lock);
         return ok ? 0 : -1;
     }

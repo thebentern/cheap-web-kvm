@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Opt-in sequential boot-read experiment; may be combined with sdkconfig.wifi-rx.
+# Keep the CPU/radio policy unchanged to measure the read-path changes alone.
+CONFIG_KVM_MEDIA_PREFETCH=y
+CONFIG_KVM_MEDIA_WIFI_MAX_IO=131072
+CONFIG_KVM_MSC_BUFSIZE=8192
+# Leave DMA-capable internal RAM for TLS while large replies are queued.
+# The receive window remains 64 KiB for browser-to-board disk data.
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=32768

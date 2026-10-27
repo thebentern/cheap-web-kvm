@@ -4,7 +4,21 @@ set -eu
 cd "$(dirname "$0")/.."
 TEST_BINARY=$(mktemp /tmp/cheap-kvm-media-test.XXXXXX)
 trap 'rm -f "$TEST_BINARY"' EXIT
+${CC:-cc} -std=c11 -Wall -Wextra -Werror -Ifirmware/main firmware/test/media_crc_test.c firmware/main/media_protocol.c -o "$TEST_BINARY"
+"$TEST_BINARY"
 ${CC:-cc} -std=c11 -Wall -Wextra -Werror -Ifirmware/test/stubs -Ifirmware/main firmware/test/media_test.c firmware/main/kvm_media.c firmware/main/media_protocol.c firmware/main/media_buffers.c firmware/main/boot_repeat.c -o "$TEST_BINARY"
+"$TEST_BINARY"
+"$TEST_BINARY" --fallback
+"$TEST_BINARY" --oom
+
+# Exercise the negotiated large-frame path independently of speculation,
+# then the overlapping profile, including the no-PSRAM fallback each time.
+for MEDIA_TEST_CEILING in 65536 131072; do
+    ${CC:-cc} -std=c11 -Wall -Wextra -Werror -DCONFIG_KVM_MEDIA_WIFI_MAX_IO="$MEDIA_TEST_CEILING" -Ifirmware/test/stubs -Ifirmware/main firmware/test/media_test.c firmware/main/kvm_media.c firmware/main/media_protocol.c firmware/main/media_buffers.c firmware/main/boot_repeat.c -o "$TEST_BINARY"
+    "$TEST_BINARY"
+    "$TEST_BINARY" --fallback
+done
+${CC:-cc} -std=c11 -Wall -Wextra -Werror -DCONFIG_KVM_MEDIA_WIFI_MAX_IO=131072 -DCONFIG_KVM_MEDIA_PREFETCH=1 -Ifirmware/test/stubs -Ifirmware/main firmware/test/media_test.c firmware/main/kvm_media.c firmware/main/media_protocol.c firmware/main/media_buffers.c firmware/main/boot_repeat.c -o "$TEST_BINARY"
 "$TEST_BINARY"
 "$TEST_BINARY" --fallback
 

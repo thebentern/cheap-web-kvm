@@ -2,11 +2,34 @@
 #include "media_ws.h"
 #include <string.h>
 
+bool media_ws_message_accept(media_ws_message_t *message, uint8_t opcode, bool final,
+                             size_t length, size_t capacity, int64_t now)
+{
+    if (!message || capacity > MEDIA_WS_MAX_PAYLOAD ||
+        (message->active ? opcode != 0 : opcode != 2))
+        return false;
+    if (!message->active) {
+        message->length = message->fragments = 0;
+        message->deadline = now + MEDIA_WS_MESSAGE_TIMEOUT_US;
+    }
+    if (now >= message->deadline || message->fragments >= MEDIA_WS_MAX_FRAGMENTS ||
+        message->length > capacity || length > capacity - message->length)
+        return false;
+    message->length += length;
+    message->fragments++;
+    message->active = !final;
+    return true;
+}
+
 static bool send_all(const uint8_t *frame, size_t remaining, media_ws_send_fn send, void *context)
 {
     while (remaining) {
-        int sent = send(context, frame, remaining);
-        if (sent <= 0 || (size_t)sent > remaining)
+        /* Large TLS records need DMA-capable AES scratch buffers on ESP32-S3.
+         * Match the web asset sender's batches without fragmenting WebSocket
+         * messages or shrinking negotiated disk reads. */
+        size_t chunk = remaining < MEDIA_WS_SEND_CHUNK ? remaining : MEDIA_WS_SEND_CHUNK;
+        int sent = send(context, frame, chunk);
+        if (sent <= 0 || (size_t)sent > chunk)
             return false;
         frame += sent;
         remaining -= sent;
@@ -18,15 +41,19 @@ bool media_ws_send_binary(uint8_t *buffer, size_t length, media_ws_send_fn send,
 {
     if (!buffer || !send || length > MEDIA_WS_MAX_PAYLOAD)
         return false;
-    size_t header = length <= 125 ? 2 : 4;
+    size_t header = length <= 125 ? 2 : length <= UINT16_MAX ? 4 : 10;
     uint8_t *frame = buffer + MEDIA_WS_PREFIX - header;
     frame[0] = 0x82; /* FIN, binary; server frames are not masked. */
     if (header == 2)
         frame[1] = (uint8_t)length;
-    else {
+    else if (header == 4) {
         frame[1] = 126;
         frame[2] = (uint8_t)(length >> 8);
         frame[3] = (uint8_t)length;
+    } else {
+        frame[1] = 127;
+        for (unsigned i = 0; i < 8; i++)
+            frame[2 + i] = (uint8_t)((uint64_t)length >> (56 - 8 * i));
     }
     return send_all(frame, header + length, send, context);
 }

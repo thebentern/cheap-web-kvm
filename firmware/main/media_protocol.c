@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "media_protocol.h"
 #include <string.h>
+#ifdef ESP_PLATFORM
+#include "esp_rom_crc.h"
+#endif
 static uint64_t get(const uint8_t *p, unsigned n)
 {
     uint64_t v = 0;
@@ -15,12 +18,18 @@ static void put(uint8_t *p, uint64_t v, unsigned n)
 }
 uint32_t media_crc(const uint8_t *p, size_t n, uint32_t crc)
 {
+#ifdef ESP_PLATFORM
+    /* IDF's ROM API complements its seed and result; this protocol exposes
+     * the raw accumulator so header/payload checks can be chained. */
+    return ~esp_rom_crc32_le(~crc, p, n);
+#else
     for (size_t i = 0; i < n; i++) {
         crc ^= p[i];
         for (int j = 0; j < 8; j++)
             crc = (crc >> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
     }
     return crc;
+#endif
 }
 bool media_decode(const uint8_t *p, size_t n, media_msg_t *m)
 {
