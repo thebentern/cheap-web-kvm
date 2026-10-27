@@ -780,3 +780,66 @@ browser workers, OPFS and boot throughput; no image was opened or scanned.
 Full writable Wyse boot and sustained target reads with the larger read-ahead
 remain unverified. [Machine-readable chunk evidence](wifi-media-chunk-performance.json)
 retains every trial, radio snapshot and completed regression result.
+
+### 2026-10-27: Payload receive deadline and actual Armbian boot
+
+The first actual 32 KiB boot lost its medium after 25,757,696 remote-read bytes.
+Diagnostics recorded a payload receive failure with `errno 11`; the disk IO,
+lease and backend error counters were zero before connection cleanup. A controlled
+2.5-second pause inside a reply reproduced closure at 2,024 ms. The server's
+ordinary two-second receive cutoff was shorter than the ten-second disk request
+budget.
+
+Installed build `ddefbfa` gives the remaining WebSocket header, mask and payload
+one absolute ten-second budget, including every underlying TLS receive. Progress
+does not renew that deadline. Pending bytes remain separate from transient TLS
+retry results, and socket timeouts are restored after the scoped calls. The
+initial opcode byte consumed by ESP-IDF before the handler retains its ordinary
+timeout. Authentication, request/reset guards and durable write acknowledgements
+are unchanged.
+
+On the installed board, the same 2.5-second pause completed a validated 32 KiB
+ECHO and heartbeat in 2,864.978 ms. An eleven-second pause correctly closed at
+10,097.231 ms. Unsplit, split-mask and split-length regressions pass, as do the
+native receive/deadline fixtures, the private firmware build, descriptor checks
+and [both CI jobs](https://github.com/thebentern/cheap-web-kvm/actions/runs/40502032156).
+
+For the actual Wyse boot, Edge initially denied persistent storage. After the
+user approved installing the console as an Edge app, the same origin/profile
+received persistence and reopened the existing image without reimporting or
+scanning it. The disk was inserted with the persistent copy-on-write overlay
+enabled. The target reported write protection off, a clean root filesystem check,
+and subsequently ran systemd. Kernel and initrd loading had completed by the
+observation 9 minutes 18 seconds after target restart; this is an upper bound,
+not an exact transition timestamp.
+
+From target restart at 12:43:56.133 UTC through the last diagnostic before the
+first emergency-mode observation at 13:01:31.282 UTC, the measured 1,053.623-second
+window transferred **198,154,240 remote-read bytes at 183.662 KiB/s** over 6,055
+READs. Mean request turnaround was 125.609 ms, with a maximum of 4,323.302 ms.
+Dividing by summed request service time instead of wall time gives 260,536 B/s;
+that is a separate latency metric, not the boot-attempt average. The additional
+137,649,152 cache-hit bytes are reported separately and are not added to Wi-Fi
+payload throughput. Remote bytes include read-ahead and repeated reads, rather
+than unique target-requested bytes.
+
+The owner counter and uptime stayed continuous. There were **zero new closes,
+receive/send errors, invalid frames, handshake/frame timeouts, IO/lease timeouts
+or backend failures** through this observation. A later live panel still showed
+media connected, 233.2 MiB read, 8.9 MiB written and a current rate of 192.8 KiB/s.
+Monitoring continued through 28 minutes 59 seconds after restart, recording
+249.568 MiB of remote reads with the same zero failure deltas and continuous
+ownership/uptime. Those later emergency/background reads and idle time remain
+separate from the boot-attempt rate above. The passive logger then stopped
+cleanly without changing the live disk.
+
+**Normal OS startup did not complete.** Armbian entered emergency mode at kernel
+time 353.532 seconds; zram configuration and ramlog later timed out at 381.890
+and 412.138 seconds. Those later failures do not explain the earlier emergency
+transition. A failed required mount or other startup dependency remains to be
+identified from the maintenance journal. Slow virtual-disk IO may aggravate
+service deadlines, so an active media connection alone does not establish an
+unrelated image fault. No completed-boot duration or causal speedup is claimed.
+The inserted disk and original saved image were left intact.
+[Machine-readable receive and boot evidence](wifi-media-frame-receive.json)
+records the fault probes, observation boundaries and remaining limitations.
