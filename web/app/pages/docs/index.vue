@@ -21,24 +21,24 @@ interface DocLink {
 }
 
 const links: DocLink[] = [
-  { title: 'Wi-Fi setup: hotspot or router client', blurb: 'Configure Wi-Fi in the browser over Serial or Bluetooth, keep a recovery hotspot, and read the board’s DHCP address.', href: `${REPO}/blob/main/docs/WIFI.md`, cta: 'Wi-Fi setup' },
+  { title: 'Wi-Fi setup: Hotspot or Client', blurb: 'Configure Wi-Fi, enable a recovery hotspot, set up HTTPS trust and pair the browser with the board.', href: `${REPO}/blob/main/docs/WIFI.md`, cta: 'Wi-Fi setup' },
   {
-    title: 'Virtual media and FAT32 file sharing (experimental)',
-    blurb: 'Stream a local boot image, create a FAT32 thumb drive, save target writes, export files, and arm F12 repetition. Includes Wi-Fi helper setup and outstanding hardware checks.',
+    title: 'Virtual media and FAT32 file sharing',
+    blurb: 'Use USB or Wi-Fi to share boot images and FAT32 drives, save target writes, export files and repeat a boot key.',
     href: `${REPO}/blob/main/docs/VIRTUAL_MEDIA.md`,
     cta: 'Virtual media guide',
   },
   {
     title: 'CH9329 wire protocol',
     blurb:
-      'Frame format, checksums, HID commands, boot repetition, the versioned media protocol, and how replies are parsed. Written from the bytes on the wire rather than from the datasheet — the firmware parser is written against it.',
+      'Frame format, checksums, HID commands, boot repetition, virtual media and runtime Wi-Fi settings.',
     href: `${REPO}/blob/main/docs/PROTOCOL.md`,
     cta: 'docs/PROTOCOL.md',
   },
   {
     title: 'Hardware and setup',
     blurb:
-      'Parts list, port wiring, the bring-up checks worth doing before you plug anything into the target, and how to build and flash the ESP32-S3 firmware with ESP-IDF.',
+      'Parts, port wiring, firmware installation, build instructions and hardware validation.',
     href: `${REPO}#hardware`,
     cta: 'README',
   },
@@ -66,9 +66,9 @@ interface Requirement {
 
 const requirements: Requirement[] = [
   {
-    title: 'A Chromium-based browser, or Bluefy on iPad',
+    title: 'Browser support',
     detail:
-      'Chrome, Edge, Brave or Opera, over Web Serial or Web Bluetooth. Firefox and Safari have neither, so the control half of the KVM cannot work there — video alone still would. On an iPad, use a Web Bluetooth browser such as Bluefy; Safari there shows the capture stick fine on iPadOS 17 and later.',
+      'Desktop Chrome and Edge support USB serial and Bluetooth control. The board-hosted HTTPS console supports Wi-Fi control and media after pairing. On iPad, Bluetooth requires a compatible browser such as Bluefy; USB capture requires iPadOS 17 or later.',
   },
   {
     title: 'A secure context',
@@ -124,9 +124,9 @@ useHead({
         <p class="docs-lead">Keyboard, mouse and video from your browser.</p>
         <p>
           Video and audio arrive from a USB capture stick. Keystrokes and pointer movement
-          travel over Web Serial or Bluetooth to an ESP32-S3, which the target sees as a
-          USB keyboard and mouse. It works without a server, software on the target, or
-          an internet connection.
+          travel over USB serial, Bluetooth or Wi-Fi to an ESP32-S3. The target sees a
+          USB keyboard, mouse and removable disk. Virtual media uses USB serial or
+          Wi-Fi. No software is required on the target.
         </p>
       </header>
 

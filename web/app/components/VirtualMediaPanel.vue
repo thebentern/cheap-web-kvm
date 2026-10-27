@@ -928,7 +928,6 @@ onMounted(() => {
         </p>
       </details>
       <p class="kvm-hint mt-5">
-        Experimental ·
         <NuxtLink class="underline underline-offset-2" to="/docs"
           >Virtual media guide</NuxtLink
         >

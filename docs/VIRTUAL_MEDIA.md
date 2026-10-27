@@ -1,403 +1,209 @@
 # Virtual media and boot-key repetition
 
-Virtual media is **experimental, with hardware acceptance still outstanding**.
-The ESP32-S3 exposes a removable USB disk alongside the existing boot keyboard
-(interface 0) and pointer (interface 1). The disk is interface 2, SCSI transparent
-command set over Bulk-Only Transport, with 512-byte logical sectors. Serial and
-Bluetooth HID remain compatible with older clients. Video still comes from the
-HDMI capture stick.
+The ESP32-S3 presents a removable USB disk alongside its keyboard and mouse.
+Select a boot image or create a FAT32 drive in the browser, then insert it into
+the target. Disk data stays on the browser's computer; the board holds requested
+sectors and bounded buffers. Video comes from a separate HDMI capture stick.
 
-The normal disk backend is a browser-selected image or a browser-created FAT32
-volume. Only requested sectors, a bounded read-ahead cache, and bounded transport
-buffers live on the ESP32. The entire source never has to fit in ESP32 RAM or
-flash. An explicitly selected, separate embedded-image build is available only
-for USB bring-up.
+## Connections
 
-## Connect over USB or Wi-Fi
-
-The target always connects to the board's **native USB port**, which presents its
-keyboard, mouse and virtual disk. Choose how this browser sends disk data to the
-board in **Virtual media → USB / Wi-Fi**. Eject and synchronize before switching.
+Connect the board's **native USB port** to the target. In **Virtual media**, choose
+**USB** or **Wi-Fi** for the browser-to-board connection. Eject and synchronize
+before changing the connection or disk.
 
 ### USB
 
-1. Install firmware supporting wired media. Connect the board's separate
-   **USB programming/UART port** to this computer, and its native USB port to the
-   target. A board without a USB-UART bridge needs an adapter on UART0.
-2. Open the web UI in a browser with Web Serial support. Select **USB → Connect**
-   and choose the programming port. An existing serial control connection is reused.
-3. Choose a boot image or create/reopen a USB drive, then insert it into the target.
+1. Connect the board's **programming/UART USB port** to this computer. Boards
+   without a USB-UART bridge need an adapter on UART0.
+2. Open the console over HTTPS or localhost in a browser supporting Web Serial.
+3. Choose **Virtual media → USB → Connect** and select the programming port.
+   An existing serial control connection is reused.
 
-USB media and keyboard/mouse control share the programming cable. Ejecting or
-disconnecting media leaves serial control available. Unplugging that cable while
-a disk is inserted makes the medium unavailable; unmount/power off the target and
-synchronize before recovery. Bluetooth remains a control link rather than a disk
-transport. No Wi-Fi setup, access token or HTTPS media helper is needed for USB;
-the UI still needs a secure context (hosted HTTPS or localhost).
+Media and keyboard/mouse control share the programming cable. Ejecting media
+leaves serial control connected. The default is **921600 baud** in firmware and
+browser, with a one-way wire ceiling of 92,160 bytes/s before protocol overhead.
+The target's USB disk connection is separate from this UART link.
 
-The default firmware UART is **921600 baud**. Its one-way wire ceiling is
-92,160 bytes/s before framing, and an 8 KiB message occupies roughly 0.09 s.
-The tested board transferred about 84 KB/s aggregate in the transport benchmark;
-OS boot and real disk performance depend on the workload. Input can wait behind
-an in-flight media frame. To use another rate, build the board with matching
-`CONFIG_KVM_UART_BAUD`, then select the same rate in **Virtual media → Connection
-settings → USB baud rate** or **Settings → Advanced → USB baud rate**. Choices are
-115200, 460800, 921600 and 2000000. The selection is remembered in this browser and
-applies to both serial control and media on the next connection. Disconnect serial
-before changing it. Choosing a browser rate does not reconfigure the board. Older
-firmware built at 115200 requires that explicit browser setting. USB MSC on the
-target is separate from this USB-UART link.
+To change the rate, disconnect serial control, build firmware with matching
+`CONFIG_KVM_UART_BAUD`, and select the same **USB baud rate** under **Connection
+settings** or **Settings → Advanced**. Supported choices are 115200, 460800,
+921600 and 2000000. The browser remembers its selection; it does not reconfigure
+the board. Firmware built at 115200 needs that explicit browser setting.
 
-### Wi-Fi: open the board directly
+### Wi-Fi
 
-The ESP32 hosts the console and its media connection. A separate computer running
-the Go helper is optional.
+1. [Configure Wi-Fi and trust the board's HTTPS certificate](WIFI.md).
+2. Open `https://BOARD_IP/` and choose **Virtual media → Wi-Fi**.
+3. Choose **Pair with USB** or **Pair with Bluetooth**. Pairing checks the physical
+   board's identity and reads its access token automatically. **Enter token
+   manually** is available for browsers without those APIs.
+4. Connect media. Keyboard and mouse use Wi-Fi automatically when no USB or
+   Bluetooth control link is active. To switch an active control link, choose
+   **Connection settings → Use Wi-Fi for keyboard & mouse**.
 
-Direct HTTPS needs working PSRAM when Wi-Fi and Bluetooth coexist. The published
-N8R8 build uses Octal PSRAM; an R2/2 MB module needs the Quad configuration in
-`firmware/sdkconfig.quad-psram`. This mode is selected at build time, not detected
-automatically. See [PSRAM build setup](https://github.com/thebentern/cheap-web-kvm#match-the-psram-mode). Missing
-RAM is tolerated for USB/Bluetooth and HTTP setup bring-up, but HTTPS may not have
-enough memory to start.
+Pairing leaves the physical control connection open. The programming cable is
+optional after switching control to Wi-Fi. Bluetooth carries control commands,
+not disk data.
 
-1. Use Serial through the programming port, or paired Bluetooth, to open
-   **Settings → Wi-Fi** and load the board settings. Choose **Hotspot** or
-   **Client**, save the network credentials, and read the IP in status. Client
-   joins an existing 2.4 GHz network and can retain a recovery hotspot. Initial
-   network setup still needs USB or Bluetooth.
-2. Open `http://BOARD_IP/`. Port 80 serves a setup page and
-   `/device/ca.crt`, the board's public trust certificate. Before installing it,
-   verify its SHA-256 fingerprint using the value read independently through USB
-   or paired Bluetooth. The HTTP page alone is not proof of the certificate's
-   identity. `tools/device_certificate.py` downloads the certificate and checks
-   it against the USB fingerprint; it does not install trust automatically.
-3. Install that verified certificate as a trusted certificate authority on each
-   computer/tablet that will open the board. This is a manual, one-time trust
-   step. Follow the platform instructions in the setup page; proceeding through
-   a browser warning is not the setup procedure.
-4. Open `https://BOARD_IP/` on port 443. In **Virtual media → Wi-Fi**, choose
-   **Pair with USB** with the board’s programming port connected to this computer,
-   or **Pair with Bluetooth** in a supported browser. The console checks that the
-   physical board matches this HTTPS page, reads its access token, and connects;
-   there is no need to find or copy the token. It leaves the physical connection
-   open. After pairing, the programming cable is optional for Wi-Fi control.
-   **Enter token manually** remains available for browsers without these APIs;
-   obtain the token from a connected USB/Bluetooth console under **Settings →
-   Wi-Fi → Advanced → Show saved token**. Those settings only load after a control
-   connection is established. The token is separate from the Wi-Fi password.
-   Pairing creates a Secure, HttpOnly, same-site browser session cookie lasting up
-   to eight hours; the app does not save the token in browser settings. A board
-   restart or a network/token change can require pairing again.
-5. Keyboard and mouse automatically use the Wi-Fi connection when no USB or
-   Bluetooth control link is active. Select a boot image
-   or USB drive. The target still connects to native USB, and video still uses
-   the separate HDMI capture stick. Tablets do not need Web Serial/Bluetooth for
-   control once the board's Wi-Fi and certificate trust are configured.
+The board pauses Bluetooth discovery while a Wi-Fi disk is inserted. Existing
+Bluetooth connections stay active and can reduce Wi-Fi throughput. Eject before
+starting or reconnecting Bluetooth; discovery resumes after ejection or media-link
+failure. USB media does not pause discovery.
 
-While a Wi-Fi disk is inserted, the board pauses Bluetooth discovery to give
-Wi-Fi more radio time. Existing Bluetooth control connections remain active.
-Eject the disk before starting or reconnecting Bluetooth; discovery resumes
-after ejection or media-link failure. USB serial disks do not pause discovery.
-Keeping an existing Bluetooth connection can still reduce Wi-Fi throughput.
+Only one USB or Wi-Fi media connection can own the board at a time. A second
+connection cannot take over an active session.
 
-The device keeps its own certificate authority and keys in NVS. Its server
-certificate is issued with an 800-day lifetime, within the 825-day limit in
-[Apple’s TLS server certificate requirements](https://support.apple.com/en-us/103769). The authority itself
-has a separate 2020–2049 validity period. A DHCP address change, fewer than 30 days
-remaining on the server certificate, or an old oversized server lifetime triggers
-server-certificate renewal. Renewal keeps the same authority and keys, so it does
-not require reinstalling client trust. The board waits until media is ejected and
-idle before restarting HTTPS to apply a renewal.
+## Boot images
 
-A fresh firmware build supplies its build timestamp as an initial offline clock.
-Client mode also attempts network time synchronization through `pool.ntp.org`;
-that depends on reachable DNS/NTP and is not available in an isolated hotspot.
-This is not a promise of indefinite offline renewal: after a long offline period,
-an expired certificate and an old build-time clock need a current firmware build
-or a usable current time source. Normal certificate verification remains enabled.
+Choose an `.img`, `.img.xz`, or **USB-bootable hybrid** `.iso`. Optical-only ISOs
+are unsupported: the device presents a USB disk, not a CD/DVD drive.
 
-Use the current IP reported by the board; the certificate's device hostname does
-not by itself guarantee that a router resolves that name. Erasing NVS removes
-this identity and requires verifying/trusting the replacement certificate.
+The app prepares `.img.xz` files automatically. A worker streams the decompressed
+image into Origin Private File System storage (OPFS), validates the XZ structure
+and checksums, and records the raw image's SHA-256. It supports ordinary LZMA2 XZ
+images with CRC32 or CRC64 checks and dictionaries up to 64 MiB. Preparation needs
+space for the **full decompressed image**, plus later changed sectors. Quota or
+unsupported-format errors stop the import. **Cancel import** removes partial
+output; interrupted imports are reclaimed on the next saved-disk refresh.
 
-The on-board console embeds its compressed core assets in flash. OCR language
-and engine data do not fit on this 8 MB board; its OCR control is disabled with a
-link to the full app. Firmware installation opens the full hosted installer.
-Disk images, including prepared `.img.xz` sources, still live in the browser,
-not on the board. Browser storage belongs to the exact origin: changing from
-localhost or the hosted site to `https://BOARD_IP/`, or to a different DHCP IP,
-uses a separate storage bucket. Export needed changes before moving origins and
-select/import the source in the new one.
+Newly selected raw images are hashed in a worker. The app inspects supported
+MBR/GPT layouts and FAT16/FAT32 EFI system partitions for
+`\EFI\BOOT\BOOTX64.EFI`. These checks do not establish Secure Boot trust or
+compatibility with every target, and do not modify the source.
 
-### Optional HTTPS helper
+Leave **Allow target to write** disabled for read-only/live images. For a full OS
+disk, enable it and choose **Allow persistent storage** before insertion. Target
+writes go to a persistent copy-on-write overlay; the original image stays
+unchanged. First-boot setup, logs, swap and the root filesystem may require a
+writable disk.
 
-The Go helper remains available for the full UI, older firmware or an existing
-helper setup. It is not required by the board-hosted console:
+Choose **Insert into target** to give the target exclusive disk access. Browser
+filesystem edits and exports are locked until ejection and synchronization.
+Booting an OS image runs it from virtual media; installation onto an internal
+drive is a separate operation.
 
-```sh
-cd web
-npm ci
-NUXT_APP_BASE_URL=/ npm run generate
-cd ../src
-# Set KVM_MEDIA_TOKEN to the saved media access token from Settings → Wi-Fi.
-go run . -www ../web/.output/public -media http://BOARD_IP
-```
+## FAT32 USB drives
 
-Open `https://localhost:8443/` using a certificate trusted by that browser, then
-choose **Virtual media → Wi-Fi → Connect**. Leave the helper address blank when
-using its own UI. For another LAN client, the helper certificate must include
-its computer's LAN IP/hostname and be trusted by that client. The helper's
-`-tls-hosts` option affects newly generated certificates only; it preserves
-existing certificate files. Hosted HTTPS cannot directly use the board's legacy
-unencrypted socket. Keep the helper on a trusted local network.
+Choose **USB drive**, a capacity from **64 MiB to 32 GiB** in whole MiB, and a
+1–11 character ASCII label using letters, digits, spaces, hyphens or underscores.
+The drive uses an MBR and FAT32 LBA partition starting at sector 2048.
 
-Both transports require the custom MSC build (`CONFIG_TINYUSB_MSC_ENABLED` stays
-disabled; `kvm_tusb_config.h` supplies MSC). The current 8 MB build uses a custom
-factory partition at `0x10000..0x400000`; NVS at `0x9000..0xf000` and PHY data
-at `0xf000..0x10000` remain in place. Only one transport owns media at a time.
-A second connection cannot take over a live session; disconnect or let the failed
-connection's lease expire first.
+While ejected, you can add files, create folders, navigate directories, preview
+the first 64 KiB of a file as text, download files, and remove files or empty
+folders. UTF-16 VFAT long names are supported, with a 255 UTF-16 code-unit limit.
+Reserved device names, forbidden characters, trailing dots/spaces, and
+case-insensitive duplicates are rejected. Each file is limited to **4 GiB minus
+one byte**.
 
-## Boot image
+Read-only insertion lets the target read browser-added files. Writable insertion
+also lets the target create or change files. To retrieve target changes:
 
-Select an `.img`, `.img.xz`, or **USB-bootable hybrid** `.iso`. An optical-only ISO
-needs a separate CD/DVD emulation implementation; this device identifies as a
-USB disk, not an optical drive.
+1. Finish copies and unmount/eject the USB disk **inside the target OS**.
+2. Confirm **The disk is unmounted on the target, or the target is off**.
+3. Choose **Eject and synchronize**. The browser finishes storage transactions
+   and reloads the directory state.
+4. Download individual files or the updated disk image.
 
-The app prepares `.img.xz` automatically in the background. It streams the
-decompressed image into the browser's private file storage (OPFS), checks the XZ
-structure and integrity checks, and computes the raw image's SHA-256 before making
-it available to insert. Progress and **Cancel import** appear during preparation;
-failed or canceled imports remove their partial file. Closing the tab can leave a
-partial file, which the next saved-disk refresh reclaims. The original compressed
-file stays unchanged. Ordinary LZMA2 XZ images with CRC32 or CRC64 checks and a
-dictionary up to 64 MiB are supported; unsupported compression options fail with
-an error.
+The board respects the target's removal lock. If ejection is refused, eject the
+USB device in the target OS first. A target-initiated eject also requires browser
+synchronization before editing.
 
-Preparation needs browser storage for the **full decompressed image**, plus space
-for later changed sectors. Available quota is checked before import, and a full
-storage error stops the import. The worker streams data with bounded memory; it
-does not load the whole image into RAM. Compressed bytes are never presented as
-raw disk sectors.
+## Saved disks and exports
 
-Selection computes a full streaming SHA-256 in the storage worker with bounded
-memory. This can take time for a large image. The UI inspects MBR/GPT partitions
-and FAT16/FAT32 ESPs for `\EFI\BOOT\BOOTX64.EFI` where supported. A filename alone
-is not proof of a valid executable, Secure Boot trust, or target compatibility.
-Unsupported partition/filesystem layouts are reported. Nothing patches the image.
-The independent `tools/inspect_boot_image.py unpacked.img --sha256` also checks
-GPT CRCs and the fallback executable's PE machine type.
+Disk pages, overlays and metadata use IndexedDB. Prepared `.img.xz` sources use
+OPFS. Both belong to the **browser profile and exact origin**, including its port.
+Changing from localhost or a hosted site to the board's HTTPS page, or opening a
+different board IP, uses separate storage. Export needed changes before moving
+origins.
 
-Leave target writes disabled for compatible read-only/live environments. Ordinary
-OS disk images often need writes (first-boot setup, root filesystem, swap, logs).
-For those, grant persistent browser storage, enable **Allow target to write**, then
-insert. All writes go to a persistent copy-on-write overlay. The selected source
-File is read-only and stays unchanged. OS boot may fail if you choose read-only
-for an image that requires a writable disk.
+- **Prepared `.img.xz`:** reopen it from the saved-disk list without selecting the
+  compressed file again. Reopening checks source presence and size; it does not
+  rescan the saved image's checksum. If the prepared source is missing, select
+  the original `.img.xz` to restore it against the overlay's fingerprint.
+- **Directly selected `.img` or `.iso`:** after a reload, select the saved overlay
+  and reselect the original file. Its size and SHA-256 must match.
+- **Created FAT32 drive:** reopen it directly from the saved-disk list.
 
-**Insert** gives the target exclusive ownership. **Eject and synchronize** removes
-only the medium; it does not disconnect USB HID or require USB re-enumeration.
-Switching sources/modes requires ejection first.
+Writable insertion requires persistent-storage permission and Web Locks, which
+prevent concurrent access to the same saved disk from multiple tabs. Clearing
+browser data removes saved disks and changes. Persistence does not replace an
+external backup or protect against storage failure.
 
-### mPWRD-OS example
+**Disk details & download → Download disk image** exports a new `*-updated.img`.
+Browsers with Save File support stream directly to the selected destination;
+other browsers stage the export in OPFS and offer a download. Staged exports
+consume browser storage and are not automatically deleted. Choose **Confirm
+download saved** only after saving the file outside the browser. Exports require
+ejection; overlays are not automatically pruned.
 
-The [generic x86_64 UEFI release](https://github.com/mPWRD-OS/mPWRD-OS/releases/tag/v0.2.1)
-contains a compressed raw disk image, not necessarily a live image or installer:
-`mPWRD-OS_26.05.0-trunk_Uefi-x86_trixie_current_6.18.38_minimal.img.xz`.
-Select this `.img.xz` directly in **Boot image**. Its roughly 1.25 GiB download
-requires about **5.69 GiB** of browser storage for the prepared image. Verify the
-download's published checksum before use. The artifact inspected for this change
-contains a FAT32 ESP and an x86_64 fallback loader; see
-[the recorded results](validation/virtual-media.md).
-Its boot and Secure Boot compatibility with the Wyse have **not** been proven.
-Use a writable overlay for its normal OS-disk workflow.
+## Failures and recovery
 
-Booting this disk runs the OS on the virtual disk. It does **not** install it to
-internal eMMC. Follow the OS's installation instructions separately if desired,
-carefully identify the destination disk, then eject virtual media and verify
-internal bootloader discovery on another reboot. A successful boot from virtual
-media does not prove that an eMMC installation has a discoverable bootloader.
+Keep the tab visible and the computer awake while a disk is inserted. Browser
+suspension, cable removal, a failed storage transaction or a lost media connection
+can make the disk unavailable to the target. Committed writes remain saved.
 
-## FAT32 thumb drive
+After a failure, unmount/eject the disk on the target or power the target off,
+confirm that state in the panel, then choose **Eject and synchronize**. Reconnect
+and insert the disk explicitly. Do not recover while the target is using it.
+Ejection removes the medium without disconnecting keyboard and mouse.
 
-Choose **USB drive**, a whole-MiB capacity from **64 MiB to 32 GiB**, and a
-1–11 character ASCII label (letters, digits, spaces, hyphens or underscores).
-Creation uses a sparse disk with an MBR, a FAT32 LBA partition starting at sector
-2048, mirrored FATs, backup boot sector/FSInfo, and a volume-label root entry.
-No target-side software is needed.
+Each successful target-write reply follows a strict-durability IndexedDB commit.
+A large SCSI write can partially commit before a later chunk fails. A transaction
+can also finish after a USB timeout, leaving an uncertain write outcome. Safe
+ejection and inspection are required; failed requests do not return fabricated
+zeroes or successful write acknowledgments.
 
-While ejected, add files, create folders, navigate, inspect the first 64 KiB of a
-file as text, download files, and remove files or empty folders. UTF-16 VFAT long
-names are supported. Names are limited to 255 UTF-16 code units; reserved device
-names, forbidden characters, trailing dots/spaces, and case-insensitive duplicates
-are rejected. Individual files cannot exceed **4 GiB minus one byte**. Capacity
-errors and malformed/cyclic cluster chains produce explicit errors.
+If a browser filesystem edit is interrupted, the saved disk is marked as needing
+a check and cannot be inserted or edited. Export it for external filesystem
+repair, then re-import the repaired image. Target-created corruption is reported
+when the browser detects it while parsing the filesystem.
 
-Client filesystem edits are disabled while inserted, even in read-only mode.
-Read-only sharing lets the target read client-added files. Writable mode lets the
-target add files normally. To retrieve them:
-
-1. Finish target copies and unmount/eject the USB disk **inside the target OS**.
-2. Confirm that in the media panel, then choose **Eject and synchronize**.
-3. The browser waits behind all outstanding storage transactions, releases
-   ownership, and reloads directory/FAT state. Download/inspect the returned files
-   or export the updated disk image.
-
-The target's PREVENT MEDIUM REMOVAL request is respected. Unmount there before
-trying again. A target START STOP eject removes the medium, but client edits
-remain locked until browser synchronization is complete. If the link was lost,
-confirm the target is unmounted or powered off before offline recovery. Do not
-force recovery while the target might still be using the disk.
-
-## Persistence, exports, and failures
-
-Pages and volume metadata live in IndexedDB under the **current browser origin**.
-A storage worker serializes requests, caches at most eight 64 KiB pages, and
-commits each target write and its revision in one strict-durability transaction.
-Only transaction completion produces a successful write reply. SCSI writes larger
-than one USB buffer can partially persist before a later chunk fails; the overall
-command then fails. No acknowledged chunk is intentionally discarded.
-
-Writable insertion requires persistent-storage permission and Web Locks. Web
-Locks prevent two tabs from opening the same saved disk at once. Private browsing,
-quota exhaustion, unsupported durability, revoked permission, storage corruption,
-and user-cleared browser data cannot be hidden by a successful USB ACK. Browser
-persistence is not an external backup and cannot protect against deleting browser
-data or underlying storage failure.
-
-For a directly selected `.img` or `.iso`, the source is retained as a selected
-File object; after a reload, reopen the saved overlay and reselect the original.
-Its size and full SHA-256 must match. For an imported `.img.xz`, the prepared raw
-source remains in OPFS and its reference is saved with the volume metadata in
-IndexedDB. Reopen that saved disk without selecting the compressed file again;
-the app uses its saved source directly, with only presence and size checks rather
-than another full-image checksum scan. Initial imports and newly selected
-replacement files still establish or confirm the source fingerprint. If browser
-data has removed the prepared source, select the original `.img.xz` again to restore it against the
-saved overlay's fingerprint. Successful prepared sources are retained alongside
-their saved volumes; unreferenced interrupted imports are reclaimed. All of this
-storage belongs to the current browser profile and exact origin, including its
-port.
-
-The panel distinguishes browser-saved revisions from a confirmed external export.
-Export writes a new `*-updated.img`. Save File capable browsers stream straight
-to the selected destination; other browsers stage a bounded-memory OPFS file and
-offer a download. Staged downloads consume browser storage and are not
-conservatively deleted automatically. If quota is insufficient, use a browser
-with Save File support or free unrelated storage. Confirm **I saved the downloaded
-export** only after saving it outside this browser. Export and download require
-ejection. No overlays are automatically pruned.
-
-A client filesystem edit marks the volume as needing a check before changing
-metadata. If it fails or the tab closes mid-edit, insertion and editing remain
-locked. Export for external filesystem repair and re-import the repaired image;
-this avoids presenting a partly updated FAT as a clean filesystem. Target-created
-filesystem corruption is also reported when parsing detects it; an actual disk
-checker remains advisable after an unclean target shutdown.
-
-Media IO has a 10-second deadline. Heartbeats run every second with at most one
-waiting for a reply. The idle lease is 5 seconds; an outstanding disk request
-retains its full IO deadline, and matching successful IO replies renew the lease.
-Heartbeat replies have a 12-second client deadline; other controls retain their
-4-second deadline. New HTTPS handshakes have a separate 2-second IO budget so
-an incomplete new connection cannot indefinitely block the existing media stream.
-After the SDK reads the opcode, a media frame's remaining header and payload
-share a 10-second receive budget, including repeated TLS reads. A temporary pause
-does not close the connection merely because one receive exceeded the ordinary
-2-second HTTPS timeout. That ordinary timeout remains in effect outside media
-frame handling, including the initial opcode read.
-A timeout,
-suspension, failed storage commit, or socket loss makes the
-medium unavailable and fails pending requests; it never fabricates zeros or
-reports a failed write as successful. Already committed writes remain saved.
-A late response is rejected after session/request/bus-epoch changes. USB bus resets
-and BOT resets cancel outstanding operations; an inserted source remains available
-for fresh requests. Reinsertion after connectivity failure is explicit.
-
-SYNCHRONIZE CACHE succeeds only while the medium is usable and no IO is pending;
-there is no acknowledged volatile device write cache to drain. It cannot flush
-data the target OS has not sent. A lost flush fails. A late browser transaction
-may commit after USB timeout; this is an explicitly uncertain write outcome,
-resolved by safe ejection and inspection, not silent rollback.
+A USB bus reset cancels outstanding operations while keeping an inserted source
+available for fresh requests. SCSI cache synchronization succeeds only when the
+medium is usable and no request is pending; it cannot flush data still cached by
+the target OS. Timing and session details are in the [protocol](PROTOCOL.md).
 
 ## Boot-key repetition
 
-Connect a control link, select F12 (Wyse default), and configure initial delay,
-press time, press-start interval, and total active duration. Defaults are
-0 ms / 80 ms / 300 ms / 60 seconds. Arm **before** manually restarting the target.
-There is no target power control without additional hardware.
+Connect Serial, Bluetooth or Wi-Fi control. Under **Boot key**, select a key and
+choose **Start repeating** before manually restarting the target. F12 is the
+Wyse boot-menu default. The board does not control target power.
 
-Firmware sends distinct press/release reports, merges ordinary input while there
-is room in the six-key boot report, and waits for USB keyboard readiness.
-Reboot/re-enumeration does not extend the bounded duration. Press durations are
-20–2000 ms, interval must allow at least a 10 ms release, delay is at most 120 s,
-and active duration is at most 300 s. A full normal six-key report takes priority.
-Cancellation bypasses queued input and releases at the next writable keyboard
-opportunity. Physical key release cannot be delivered while USB is disconnected;
-it is cleared on re-enumeration. The target is not power-cycled by this macro.
+Defaults are 0 ms delay, 80 ms press, 300 ms press-start interval and 60 seconds
+active duration. Press time can be 20–2000 ms, the interval must include at least
+10 ms of release time, delay is limited to 120 seconds, and active duration to
+300 seconds. The panel shows **Stop and release key** while repetition is active.
 
-## Measure before relying on OS boot
+Repetition sends distinct press/release reports and waits for USB keyboard
+readiness. Re-enumeration does not extend its duration. Ordinary input takes
+priority if all six boot-keyboard slots are occupied. Stop releases the repeated
+key at the next writable keyboard opportunity; a disconnected target receives
+the cleared report on re-enumeration.
 
-The connected-board tests include real USB sector serving at 115200 and short
-Wi-Fi echo measurements; see [recorded evidence](validation/virtual-media.md).
-Faster UART rates depend on the actual bridge and cable. BLE stays a control link.
-A wire benchmark is not an OS-boot or durable-write performance result.
+## Performance and diagnostics
 
-For an actual board:
+Wi-Fi negotiates read-ahead requests up to **32 KiB** with PSRAM; USB UART and the
+no-PSRAM fallback use **8 KiB**. Writes wait for browser storage commits. One disk
+request is outstanding at a time, and writes or media changes invalidate the
+read-ahead cache.
 
-- Build/flash `CONFIG_KVM_UART_BAUD` at 115200, 460800, 921600, and 2000000 in turn.
-  Close browser serial control, then run
-  `python tools/benchmark_usb_media.py -p PORT --baud BAUD --seconds 30` for media
-  echo with concurrent HID replies. `tools/benchmark_serial.py` measures only
-  short HID round trips and does not qualify large media packets.
-  Record USB-UART bridge model, cable, failures and maximum RTT. Set the same rate
-  in the browser before connecting. Test media echo for at least 30 seconds at each
-  candidate with control traffic active, then verify target sector reads. Use
-  921600 in both firmware and browser to restore the standard configuration.
-- With Wi-Fi firmware, choose **Test connection speed** while ejected. It verifies echoes
-  at the connection's negotiated size (up to 32 KiB; older firmware uses 8 KiB)
-  echoes and reports aggregate round-trip payload throughput and worst RTT.
-  This measures the browser/board path (plus the helper if used), **not USB or durable write speed**.
-- During sustained target reads/writes record the panel's actual transfer counts,
-  current read rate and storage errors. Test cold/random reads as well as sequential
-  access. Record HID latency during both; Wi-Fi/BLE coexistence needs measurement.
-- Follow [the hardware acceptance procedure](validation/virtual-media.md) before
-  choosing a production transport or claiming Wyse boot compatibility.
+**Connection settings → Test connection speed** measures echo throughput between
+the browser and board, including a helper if used. It does not measure target
+USB reads or durable writes. During target use, the panel reports read/write
+counts and current read speed; idle speed falls to zero. **Disk details &
+download** shows browser response timing, excluding network transit and target
+USB completion.
 
-### Diagnose slow Wi-Fi reads
+`GET /device/diagnostics` exposes media counters without acquiring a media session
+or reading image contents. Counters reset after a successful media connection:
 
-Media sockets enable `TCP_NODELAY`: ESP-IDF sends a WebSocket header and its
-payload in separate writes, so a small sector request must not wait behind TCP's
-Nagle buffering and the peer's delayed acknowledgment. The media sender also
-combines the WebSocket header and payload in one transport call, so small READ
-requests use one TLS record. Partial socket writes are completed before another
-frame is sent. Wi-Fi modem power saving
-is explicitly disabled to favor latency on this USB-powered device.
+| Counter | Meaning |
+| --- | --- |
+| `reads`, `readBytes` | Successful matching remote read replies, including read-ahead bytes |
+| `readTimeUs`, `readMaxUs` | Total and maximum request-to-validated-reply time |
+| `cacheBytes` | Target bytes served from the board's read-ahead cache |
 
-Current clients request a 32 KiB Wi-Fi read-ahead window, amortizing each network
-and storage-worker round trip across more sectors. The board allocates the larger
-buffers from PSRAM; if unavailable, it retains the 8 KiB limit. Older clients and
-USB UART also retain 8 KiB. Only one disk request remains outstanding, writes still
-wait for strict storage commit, and every write or medium change invalidates the
-read-ahead cache. The client validates the advertised limit before using it.
-
-The panel's read rate uses recent byte deltas and falls to zero when idle.
-**Disk details & download** also shows browser response timing: receiving a READ
-request through reading storage, encoding, and handing its response to the
-transport. It excludes Wi-Fi transit and target USB completion.
-
-`GET /device/diagnostics` reports a `media` object without acquiring a media
-session or reading image contents. Counters reset on a successful HELLO:
-
-- `reads` and `readBytes`: successful, matching remote READ replies, including
-  read-ahead bytes. Failed, stale, duplicate and unsent replies do not count.
-- `readTimeUs`: total request-to-validated-reply time, including network transit,
-  browser processing and HTTP scheduling; `readMaxUs` is the session maximum.
-- `cacheBytes`: target reads served directly from the board's cache. These are
-  separate from remote bytes and must not be added as unique disk contents.
-
-Take two diagnostics snapshots during sustained target reads. Divide the change
-in `readBytes` by elapsed wall time for current remote throughput, and the change
-in `readTimeUs` by the change in `reads` for mean request latency. Compare the
-same target workload before and after a firmware update; large echo packets alone
-do not reproduce the small outbound requests used by actual virtual media.
+Compare `readBytes` across two snapshots and divide by elapsed time for remote
+throughput. Cache bytes are separate and must not be added as unique disk data.
+For hardware results, including Armbian boot on the Dell Wyse 3040, see
+[validation](validation/virtual-media.md).

@@ -1,141 +1,138 @@
-# Configure Wi-Fi in the web UI
+# Wi-Fi configuration
 
-Open **Settings → Wi-Fi** in the full hosted/local app for initial setup.
-Firmware with the Wi-Fi settings interface is required. The ordinary build now includes that
-interface and starts with Wi-Fi **off** until configured. A build with explicit
-bootstrap hotspot credentials uses them only until settings are saved on the
-board. Updating firmware preserves saved network settings in NVS.
+Open **Settings → Wi-Fi** in the console. Wi-Fi starts **Off** until configured.
+Saved network settings survive normal firmware updates and board restarts.
 
-Connect through the board's **UART/programming USB port** using Serial, or pair
-using Bluetooth, then choose **Load board settings**. The native USB port is the
-target keyboard/mouse/disk connection, not a serial configuration port. Wi-Fi can
-also carry configuration commands after an authenticated media connection exists,
-but changing that network will disconnect it.
+For initial setup, connect the board's **programming/UART USB port** and choose
+**Connect USB**, or choose **Connect Bluetooth** and pair the board. Settings load
+after connection; **Load settings** or **Reload** reads them again. The native
+USB port connects keyboard, mouse and disk to the target.
 
-## Modes
+An authenticated Wi-Fi media connection can also carry configuration commands.
+Changing its network disconnects that connection.
 
-- **Off:** stops the Wi-Fi radio and media endpoint; serial/Bluetooth HID and USB
-  remain available.
-- **Hotspot (access point):** the board creates its own WPA2-protected network.
-  Enter its network name and password, save, and join it from the laptop/tablet.
-  The default hotspot address is `192.168.4.1`.
-- **Client:** the board joins your existing **2.4 GHz personal
-  Wi-Fi network**. Enter its exact SSID and password. Open networks are not supported. The router supplies
-  the board's address through DHCP; read it in the status panel. Enterprise Wi-Fi,
-  static IP configuration, and nearby-network scanning are not provided.
+## Network modes
 
-These use normal Wi-Fi infrastructure modes, **not ad-hoc/IBSS**.
+| Mode | Behavior |
+| --- | --- |
+| **Off** | Stops Wi-Fi. USB and Bluetooth control remain available. |
+| **Hotspot** | Creates a WPA2-protected network. Set its name/password, save, then join it from the client computer. The default board address is `192.168.4.1`. |
+| **Client** | Joins an existing 2.4 GHz personal Wi-Fi network. Enter its exact name and password. Read the DHCP address in the status panel. |
 
-Client mode defaults to keeping a **recovery hotspot** available at the
-same time (AP+STA). That hotspot has its own saved name/password and stays usable
-if joining the router fails. The UI can show its saved password on request. If
-you disable recovery, use Serial or Bluetooth to fix an incorrect router setting.
-USB HID remains connected while the network changes. The recovery hotspot uses
-`192.168.4.x`; if your router uses that same subnet and routing fails, disable
-recovery and use Serial/Bluetooth for setup.
+Open networks, enterprise Wi-Fi, static IP configuration, nearby-network scanning
+and ad-hoc/IBSS mode are unsupported.
 
-## Save, status, and recovery
+Client mode defaults to keeping a **recovery hotspot** active. It has its own
+saved name and password and stays available if joining the network fails. Expand
+**Recovery hotspot settings** to change it. If disabled, use USB or Bluetooth to
+recover incorrect network settings. USB HID stays connected through network
+changes.
 
-Eject and synchronize virtual media before applying a network change. The firmware
-also enforces this rule and reserves the disk-free interval while applying the
-change. It validates a complete staged transaction, commits the settings to NVS,
-acknowledges the save, then changes Wi-Fi after a short delay. A missing credential
-fragment, invalid password or failed NVS commit does not apply a partial config.
-Separate control connections cannot mix each other's credential uploads.
+The hotspot uses `192.168.4.x`. If the Client network uses the same subnet and
+connections fail, disable recovery and use USB/Bluetooth for setup.
 
-Names are at most 32 UTF-8 bytes. Passwords are 8–63 printable ASCII characters;
-Client mode requires a saved or newly entered password. Blank password inputs
-preserve saved passwords. The router's
-saved password is never returned to the browser. New inputs and explicitly
-revealed hotspot credentials/media access tokens stay in memory and are not saved to
-browser settings or logs.
+## Saving and recovery
 
-The panel reports off, hotspot active, joining, connected with DHCP IP, or failure,
-plus pending changes, retries, disconnect reason and device errors. Router joining
-stops retrying after five retries or a 45-second join/address timeout. The recovery
-hotspot remains available. Choose **Save and apply** to retry. Check exact SSID,
-password, signal and 2.4 GHz support if it fails.
+Eject and synchronize virtual media before choosing **Save and apply**. The
+firmware rejects network changes while media is inserted. Settings are validated
+and committed together before the network changes; invalid or incomplete
+credentials do not apply a partial configuration.
 
-Settings are stored on the device across restarts. They are not erased by normal
-application/partition flashing; an explicit NVS erase or incompatible/corrupt
-settings can reset them. Factory hotspot passwords and media access tokens are generated
-with the hardware entropy source enabled before the radio starts.
+Network names are limited to 32 UTF-8 bytes. Passwords must contain 8–63 printable
+ASCII characters. Blank password inputs preserve saved passwords; Client mode
+requires a saved or newly entered password. The Client network password is never
+returned to the browser. **Show saved password** reveals the hotspot password.
+Revealed credentials and tokens stay in memory and are not saved to browser
+settings or logs.
 
-## Open the board-hosted console
+The panel reports Off, hotspot active, joining, connected, or failure. **Advanced**
+shows Client/hotspot IPs and failure codes. Joining stops after five retries or a
+45-second join/address timeout. Check the network name, password, signal and
+2.4 GHz support, then choose **Save and apply** to retry.
 
-The ESP32 serves its own UI once Wi-Fi is active. Use the hotspot IP or Client
-DHCP IP shown in the panel; a Go helper is no longer required for this workflow.
+An explicit NVS erase or incompatible/corrupt settings can reset configuration.
+A firmware build with bootstrap hotspot credentials uses them only until settings
+are saved on the board.
 
-The board needs functioning PSRAM to run HTTPS with Wi-Fi and Bluetooth. Published
-N8R8 firmware selects Octal RAM; boards with R2/2 MB RAM need a Quad build using
-`firmware/sdkconfig.quad-psram` on a clean configuration. Select the actual mode
-in **Component config → ESP PSRAM → SPI RAM config** when using menuconfig; there
-is no runtime Quad/Octal auto-detection. A missing-RAM fallback preserves basic
-USB/Bluetooth and HTTP setup bring-up, but HTTPS may lack the memory it needs.
-[Build profiles](https://github.com/thebentern/cheap-web-kvm#match-the-psram-mode).
+## Board-hosted HTTPS console
 
-1. Open `http://BOARD_IP/` for the setup page. Download the board's public
-   certificate authority from `/device/ca.crt` and compare its SHA-256 fingerprint
-   with the value read independently over the programming USB port or paired
-   Bluetooth. Do not use the fingerprint displayed over HTTP as the only check.
-   `tools/device_certificate.py` can download the certificate and verify it
-   against a USB readout; it leaves trust installation to you.
-2. Manually install the verified authority as trusted on each client computer or
-   tablet. This is a one-time platform trust step, not an instruction to bypass a
-   browser warning. The setup page describes Keychain Access on macOS, Trusted
-   Root Certification Authorities on Windows, and profile/full trust on iOS.
-3. Open `https://BOARD_IP/`. Under **Virtual media → Wi-Fi**, enter the media
-   access token from **Settings → Wi-Fi → Advanced → Show saved token** and
-   connect. Read that token initially through USB/Bluetooth. It is separate from
-   the network password and is used to pair this browser with the board.
-4. Select **Use Wi-Fi for keyboard & mouse** if desired. The same authenticated
-   connection carries media and HID. Native USB still connects to the target;
-   the separate capture stick supplies video.
+The ESP32 hosts its own console and media endpoint. Use the address shown in
+Wi-Fi status. A separate HTTPS helper is optional.
 
-The board stores a unique certificate authority and its keys in NVS. The trust
-identity survives restarts and DHCP changes. It signs an 800-day server
-certificate, keeping that lifetime below the 825-day limit described in
-[Apple’s TLS server certificate requirements](https://support.apple.com/en-us/103769); the authority has a
-separate 2020–2049 validity period. A changed IP, fewer than 30 days remaining, or
-an older server certificate with an oversized lifetime causes renewal of the
-server certificate. The authority and keys stay the same, so clients do not
-reinstall trust after normal renewal. HTTPS restarts only when the medium is
-ejected and no media work is pending.
+HTTPS with Wi-Fi and Bluetooth requires working PSRAM. Published N8R8 firmware
+selects Octal PSRAM; R2/2 MiB boards need the Quad build configuration in
+`firmware/sdkconfig.quad-psram`. The mode is selected at build time, not detected
+automatically. Without PSRAM, basic USB/Bluetooth and HTTP setup can work while
+HTTPS may lack sufficient memory. See [PSRAM build setup](https://github.com/thebentern/cheap-web-kvm#match-the-psram-mode).
 
-A fresh build embeds a build-time timestamp for the initial offline clock. Client
-mode attempts SNTP through `pool.ntp.org` when the network can reach it; an
-isolated hotspot does not provide that time source. After a long offline interval,
-a certificate that has expired while the board still has an old build-time clock
-requires current firmware or a usable current time source. Do not assume
-indefinite offline certificate validity or bypass system verification.
+1. Open `http://BOARD_IP/` for certificate setup. Download the public certificate
+   authority from `/device/ca.crt`.
+2. Read its fingerprint independently through USB or paired Bluetooth under
+   **Settings → Wi-Fi → Advanced → Read certificate fingerprint**, then compare
+   it with the downloaded certificate. The HTTP page alone does not establish
+   the certificate's identity. `tools/device_certificate.py` downloads and checks
+   the certificate against a USB readout.
+3. Install the verified authority as trusted on each client computer/tablet.
+   The setup page gives instructions for macOS, Windows and iOS. This is a manual
+   trust step; do not bypass a browser certificate warning.
+4. Open `https://BOARD_IP/`. In **Virtual media → Wi-Fi**, choose **Pair with USB**
+   or **Pair with Bluetooth**. Pairing checks the board identity, reads its access
+   token and connects automatically.
+5. Wi-Fi supplies keyboard/mouse control when no USB/Bluetooth control link is
+   active. To switch an existing control link, choose **Connection settings →
+   Use Wi-Fi for keyboard & mouse** in Virtual media. Native USB stays connected
+   to the target; the capture stick supplies video.
 
-An NVS erase creates a new identity, which requires checking and trusting its
-replacement. The server's device hostname is included in its certificate; name
-resolution depends on your LAN configuration.
+For manual pairing, expand **Enter token manually**. Read the token from an
+established USB/Bluetooth connection under **Settings → Wi-Fi → Advanced → Show
+saved token**. It is separate from the network password. These settings cannot
+load without a control connection.
 
-Pairing creates a Secure, HttpOnly, SameSite=Strict browser cookie. The app does
-not save the access token in local settings. Pairing expires and is cleared by a
-board restart or a network/token change; enter the token again if requested.
-The firmware allows one media owner across USB and Wi-Fi and keeps its existing
-removal/synchronization rules. Eject media before changing network settings.
+Pairing creates a Secure, HttpOnly, SameSite=Strict session cookie lasting up to
+eight hours. The app does not save the access token in local settings. Pair again
+after expiry, a board restart, or a network/token change. Only one media owner can
+connect over USB or Wi-Fi at a time.
 
-The on-board UI includes the console, settings and virtual media. Its OCR control
-is disabled because the language/engine assets exceed the 8 MB board's flash
-budget; use the full hosted/local app for OCR. Firmware installation links to the
-hosted installer. Disk files and changes remain in browser storage, bound to that
-browser profile and exact origin. Opening a different IP/hostname or switching
-from a local/hosted UI does not carry that storage into the new origin.
+### Certificate lifecycle and storage
 
-## Optional helper
+The board stores its certificate authority and keys in NVS. Its server certificate
+lasts 800 days and renews after an IP change or with fewer than 30 days remaining.
+Renewal retains the authority, so client trust remains valid. HTTPS restarts to
+apply renewal only while media is ejected and idle. Erasing NVS creates a new
+identity that must be verified and trusted again.
 
-The existing Go HTTPS helper still works with older firmware and the full UI.
-Use the chosen board IP as its fixed upstream, for example
-`-media http://192.168.4.1`, and set the saved media access token as
-`KVM_MEDIA_TOKEN`. Open the helper's trusted HTTPS UI and leave the helper address
-blank when connecting from that same UI. After token rotation, update/restart any
-helper using the old token.
+Firmware embeds its build timestamp as an initial offline clock. Client mode
+attempts time synchronization through `pool.ntp.org`. An isolated hotspot has no
+network time source; after prolonged offline use, an expired certificate may
+require current firmware or a working time source. Hostname resolution depends
+on the LAN; use the reported IP if its device hostname does not resolve.
 
-On-board hosting is implemented. Router compatibility, Bluetooth/Wi-Fi
-coexistence, HTTPS resource use and usable OS-image streaming throughput require
-hardware validation. See [virtual media](VIRTUAL_MEDIA.md) and
-[the recorded test procedure](validation/virtual-media.md).
+The board-hosted console includes settings and virtual media. OCR requires the
+full hosted/local app because its language/engine assets exceed the 8 MiB flash
+budget. Firmware installation links to the hosted installer.
+
+Disk files and overlays remain in browser storage, bound to the browser profile
+and exact origin. Opening another IP/hostname or switching between board, hosted
+and local consoles does not transfer that storage. Export changes before moving
+origins. See [virtual media](VIRTUAL_MEDIA.md).
+
+## Optional HTTPS helper
+
+The Go helper supports the full UI and older firmware. Build and start it with
+the board's fixed upstream address:
+
+```sh
+cd web
+npm ci
+NUXT_APP_BASE_URL=/ npm run generate
+cd ../src
+# Set KVM_MEDIA_TOKEN to the board's saved media access token.
+go run . -www ../web/.output/public -media http://BOARD_IP
+```
+
+Open `https://localhost:8443/` using a trusted certificate. Choose **Virtual media
+→ Wi-Fi → Connect** and leave **Helper address** blank when using its own UI.
+For LAN clients, the helper certificate must include its LAN IP/hostname and be
+trusted by each client. `-tls-hosts` affects newly generated certificates and does
+not replace existing files. Update/restart the helper after changing the board's
+access token. Keep the unencrypted helper-to-board connection on a trusted network.

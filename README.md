@@ -25,18 +25,15 @@ ported to Nuxt and Vue, with Bluetooth and touch input added. See
 DezKVM-Go uses an SL2.1A hub, a CH340C USB-serial bridge and a CH9329
 serial-to-HID chip. This project replaces the CH340C and CH9329 with one
 ESP32-S3. Its firmware speaks the CH9329 serial protocol to the host and
-presents a USB HID keyboard and absolute mouse to the target.
-
-Unlike the fixed-function CH9329, an MCU can add features. Bluetooth LE is
-implemented but not yet tested on hardware (see [iPad](#ipad)). Experimental USB mass storage, FAT32 file sharing, Wi-Fi media transport and
-firmware-controlled boot-key repetition are now available; see
-[Virtual media](docs/VIRTUAL_MEDIA.md). Wyse boot and board performance still
-need hardware validation. USB Ethernet remains a stretch goal.
+presents a USB keyboard, absolute/relative mouse and removable mass-storage disk
+to the target. Host connections support USB serial, Bluetooth LE control and
+Wi-Fi control/media. See [Virtual media](docs/VIRTUAL_MEDIA.md) and
+[iPad](#ipad) for setup and browser requirements.
 
 Video does not pass through the ESP32. The capture stick is a separate UVC
 device plugged into the host.
 
-## Virtual media (experimental)
+## Virtual media
 
 Stream an `.img`, directly imported `.img.xz`, or USB-bootable hybrid ISO from
 the browser, or create an actual FAT32 thumb drive for ordinary file sharing. The source stays unchanged;
@@ -51,13 +48,14 @@ Hotspot or Client in **Settings → Wi-Fi** through USB/Bluetooth first;
 [network settings](docs/WIFI.md) persist on the board. Open its HTTP IP for
 certificate setup, verify the public authority against its USB/Bluetooth
 fingerprint, manually trust it once per client, then open its HTTPS IP and pair
-using the saved media access token. The Go helper remains optional. Fresh
-installations start Wi-Fi off. Serial/Bluetooth HID remains available. Older
+using **Pair with USB** or **Pair with Bluetooth**, or enter the saved access
+token manually. The Go helper remains optional. Fresh installations start Wi-Fi
+off. Serial/Bluetooth HID remains available. Older
 firmware configured at 115200 needs that matching browser setting.
-Follow the [setup and persistence guide](docs/VIRTUAL_MEDIA.md) and
-[hardware acceptance procedure](docs/validation/virtual-media.md) for measured
-transport results and outstanding Wyse boot validation. The published mPWRD-OS
-UEFI raw image was inspected for its x86_64 fallback loader, not booted on hardware.
+See the [setup and persistence guide](docs/VIRTUAL_MEDIA.md) and
+[validation results](docs/validation/virtual-media.md). Wi-Fi virtual media has
+booted mPWRD-OS/Armbian on a Dell Wyse 3040 through first-boot setup. A separate
+installation also booted from internal eMMC with virtual media ejected.
 
 ## Hardware
 
@@ -78,15 +76,16 @@ flowchart LR
 
     host -- "USB serial" --> esp
     host -. "Bluetooth" .-> esp
-    esp -- "USB HID" --> target
+    host -. "Wi-Fi control/media" .-> esp
+    esp -- "USB keyboard, mouse and disk" --> target
     target -- "HDMI" --> capture
     capture -- "USB video" --> host
 ```
 
-Solid lines are cables, the dotted line is Bluetooth. The target sees the ESP32-S3
-as a USB keyboard and mouse (USB HID). An iPad uses Bluetooth; a laptop can use
-either link. Both can be connected at once, but each sends the full key and
-button state, so type from one at a time.
+Solid lines are cables; dotted lines are wireless connections. The target sees
+the ESP32-S3 as a USB keyboard, mouse and removable disk. Control uses USB serial,
+Bluetooth or Wi-Fi; media uses USB serial or Wi-Fi. Use one control link at a time
+to avoid conflicting key and button states.
 
 ### Before first power-up
 
@@ -113,7 +112,7 @@ You can also select **Install firmware** from the console toolbar or its
    any active KVM serial connection or serial monitor using that port.
 2. In the installer, connect to the board's UART serial port and install the
    bundled firmware. The build is for the **ESP32-S3-DevKitC-1-N8R8 with 8 MB
-   flash**. The native USB port is for the target keyboard and mouse.
+   flash**. The native USB port is for the target keyboard, mouse and virtual disk.
 3. Keep the cable connected until the installer finishes. Reset the board if
    it does not restart automatically, then return to the console.
 
@@ -267,9 +266,10 @@ the UART cable. On Linux, Web Bluetooth is behind a browser flag.
 * On the board: configure Wi-Fi through USB/Bluetooth, open `http://BOARD_IP/`
   for certificate setup, verify the certificate fingerprint independently and
   manually install trust once per client, then open `https://BOARD_IP/`. Pair
-  **Virtual media → Wi-Fi** with the media access token from Settings → Wi-Fi →
-  Advanced. The board serves the console and authenticated media directly; no
-  helper is required. [Full setup](docs/WIFI.md#open-the-board-hosted-console).
+  **Virtual media → Wi-Fi** using **Pair with USB**, **Pair with Bluetooth**, or
+  a manually entered access token. The board serves the console and authenticated
+  media directly; no helper is required.
+  [Full setup](docs/WIFI.md#board-hosted-https-console).
 * Hosted: <https://thebentern.github.io/cheap-web-kvm/>, deployed by
   [GitHub Actions](.github/workflows/deploy-pages.yml) on pushes to `main` that
   change the web app, firmware, firmware packaging tools or protocol docs.
@@ -409,26 +409,20 @@ python3 tools/ch9329_test.py -p /dev/tty.usbserial-XXXX --soak 2000
 python3 tools/ch9329_test.py -p /dev/tty.usbserial-XXXX --passkey
 ```
 
-## Status
+## Hardware validation
 
-| | Milestone | State |
-|---|---|---|
-| M1 | Boot keyboard and absolute mouse enumerate on the target | Descriptors verified in the binary and TinyUSB starts on hardware. Enumeration on a target not yet confirmed. |
-| M2 | CH9329 frames on UART0 drive HID reports | Verified on hardware. All four commands ACK; 1000/1000 reports in a soak with no timeouts or errors. |
-| M3 | Web UI drives the target end to end | Implemented, not yet confirmed. |
-| M4 | Reconnect, power-cycle survival, sustained typing | Sustained typing verified (soak above). Power-cycle survival not yet confirmed. |
-| M6 | Client-backed USB media, FAT32 sharing and boot repetition | Software checks pass; Wyse boot, physical file transfer and transport measurements outstanding. |
-| M5 | Bluetooth LE transport and iPad support | Bluetooth PIN read and change over UART verified on hardware. The UI's Bluetooth queue tested against a simulated device. Bluetooth pairing, the iPad and touch input not yet confirmed. |
+Validated with an ESP32-S3 rev v0.2 board, 8 MB flash, 2 MB Quad PSRAM and a Dell
+Wyse 3040: composite USB enumeration, keyboard/mouse control in BIOS and Linux,
+boot-key repetition, USB/Wi-Fi virtual media, persistent writes and mPWRD-OS/Armbian
+boot. See the [validation record](docs/validation/virtual-media.md) for measurements
+and test coverage. iPad Bluetooth pairing and touch input remain unverified on
+hardware.
 
-The connected test board reports ESP32-S3 rev v0.2, 8 MB flash and **2 MB
-AP_3v3 embedded PSRAM**, despite its N8R8 label. It therefore needs the Quad/R2
-PSRAM profile for on-board HTTPS. Earlier UART-only tests ran with nothing on the
-native port, so those `--info` results reported `USB enumerated: no`.
+The test board requires the Quad/R2 PSRAM profile despite its N8R8 label. The
+published N8R8 build uses Octal PSRAM; select the profile for the actual module.
 
 ### Stretch goals
 
-* Hardware qualification for client-backed USB media and FAT32 file sharing;
-  see the [validation procedure](docs/validation/virtual-media.md).
 * USB Ethernet (RNDIS/ECM) to the target.
 
 ### Not planned
@@ -442,8 +436,9 @@ native port, so those `--info` results reported `USB enumerated: no`.
 
 * [docs/PROTOCOL.md](docs/PROTOCOL.md): the wire protocol as the web UI sends
   it, including the Bluetooth transport. Read it before changing the parser.
-* [Virtual media](docs/VIRTUAL_MEDIA.md): USB/Wi-Fi connection, FAT32 files, persistent
-  overlays, exports, boot repetition and outstanding hardware validation.
+* [Virtual media](docs/VIRTUAL_MEDIA.md): USB/Wi-Fi connection, FAT32 files,
+  persistent overlays, exports and boot repetition.
+* [Wi-Fi](docs/WIFI.md): Hotspot and Client setup, certificate trust and pairing.
 * [NOTICE](NOTICE): attribution and the changes made to upstream.
 
 ## License

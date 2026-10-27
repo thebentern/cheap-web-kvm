@@ -60,12 +60,12 @@ menu "cheap-web-kvm"
             Supply your own small bootable UEFI image and verify its license.
 
     config KVM_MEDIA_WIFI
-        bool "Wi-Fi configuration and experimental client-backed media"
+        bool "Wi-Fi configuration and client-backed media"
         depends on !KVM_MEDIA_LOCAL_PROOF
         default y
         select HTTPD_WS_SUPPORT
         help
-            Configure hotspot, router-client mode or Wi-Fi off from the web UI
+            Configure Hotspot, Client mode or Wi-Fi off from the web UI
             over serial or bonded Bluetooth. Settings persist in NVS. Client
             mode can keep a recovery hotspot. Blank build credentials start
             with Wi-Fi off; the browser can enable it without recompiling.

@@ -1,13 +1,10 @@
-# CH9329 wire protocol, as actually spoken by the DezKVM-Go web UI
+# KVM wire protocols
 
-**Provenance.** Everything below was extracted by reading the byte-serialisation
-code in the front-end, not from the CH9329 datasheet. The authoritative source is
-the `HIDController` class in [`local-kvm.js`](local-kvm.js) (upstream:
-`tobychui/DezKVM-Go`, `docs/local-kvm.js`). Where the datasheet and this document
-disagree, this document wins — it describes what is on the wire.
-
-The firmware parser in [`firmware/main/ch9329.c`](../firmware/main/ch9329.c) is
-written against this document.
+CH9329-compatible control frames are implemented in
+[`web/app/utils/ch9329.ts`](../web/app/utils/ch9329.ts) and
+[`firmware/main/ch9329.c`](../firmware/main/ch9329.c), based on
+[DezKVM-Go](https://github.com/tobychui/DezKVM-Go). This reference also defines
+boot repetition, virtual media and runtime Wi-Fi settings.
 
 ---
 
@@ -251,37 +248,16 @@ written. Bonds made under the old passkey survive the change. Either transport
 may send both: over UART the host holds the cable, and over Bluetooth only a
 host already paired gets as far as a write.
 
-## 7. Deliberate deviations from byte-faithful emulation
-
-Two places where the firmware does **not** simply forward what the UI sent.
+## 7. HID report normalization
 
 ### Modifier usages are folded into the modifier byte
 
-The UI puts modifier keys in the *keycode array*, not the modifier byte. The
-paste box sends Shift as `SendKeyboardPress(16)`, and
-`javaScriptKeycodeToHIDOpcode(16)` returns `0xE1`, which then occupies one of the
-six keycode slots while the modifier byte stays `0x00`:
+Control frames may contain modifier usages in the six-key array. The firmware
+moves usages `0xE0..0xE7` into the corresponding modifier-byte bits for
+Boot-protocol compatibility. For example, usage `0xE1` sets Left Shift.
 
-```js
-// paste-box.js
-if (needsShift) {
-    await controller.SendKeyboardPress(16);
-}
-```
-
-Full-OS HID stacks generally cope with modifier usages appearing in the array.
-Boot-protocol consumers do not — they read shift state from the modifier byte
-only. Forwarding this verbatim would mean every uppercase letter and shifted
-symbol pasted at a BIOS/UEFI prompt arrives unshifted, which defeats the point of
-the device.
-
-The firmware therefore folds any usage in `0xE0..0xE7` out of the keycode array
-and into the corresponding modifier bit. Hosts that already handled the array
-form see an equivalent report, so nothing regresses.
-
-Note that upstream maps JS keycode 18 (Alt) to `0xE6`, which is Right Alt;
-Left Alt is `0xE2`. The firmware folds whatever it is given rather than
-second-guessing it, so Alt still arrives as Right Alt.
+The UI maps JS keycode 18 (Alt) to Right Alt (`0xE6`). Left Alt is `0xE2`;
+the firmware preserves the supplied left/right usage.
 
 ### Soft reset clears both pointer report IDs
 
@@ -292,24 +268,11 @@ and clearing only one would leave a button latched. The absolute release repeats
 the last known position so that unsticking a button does not fling the cursor to
 the corner.
 
-## 8. Where this contradicts the project brief
+## 8. Device selection
 
-Three assumptions in the original brief did not survive contact with the source:
-
-1. **There is no handshake the UI requires.** The brief anticipated a device
-   info/handshake probe that the UI might "refuse to proceed" without. It does
-   not probe. It sends a soft reset (`0x0F`) shortly after connecting and carries
-   on regardless of the answer.
-
-2. **There is no Web Serial VID/PID filter to change.** The brief expected the
-   fork to need a change to the device picker's filter. `requestSerialPort()`
-   calls `navigator.serial.requestPort()` with no argument, so every serial
-   device is offered and any USB-UART bridge works unmodified. No change needed.
-
-3. **The capture-device VID/PID filter is the one that does need changing**, and
-   the brief did not mention it. `startStream()` matches a hardcoded list of
-   `534d:2109` / `345f:2109` (MS2109). The MS2130 enumerates as `534d:2130` and
-   would not have been found. See [`local-kvm.js`](local-kvm.js).
+Web Serial uses `navigator.serial.requestPort()` without a VID/PID filter.
+The browser sends a soft reset (`0x0F`) after opening the port. Capture-device
+selection is independent of the control protocol.
 
 ## 9. Reference
 
@@ -491,7 +454,7 @@ custom detailed failure text remains in the browser. Unknown SCSI commands fail
 with illegal request. HID interface 0 remains boot-compatible and has no report ID.
 
 See [Virtual media](VIRTUAL_MEDIA.md) for FAT32 ownership, persistent overlays,
-export semantics, local proof mode, limitations, and hardware acceptance steps.
+export semantics, limitations and hardware validation.
 
 ## 12. Runtime Wi-Fi settings (version 1)
 
