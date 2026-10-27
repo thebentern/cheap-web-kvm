@@ -200,12 +200,17 @@ int main(void)
     /* A failed/expired operation is never successful, nor fabricated zeros. */
     assert(tud_msc_read10_cb(0, 100, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
     poll_request();
-    mock_time += 3000001;
+    mock_time += 10000001;
     finish();
     assert(completion == TUD_MSC_RET_ERROR);
     assert(!ble_wifi_media_active); /* A failed HTTP disk restores discovery. */
     assert(!tud_msc_test_unit_ready_cb(0));
     assert(kvm_media_metrics(&metrics) && metrics.reads == 3 && metrics.read_bytes == 3 * 8192);
+    assert(metrics.first_failure == MEDIA_FAILURE_IO_TIMEOUT && metrics.io_timeouts == 1 &&
+           !metrics.lease_timeouts && !metrics.backend_errors && !metrics.disconnects);
+    kvm_media_disconnect();
+    assert(kvm_media_metrics(&metrics) && metrics.first_failure == MEDIA_FAILURE_IO_TIMEOUT &&
+           metrics.io_timeouts == 1 && !metrics.disconnects);
     m = command(M_HELLO, 0, 0);
     session = m.session;
     assert(kvm_media_metrics(&metrics) && !metrics.reads && !metrics.read_time_us && !metrics.cache_bytes);
@@ -218,6 +223,8 @@ int main(void)
     size_t n;
     kvm_media_poll(request, &n);
     assert(command(M_STATUS, 0, 0).flags == M_STALE);
+    assert(kvm_media_metrics(&metrics) && metrics.first_failure == MEDIA_FAILURE_LEASE &&
+           metrics.lease_timeouts == 1 && !metrics.io_timeouts);
     /* Only the active transport can command, receive IO, or disconnect. */
     media_msg_t serial = {.op = M_HELLO, .id = ++id};
     n = media_encode(frame, &serial, NULL, 0);
@@ -256,7 +263,7 @@ int main(void)
     assert(command(M_HELLO, 0, 0).flags == M_OK);
 
     /* Real IO is owner liveness even if a background heartbeat timer stalls.
-     * Each reply still finishes inside its own three-second IO deadline. */
+     * Each reply still finishes inside its own bounded IO deadline. */
     session = command(M_HELLO, 0, 0).session;
     assert(command(M_INSERT, 0, 1024 * 1024).flags == M_OK);
     for (unsigned i = 0; i < 4; i++) {
@@ -294,6 +301,62 @@ int main(void)
     assert(command(M_INSERT, 0, 1024 * 1024).flags == M_OK && ble_wifi_media_active);
     kvm_media_disconnect();
     assert(!ble_wifi_media_active);
+
+    /* A pending read can survive a six-second server pause, beyond the idle
+     * lease, then complete normally inside its ten-second IO deadline. */
+    session = command(M_HELLO, 0, 0).session;
+    assert(command(M_INSERT, 0, 1024 * 1024).flags == M_OK);
+    assert(tud_msc_read10_cb(0, 400, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
+    m = poll_request();
+    mock_time += 6000000;
+    assert(!kvm_media_poll(request, &n) && !deferred && ble_wifi_media_active);
+    assert(kvm_media_metrics(&metrics) && metrics.first_failure == MEDIA_FAILURE_NONE);
+    answer(m, M_OK);
+    finish();
+    assert(completion == sizeof(usb));
+    assert(kvm_media_metrics(&metrics) && metrics.reads == 1 && metrics.read_time_us == 6000000 &&
+           !metrics.io_timeouts && !metrics.lease_timeouts);
+    assert(command(M_EJECT, 0, 0).flags == M_OK);
+    mock_time += 5000001;
+    assert(!kvm_media_poll(request, &n));
+    assert(kvm_media_metrics(&metrics) && metrics.first_failure == MEDIA_FAILURE_LEASE);
+
+    /* A stalled write still has no USB completion until its durable ACK. */
+    session = command(M_HELLO, 0, 0).session;
+    assert(command(M_INSERT, M_WRITABLE, 1024 * 1024).flags == M_OK);
+    unsigned before_write = completed;
+    assert(tud_msc_write10_cb(0, 420, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
+    m = poll_request();
+    mock_time += 6000000;
+    assert(!kvm_media_poll(request, &n) && !deferred && completed == before_write);
+    answer(m, M_OK);
+    finish();
+    assert(completed == before_write + 1 && completion == sizeof(usb));
+    assert(command(M_EJECT, 0, 0).flags == M_OK);
+
+    /* Replies arriving after the IO deadline fail even if no poll ran during
+     * the pause; cleanup must not overwrite the original failure cause. */
+    session = command(M_HELLO, 0, 0).session;
+    assert(command(M_INSERT, 0, 1024 * 1024).flags == M_OK);
+    assert(tud_msc_read10_cb(0, 440, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
+    m = poll_request();
+    mock_time += 10000001;
+    answer(m, M_OK);
+    finish();
+    kvm_media_disconnect();
+    assert(completion == TUD_MSC_RET_ERROR && !ble_wifi_media_active);
+    assert(kvm_media_metrics(&metrics) && metrics.first_failure == MEDIA_FAILURE_IO_TIMEOUT &&
+           metrics.io_timeouts == 1 && !metrics.reads && !metrics.disconnects);
+
+    session = command(M_HELLO, 0, 0).session;
+    assert(command(M_INSERT, 0, 1024 * 1024).flags == M_OK);
+    assert(tud_msc_read10_cb(0, 460, 0, usb, sizeof(usb)) == TUD_MSC_RET_ASYNC);
+    m = poll_request();
+    answer(m, M_IO);
+    finish();
+    kvm_media_disconnect();
+    assert(kvm_media_metrics(&metrics) && metrics.first_failure == MEDIA_FAILURE_BACKEND &&
+           metrics.backend_errors == 1 && !metrics.io_timeouts && !metrics.disconnects);
 
     /* Distinct pulses, bounded reboot window, validation, and deadline. */
     boot_config_t c = {0x45, 100, 80, 300, 1000};

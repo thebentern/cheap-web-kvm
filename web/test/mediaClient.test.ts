@@ -38,10 +38,18 @@ class Socket {
     this.readyState = 3
   }
 }
+class StalledHeartbeatSocket extends Socket {
+  send(bytes: Uint8Array) {
+    const m = decode(bytes)
+    if (m.op === OP.HEARTBEAT) this.sent.push(m)
+    else super.send(bytes)
+  }
+}
 const connections: MediaConnection[] = []
 afterEach(() => {
   for (const c of connections) c.close()
   connections.length = 0
+  vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
@@ -51,8 +59,9 @@ async function connect(
     read: async (_o: number, n: number) => new Uint8Array(n).fill(42),
     write: async (_o: number, _d: Uint8Array) => {},
   },
+  socket = Socket,
 ) {
-  vi.stubGlobal('WebSocket', Socket)
+  vi.stubGlobal('WebSocket', socket)
   const c = new MediaConnection(storage)
   connections.push(c)
   await c.connect('wss://example/media')
@@ -68,6 +77,85 @@ const request = (op: number, id = 50): Message => ({
   data: op === OP.WRITE ? new Uint8Array(512).fill(3) : new Uint8Array(),
 })
 describe('client media flow and durability', () => {
+  it('keeps one heartbeat pending through a reply stall and resumes without disconnecting', async () => {
+    vi.useFakeTimers()
+    const { c, ws } = await connect(undefined, StalledHeartbeatSocket)
+    const errors = vi.fn(), state = vi.fn()
+    c.onError = errors
+    c.onState = state
+    await vi.advanceTimersByTimeAsync(6000)
+    const heartbeats = ws.sent.filter((m) => m.op === OP.HEARTBEAT)
+    expect(heartbeats).toHaveLength(1)
+    expect(c.live).toBe(true)
+    expect(errors).not.toHaveBeenCalled()
+    ws.receive({ ...heartbeats[0]!, op: OP.HEARTBEAT | 128, length: 1, data: new Uint8Array([4]) })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(state).toHaveBeenCalledExactlyOnceWith(4)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(ws.sent.filter((m) => m.op === OP.HEARTBEAT)).toHaveLength(2)
+    expect(c.live).toBe(true)
+    expect(errors).not.toHaveBeenCalled()
+  })
+  it('bounds heartbeat response waits at twelve seconds without extending user controls', async () => {
+    vi.useFakeTimers()
+    const { c } = await connect(undefined, StalledHeartbeatSocket)
+    const errors = vi.fn()
+    c.onError = errors
+    const control = expect(c.request(OP.STATUS)).rejects.toThrow(/Media control timed out/)
+    await vi.advanceTimersByTimeAsync(4000)
+    await control
+    expect(c.live).toBe(true)
+    await vi.advanceTimersByTimeAsync(8999) // Heartbeat started at 1 s, expires at 13 s.
+    expect(c.live).toBe(true)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(c.live).toBe(false)
+    expect(errors).toHaveBeenCalledExactlyOnceWith('Media heartbeat timed out; synchronize before changing media')
+  })
+  it('waits for a control slot rather than failing the connection when the window is full', async () => {
+    vi.useFakeTimers()
+    const { c, ws } = await connect()
+    const controls = Array.from({ length: 4 }, () => c.request(OP.STATUS))
+    const errors = vi.fn()
+    c.onError = errors
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(ws.sent.filter((m) => m.op === OP.HEARTBEAT)).toHaveLength(0)
+    expect(errors).not.toHaveBeenCalled()
+    for (const m of ws.sent.filter((m) => m.op === OP.STATUS)) ws.receive({ ...m, op: m.op | 128 })
+    await vi.advanceTimersByTimeAsync(0)
+    await Promise.all(controls)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(ws.sent.filter((m) => m.op === OP.HEARTBEAT)).toHaveLength(1)
+    expect(c.live).toBe(true)
+  })
+  it('does not let a late old heartbeat clear or update a replacement session', async () => {
+    vi.useFakeTimers()
+    const { c } = await connect()
+    const actual = c.request.bind(c)
+    const waiting: ((reply: Message) => void)[] = []
+    vi.spyOn(c, 'request').mockImplementation((op, data, offset, flags) =>
+      op === OP.HEARTBEAT
+        ? new Promise<Message>((resolve) => waiting.push(resolve))
+        : actual(op, data, offset, flags),
+    )
+    const state = vi.fn(), errors = vi.fn()
+    c.onState = state
+    c.onError = errors
+    await vi.advanceTimersByTimeAsync(1000)
+    await c.connect('wss://replacement/media')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(waiting).toHaveLength(2)
+    const reply = (flag: number): Message => ({ op: OP.HEARTBEAT | 128, flags: 0, session: 123, id: 1, offset: 0, length: 1, data: new Uint8Array([flag]) })
+    waiting[0]!(reply(8))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(state).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(waiting).toHaveLength(2) // Old finally must not release the new pending slot.
+    waiting[1]!(reply(4))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(state).toHaveBeenCalledExactlyOnceWith(4)
+    expect(errors).not.toHaveBeenCalled()
+    expect(c.live).toBe(true)
+  })
   it('preserves the server close cause through an outstanding HELLO without echoing its private reason', async () => {
     class ClosingSocket extends Socket {
       send(_bytes: Uint8Array) {

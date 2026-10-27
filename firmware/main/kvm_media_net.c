@@ -13,6 +13,7 @@
 #if CONFIG_KVM_DEVICE_WEB
 #include "device_web.h"
 #include "device_tls.h"
+#include "media_tls_guard.h"
 #include "esp_https_server.h"
 #include "esp_event.h"
 #include "esp_heap_caps.h"
@@ -40,6 +41,7 @@ enum { NET_FAILURE_NONE, NET_FAILURE_HEADER, NET_FAILURE_FRAME,
 static atomic_uint network_closes, receive_errors, send_errors, invalid_frames;
 static atomic_uint last_frame_type, last_frame_final, last_frame_length;
 static atomic_uint last_close_reads, last_close_read_kib;
+static atomic_uint core_failure_before_close;
 static atomic_int owner_failure, last_network_failure, last_network_error, last_network_errno;
 static void network_failure(int stage, int error)
 {
@@ -81,11 +83,11 @@ static esp_err_t diagnostics(httpd_req_t *req)
         wifi_rssi = ap.rssi;
         wifi_channel = ap.primary;
     }
-    char body[1024];
+    char body[1536];
     int n = snprintf(body, sizeof(body), "{\"uptimeMs\":%" PRIi64 ",\"freeHeap\":%u,\"minimumHeap\":%u,\"largestBlock\":%u,\"tlsError\":%d,\"tlsCode\":%d,\"tlsFlags\":%d,\"bleAdvertising\":%s,\"bleAdvertisingPauseRequested\":%s,"
         "\"wifiPowerSave\":%d,\"wifiMode\":%d,\"wifiRssi\":%d,\"wifiChannel\":%u,"
-        "\"media\":{\"reads\":%" PRIu32 ",\"readBytes\":%" PRIu64 ",\"readTimeUs\":%" PRIu64 ",\"readMaxUs\":%" PRIu64 ",\"cacheBytes\":%" PRIu64 ",\"accepts\":%u,\"rejects\":%u,\"lastMediaRejection\":%u},"
-        "\"network\":{\"closes\":%u,\"receiveErrors\":%u,\"sendErrors\":%u,\"invalidFrames\":%u,\"lastFailure\":%d,\"lastError\":%d,\"lastErrno\":%d,\"lastFrameType\":%u,\"lastFrameFinal\":%u,\"lastFrameLength\":%u,\"lastCloseReads\":%u,\"lastCloseReadKiB\":%u}}",
+        "\"media\":{\"reads\":%" PRIu32 ",\"readBytes\":%" PRIu64 ",\"readTimeUs\":%" PRIu64 ",\"readMaxUs\":%" PRIu64 ",\"cacheBytes\":%" PRIu64 ",\"accepts\":%u,\"rejects\":%u,\"lastMediaRejection\":%u,\"firstFailure\":%u,\"ioTimeouts\":%" PRIu32 ",\"leaseTimeouts\":%" PRIu32 ",\"backendErrors\":%" PRIu32 ",\"disconnects\":%" PRIu32 "},"
+        "\"network\":{\"closes\":%u,\"receiveErrors\":%u,\"sendErrors\":%u,\"invalidFrames\":%u,\"lastFailure\":%d,\"lastError\":%d,\"lastErrno\":%d,\"lastFrameType\":%u,\"lastFrameFinal\":%u,\"lastFrameLength\":%u,\"lastCloseReads\":%u,\"lastCloseReadKiB\":%u,\"coreFailureBeforeClose\":%u,\"handshakeTimeouts\":%" PRIu32 "}}",
         esp_timer_get_time() / 1000,
         (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT), (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
         (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), atomic_load(&tls_last_error), atomic_load(&tls_code), atomic_load(&tls_flags),
@@ -94,10 +96,11 @@ static esp_err_t diagnostics(httpd_req_t *req)
         wifi_power_save, wifi_mode, wifi_rssi, wifi_channel,
         metrics.reads, metrics.read_bytes, metrics.read_time_us, metrics.read_max_us, metrics.cache_bytes,
         atomic_load(&handshake_accepts), atomic_load(&handshake_rejects), atomic_load(&last_media_rejection),
+        (unsigned)metrics.first_failure, metrics.io_timeouts, metrics.lease_timeouts, metrics.backend_errors, metrics.disconnects,
         atomic_load(&network_closes), atomic_load(&receive_errors), atomic_load(&send_errors), atomic_load(&invalid_frames),
         atomic_load(&last_network_failure), atomic_load(&last_network_error), atomic_load(&last_network_errno),
         atomic_load(&last_frame_type), atomic_load(&last_frame_final), atomic_load(&last_frame_length),
-        atomic_load(&last_close_reads), atomic_load(&last_close_read_kib));
+        atomic_load(&last_close_reads), atomic_load(&last_close_read_kib), atomic_load(&core_failure_before_close), media_tls_guard_timeouts());
     if (n < 0 || (size_t)n >= sizeof(body))
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Diagnostics unavailable");
     httpd_resp_set_type(req, "application/json");
@@ -153,6 +156,7 @@ static void closed(httpd_handle_t h, int fd)
         atomic_fetch_add(&network_closes, 1);
         media_metrics_t metrics;
         if (kvm_media_metrics(&metrics)) {
+            atomic_store(&core_failure_before_close, metrics.first_failure);
             atomic_store(&last_close_reads, metrics.reads);
             uint64_t kib = metrics.read_bytes / 1024;
             atomic_store(&last_close_read_kib, kib > UINT32_MAX ? UINT32_MAX : (uint32_t)kib);

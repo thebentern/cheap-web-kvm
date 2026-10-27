@@ -30,6 +30,7 @@ idf_component_register(
         "media_protocol.c"
         "media_ws.c"
         "media_ws_recv.c"
+        "media_tls_guard.c"
         "media_serial.c"
         "boot_repeat.c"
         "ch9329.c"
@@ -69,6 +70,18 @@ if(CONFIG_KVM_MEDIA_WIFI AND CONFIG_HTTPD_WS_SUPPORT)
     target_link_options(${COMPONENT_LIB} INTERFACE
         "-Wl,--undefined=__wrap_httpd_recv_with_opt"
         "-Wl,--wrap=httpd_recv_with_opt")
+endif()
+
+# IDF 5.4 retries server TLS WANT_READ/WANT_WRITE indefinitely on the HTTP task.
+# Scope a total handshake deadline through public session/BIO entry points.
+if(CONFIG_KVM_DEVICE_WEB)
+    target_link_options(${COMPONENT_LIB} INTERFACE
+        "-Wl,--undefined=__wrap_esp_tls_server_session_create"
+        "-Wl,--undefined=__wrap_mbedtls_net_recv"
+        "-Wl,--undefined=__wrap_mbedtls_net_send"
+        "-Wl,--wrap=esp_tls_server_session_create"
+        "-Wl,--wrap=mbedtls_net_recv"
+        "-Wl,--wrap=mbedtls_net_send")
 endif()
 
 if(CONFIG_KVM_MEDIA_LOCAL_PROOF)

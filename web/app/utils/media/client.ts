@@ -2,6 +2,8 @@
 import { decode, encode, MAX_IO, OP, type Message } from './protocol'
 import { websocketTransport, type MediaTransport } from './transport'
 export type { MediaTransport } from './transport'
+const CONTROL_TIMEOUT_MS = 4000
+const HEARTBEAT_TIMEOUT_MS = 12000 // Allow scheduling slack beyond a 10 s media IO.
 export interface MediaReadStats {
   requests: number
   totalMs: number
@@ -22,6 +24,7 @@ export class MediaConnection {
     }
   >()
   private heartbeat?: ReturnType<typeof setInterval>
+  private heartbeatGeneration: number | null = null
   private serving: MediaTransport | null = null
   private reads: MediaReadStats = { requests: 0, totalMs: 0, maxMs: 0 }
   onState = (_flags: number) => {}
@@ -63,15 +66,18 @@ export class MediaConnection {
         if (
           !transport.startupRetries ||
           !/timed out/.test((error as Error).message) ||
+          mine !== this.generation ||
           transport !== this.transport
         )
           throw error
         hello = await this.request(OP.HELLO)
       }
     } catch (error) {
-      if (this.transport === transport) this.close()
+      if (mine === this.generation && this.transport === transport) this.close()
       throw error
     }
+    if (mine !== this.generation || transport !== this.transport)
+      throw new Error('Media connection replaced')
     if (
       hello.data.length !== 8 ||
       hello.data[0] !== 1 ||
@@ -85,12 +91,26 @@ export class MediaConnection {
     }
     this.session = hello.session
     this.heartbeat = setInterval(() => {
+      if (
+        mine !== this.generation ||
+        transport !== this.transport ||
+        this.heartbeatGeneration !== null ||
+        this.pending.size >= 4
+      )
+        return
+      this.heartbeatGeneration = mine
       void this.request(OP.HEARTBEAT)
         .then((m) => {
-          if (transport === this.transport) this.onState(m.data[0] ?? 0)
+          if (mine === this.generation && transport === this.transport)
+            this.onState(m.data[0] ?? 0)
         })
         .catch((e) => {
-          if (transport === this.transport) this.fail(e.message)
+          if (mine === this.generation && transport === this.transport)
+            this.fail(e.message)
+        })
+        .finally(() => {
+          if (this.heartbeatGeneration === mine)
+            this.heartbeatGeneration = null
         })
     }, 1000)
   }
@@ -107,6 +127,8 @@ export class MediaConnection {
   }
   close(reason = new Error('Media connection closed')) {
     if (this.heartbeat) clearInterval(this.heartbeat)
+    this.heartbeat = undefined
+    this.heartbeatGeneration = null
     this.generation++
     const transport = this.transport
     this.transport = null
@@ -139,10 +161,10 @@ export class MediaConnection {
         this.pending.delete(id)
         reject(
           new Error(
-            'Media control timed out; synchronize before changing media',
+            `Media ${op === OP.HEARTBEAT ? 'heartbeat' : 'control'} timed out; synchronize before changing media`,
           ),
         )
-      }, 4000)
+      }, op === OP.HEARTBEAT ? HEARTBEAT_TIMEOUT_MS : CONTROL_TIMEOUT_MS)
       this.pending.set(id, { op: op | 128, resolve, reject, timer })
       Promise.resolve()
         .then(() =>

@@ -18,7 +18,7 @@
 #include "tusb.h"
 #include <stdatomic.h>
 #include <string.h>
-#define IO_TIMEOUT_US 3000000
+#define IO_TIMEOUT_US 10000000
 #define LEASE_US 5000000
 #if CONFIG_KVM_MEDIA_LOCAL_PROOF
 extern const uint8_t proof_start[] asm("_binary_local_proof_img_start");
@@ -81,8 +81,18 @@ static void sync_reset(void)
         invalidate();
     }
 }
-static void fail_link(void)
+static void fail_link(media_failure_t reason)
 {
+    if (metrics.first_failure == MEDIA_FAILURE_NONE) {
+        metrics.first_failure = reason;
+        switch (reason) {
+        case MEDIA_FAILURE_IO_TIMEOUT: metrics.io_timeouts++; break;
+        case MEDIA_FAILURE_LEASE: metrics.lease_timeouts++; break;
+        case MEDIA_FAILURE_BACKEND: metrics.backend_errors++; break;
+        case MEDIA_FAILURE_DISCONNECT: metrics.disconnects++; break;
+        default: break;
+        }
+    }
     if (wifi_input_used) {
         wifi_input_used = false;
         kvm_hid_release_link();
@@ -173,19 +183,21 @@ bool kvm_media_poll_from(media_source_t source, uint8_t *out, size_t *len)
         return false;
     sync_reset();
     int64_t now = esp_timer_get_time();
-#if !CONFIG_KVM_MEDIA_LOCAL_PROOF
-    if (connected && now - heartbeat > LEASE_US)
-        fail_link();
-#endif
     if (io.active && io.epoch != atomic_load(&epoch)) {
         io.active = false;
         cache_length = 0;
         prevented = false;
     }
+    /* An outstanding disk request owns its full bounded IO window. A delayed
+     * idle heartbeat must not remove media while that request can still finish. */
+    bool waiting = io.active && !io.done;
+    if (connected && waiting && now > io.deadline)
+        fail_link(MEDIA_FAILURE_IO_TIMEOUT);
+#if !CONFIG_KVM_MEDIA_LOCAL_PROOF
+    else if (connected && !waiting && now - heartbeat > LEASE_US)
+        fail_link(MEDIA_FAILURE_LEASE);
+#endif
     if (io.active) {
-        if (now > io.deadline) {
-            fail_link();
-        }
         if (io.done && !io.completion) {
             io.completion = true;
             defer_id = io.id;
@@ -232,7 +244,7 @@ void kvm_media_disconnect_from(media_source_t source)
     if (xSemaphoreTake(lock, portMAX_DELAY) == pdTRUE) {
         if (owner == source) {
             owned = true;
-            fail_link();
+            fail_link(MEDIA_FAILURE_DISCONNECT);
             prevented = false;
         }
         xSemaphoreGive(lock);
@@ -262,6 +274,13 @@ size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t n
         if (owner == source && io.active && !io.done && m.session == session && m.id == io.id &&
             m.offset == io.offset && m.length == io.length && (m.op & 0x7f) == io.op &&
             io.epoch == atomic_load(&epoch)) {
+            /* The HTTP task may have been occupied by a TLS handshake. Enforce
+             * the same deadline even when a late reply arrives before polling. */
+            if (esp_timer_get_time() > io.deadline) {
+                fail_link(MEDIA_FAILURE_IO_TIMEOUT);
+                xSemaphoreGive(lock);
+                return 0;
+            }
             io.ok = m.flags == M_OK && pn == (io.op == M_READ ? io.length : 0);
             /* A matching successful IO reply proves the owner is alive too.
              * Do not expire an active transfer solely because a browser's
@@ -281,7 +300,7 @@ size_t kvm_media_command_from(media_source_t source, const uint8_t *in, size_t n
             }
             io.done = true;
             if (!io.ok)
-                fail_link();
+                fail_link(MEDIA_FAILURE_BACKEND);
         }
         xSemaphoreGive(lock);
         return 0;
