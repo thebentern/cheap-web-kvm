@@ -72,9 +72,9 @@ HTTPS may lack sufficient memory. See [PSRAM build setup](https://github.com/the
    it with the downloaded certificate. The HTTP page alone does not establish
    the certificate's identity. `tools/device_certificate.py` downloads and checks
    the certificate against a USB readout.
-3. Install the verified authority as trusted on each client computer/tablet.
-   The setup page gives instructions for macOS, Windows and iOS. This is a manual
-   trust step; do not bypass a browser certificate warning.
+3. [Trust the verified authority](#trust-the-certificate) on each client
+   computer/tablet. This is a manual trust step; do not bypass a browser
+   certificate warning.
 4. Open `https://BOARD_IP/`. In **Virtual media → Wi-Fi**, choose **Pair with USB**
    or **Pair with Bluetooth**. Pairing checks the board identity, reads its access
    token and connects automatically.
@@ -92,6 +92,30 @@ Pairing creates a Secure, HttpOnly, SameSite=Strict session cookie lasting up to
 eight hours. The app does not save the access token in local settings. Pair again
 after expiry, a board restart, or a network/token change. Only one media owner can
 connect over USB or Wi-Fi at a time.
+
+### Trust the certificate
+
+After comparing the downloaded CA's SHA-256 fingerprint with the independent
+USB/Bluetooth readout, install that CA certificate:
+
+- **macOS:** open the downloaded `.crt` in **Keychain Access** and add it to your
+  login keychain. Double-click the board's device CA, expand **Trust**, and set
+  **Secure Sockets Layer (SSL)** to **Always Trust**. Close the certificate window
+  and approve the macOS authentication prompt to save the change.
+  [Apple instructions](https://support.apple.com/guide/keychain-access/kyca11871/mac).
+- **Windows:** open the downloaded certificate, choose **Install Certificate →
+  Current User → Place all certificates in the following store**, and select
+  **Trusted Root Certification Authorities**. Complete the import for the
+  verified board CA. [Certificate stores](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/local-machine-and-current-user-certificate-stores).
+- **iOS/iPadOS:** install the downloaded certificate profile under **Settings →
+  General → VPN & Device Management**, then open **Settings → General → About →
+  Certificate Trust Settings** and enable full trust for that board CA.
+  [Apple instructions](https://support.apple.com/102390).
+
+Reopen `https://BOARD_IP/`. It must load without a certificate warning before
+pairing or using browser storage. If it still warns, check that the CA trust
+change was saved and that the URL uses the board's current reported address.
+Certificate trust and the media access token are separate setup steps.
 
 ### Certificate lifecycle and storage
 

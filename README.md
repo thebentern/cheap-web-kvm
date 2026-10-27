@@ -42,6 +42,10 @@ acknowledged. Safely eject before client edits, retrieving target-created files,
 or exporting the updated image. F12 repetition runs in firmware across target
 reboots, with configurable timing and cancellation.
 
+Full OS disks need **Allow target to write** and persistent browser storage.
+See [enabling target writes](docs/VIRTUAL_MEDIA.md#enable-target-writes), including
+the Edge app setup if persistence is denied.
+
 Virtual media connects over the USB programming cable at **921600 baud by
 default**, or over Wi-Fi from the board's own HTTPS console. For Wi-Fi, configure
 Hotspot or Client in **Settings → Wi-Fi** through USB/Bluetooth first;

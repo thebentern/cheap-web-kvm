@@ -71,16 +71,49 @@ MBR/GPT layouts and FAT16/FAT32 EFI system partitions for
 `\EFI\BOOT\BOOTX64.EFI`. These checks do not establish Secure Boot trust or
 compatibility with every target, and do not modify the source.
 
-Leave **Allow target to write** disabled for read-only/live images. For a full OS
-disk, enable it and choose **Allow persistent storage** before insertion. Target
-writes go to a persistent copy-on-write overlay; the original image stays
-unchanged. First-boot setup, logs, swap and the root filesystem may require a
-writable disk.
+Leave **Allow target to write** disabled for read-only/live images. Full OS disks
+such as Armbian need [target writes enabled](#enable-target-writes) for first-boot
+setup and ordinary root-filesystem changes.
 
 Choose **Insert into target** to give the target exclusive disk access. Browser
 filesystem edits and exports are locked until ejection and synchronization.
 Booting an OS image runs it from virtual media; installation onto an internal
 drive is a separate operation.
+
+## Enable target writes
+
+If the disk is already inserted, unmount it on the target or power the target
+off, then **Eject and synchronize** before changing write mode.
+
+1. Connect media and select the boot image or saved FAT32 drive.
+2. Enable **Allow target to write**.
+3. Choose **Allow persistent storage** if prompted. The browser decides whether
+   to grant it; some browsers do not show a permission dialog.
+4. Expand **Disk details & download** and confirm **Persistent browser storage
+   enabled.** Writable insertion stays disabled until this permission is granted.
+5. Choose **Insert into target**, then boot or use the disk on the target.
+
+Target writes commit to a persistent copy-on-write overlay. The original image
+stays unchanged. Keep the console open and the computer awake during use; unmount
+on the target before **Eject and synchronize** to flush its cached writes.
+
+### If persistent storage is not granted
+
+Use a regular browser profile and the trusted HTTPS console. If Edge keeps
+refusing the request:
+
+1. Eject and synchronize any inserted disk, then disconnect media.
+2. At the same console URL, choose **Settings and more (…) → More tools → Apps →
+   Install this site as an app**. [Edge instructions](https://support.microsoft.com/en-us/edge/install-manage-or-uninstall-apps-in-microsoft-edge).
+3. Close the original console tab and open the installed app using the same Edge
+   profile and exact HTTPS address. Saved disks remain in that profile/origin.
+4. Reopen the saved disk, enable writes and request persistent storage again.
+   Confirm **Persistent browser storage enabled.** before inserting.
+
+App installation can help Edge grant persistence; it does not guarantee a grant.
+If storage remains unprotected, use read-only media. Certificate trust alone does
+not grant persistent storage. See [certificate setup](WIFI.md#trust-the-certificate)
+if the page reports that browser storage is unavailable.
 
 ## FAT32 USB drives
 
