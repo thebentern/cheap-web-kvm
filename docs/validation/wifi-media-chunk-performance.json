@@ -1,0 +1,758 @@
+{
+  "date": "2026-10-27",
+  "candidateCommit": "bc3c4bd637fabd4af749fc6be6a7bcbeed1021c5",
+  "deployment": {
+    "installed": true,
+    "applicationOnly": true,
+    "deviceCaUnchanged": true
+  },
+  "scope": "Trusted HTTPS/WSS, disk-free synthetic ECHO payloads. No INSERT, USB MSC, browser worker, OPFS, HID, OS boot or saved-image scan.",
+  "implementation": {
+    "requestedWifiMaximumBytes": 32768,
+    "legacyHelloWithoutRequestMaximumBytes": 8192,
+    "serialMaximumBytes": 8192,
+    "psramAllocationBytes": 163944,
+    "allocationFailureMaximumBytes": 8192,
+    "permanentFallbackPoolBytes": 41064,
+    "staticBssGrowthBytes": 48,
+    "tcpSendBufferBytes": 65535,
+    "tcpReceiveWindowBytes": 65535,
+    "tcpReceiveMailboxEntries": 48,
+    "tlsOutputRecordLimitBytes": 16384,
+    "diskRequestWindow": 1,
+    "writeAcknowledgement": "Unchanged: sent only after durable backend commit"
+  },
+  "measurement": {
+    "requestedSizesBytes": [
+      8192,
+      32768
+    ],
+    "benchmarkDurationMsPerTrial": 5000,
+    "roundsPerSize": 3,
+    "order": [
+      [
+        8192,
+        32768
+      ],
+      [
+        32768,
+        8192
+      ],
+      [
+        8192,
+        32768
+      ]
+    ],
+    "pendingEchoMaximum": 1,
+    "pendingHeartbeatMaximum": 1,
+    "validation": "CRC32 plus returned offset and deterministic offset-pattern byte equality",
+    "radio": {
+      "bleAdvertising": true,
+      "bleAdvertisingPauseRequested": false,
+      "wifiPowerSave": 0,
+      "wifiMode": 3,
+      "wifiModeName": "AP+STA",
+      "wifiChannel": 1,
+      "candidateRssiDbmRange": [
+        -56,
+        -50
+      ],
+      "radioPolicyAndChannelStable": true,
+      "signalStrengthControlled": false
+    },
+    "rateDefinition": "Validated ECHO payload bytes divided by wall time. One-direction payload rate counts one copy; bidirectional aggregate counts both request and response payloads."
+  },
+  "comparison": {
+    "basis": "Interleaved 8 KiB and 32 KiB trials on the same installed candidate, with unchanged radio policy and channel; RSSI sampled before and after each trial",
+    "medianPayloadBytesPerSecond8KiB": 69202,
+    "medianPayloadBytesPerSecond32KiB": 119870,
+    "ratio32KiBTo8KiB": 1.732175,
+    "increasePercent": 73.218,
+    "earlierFirmware8KiBMedianPayloadBytesPerSecond": 78632,
+    "earlierFirmwareRssiDbmRange": [
+      -47,
+      -45
+    ],
+    "earlierFirmwareComparisonLimit": "Earlier signal strength differed. Do not attribute an old-versus-new 8 KiB rate difference to this change."
+  },
+  "before": [
+    {
+      "event": "benchmark_started",
+      "sizes": [
+        8192
+      ],
+      "benchmarkMs": 5000,
+      "rounds": 3,
+      "order": "Original order on odd rounds; reversed on even rounds",
+      "insertedAnyMedium": false,
+      "openedAnyImage": false
+    },
+    {
+      "event": "chunk_trial",
+      "round": 1,
+      "requestedBytes": 8192,
+      "negotiatedBytes": 8192,
+      "fallback": false,
+      "frames": 51,
+      "payloadBytesValidated": 417792,
+      "seconds": 5.057205,
+      "payloadBytesPerSecond": 82613,
+      "bidirectionalAggregatePayloadBytesPerSecond": 165226,
+      "meanRoundTripMs": 98.885,
+      "maxRoundTripMs": 181.119,
+      "crcAndOffsetPatternValidated": true,
+      "radioBefore": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -47,
+        "wifiChannel": 1
+      },
+      "radioAfter": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -46,
+        "wifiChannel": 1
+      },
+      "radioStateStable": true,
+      "radioStateMatchesFirstTrial": true,
+      "rssiDeltaDb": 1,
+      "scope": "Disk-free synthetic ECHO; no USB MSC, browser worker, OPFS or boot throughput"
+    },
+    {
+      "event": "chunk_trial",
+      "round": 2,
+      "requestedBytes": 8192,
+      "negotiatedBytes": 8192,
+      "fallback": false,
+      "frames": 48,
+      "payloadBytesValidated": 393216,
+      "seconds": 5.000735,
+      "payloadBytesPerSecond": 78632,
+      "bidirectionalAggregatePayloadBytesPerSecond": 157263,
+      "meanRoundTripMs": 104.002,
+      "maxRoundTripMs": 466.312,
+      "crcAndOffsetPatternValidated": true,
+      "radioBefore": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -46,
+        "wifiChannel": 1
+      },
+      "radioAfter": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -45,
+        "wifiChannel": 1
+      },
+      "radioStateStable": true,
+      "radioStateMatchesFirstTrial": true,
+      "rssiDeltaDb": 1,
+      "scope": "Disk-free synthetic ECHO; no USB MSC, browser worker, OPFS or boot throughput"
+    },
+    {
+      "event": "chunk_trial",
+      "round": 3,
+      "requestedBytes": 8192,
+      "negotiatedBytes": 8192,
+      "fallback": false,
+      "frames": 47,
+      "payloadBytesValidated": 385024,
+      "seconds": 5.155794,
+      "payloadBytesPerSecond": 74678,
+      "bidirectionalAggregatePayloadBytesPerSecond": 149356,
+      "meanRoundTripMs": 109.518,
+      "maxRoundTripMs": 187.07,
+      "crcAndOffsetPatternValidated": true,
+      "radioBefore": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -46,
+        "wifiChannel": 1
+      },
+      "radioAfter": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -47,
+        "wifiChannel": 1
+      },
+      "radioStateStable": true,
+      "radioStateMatchesFirstTrial": true,
+      "rssiDeltaDb": -1,
+      "scope": "Disk-free synthetic ECHO; no USB MSC, browser worker, OPFS or boot throughput"
+    },
+    {
+      "event": "chunk_summary",
+      "summaries": [
+        {
+          "requestedBytes": 8192,
+          "negotiatedBytes": [
+            8192
+          ],
+          "runs": 3,
+          "medianPayloadBytesPerSecond": 78632,
+          "medianRoundTripMs": 104.002,
+          "allRadioStatesStable": true
+        }
+      ],
+      "insertedAnyMedium": false,
+      "openedAnyImage": false,
+      "scope": "ECHO payload rate is one direction; aggregate counts both directions. Fallback8KiB runs are not32KiB measurements. Radio snapshots do not establish matched RSSI across runs."
+    }
+  ],
+  "after": [
+    {
+      "event": "benchmark_started",
+      "sizes": [
+        8192,
+        32768
+      ],
+      "benchmarkMs": 5000,
+      "rounds": 3,
+      "order": "Original order on odd rounds; reversed on even rounds",
+      "insertedAnyMedium": false,
+      "openedAnyImage": false
+    },
+    {
+      "event": "chunk_trial",
+      "round": 1,
+      "requestedBytes": 8192,
+      "negotiatedBytes": 8192,
+      "fallback": false,
+      "frames": 43,
+      "payloadBytesValidated": 352256,
+      "seconds": 5.007598,
+      "payloadBytesPerSecond": 70344,
+      "bidirectionalAggregatePayloadBytesPerSecond": 140689,
+      "meanRoundTripMs": 116.227,
+      "maxRoundTripMs": 212.126,
+      "crcAndOffsetPatternValidated": true,
+      "radioBefore": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -56,
+        "wifiChannel": 1
+      },
+      "radioAfter": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -53,
+        "wifiChannel": 1
+      },
+      "radioStateStable": true,
+      "radioStateMatchesFirstTrial": true,
+      "rssiDeltaDb": 3,
+      "scope": "Disk-free synthetic ECHO; no USB MSC, browser worker, OPFS or boot throughput"
+    },
+    {
+      "event": "chunk_trial",
+      "round": 1,
+      "requestedBytes": 32768,
+      "negotiatedBytes": 32768,
+      "fallback": false,
+      "frames": 19,
+      "payloadBytesValidated": 622592,
+      "seconds": 5.247796,
+      "payloadBytesPerSecond": 118639,
+      "bidirectionalAggregatePayloadBytesPerSecond": 237277,
+      "meanRoundTripMs": 275.495,
+      "maxRoundTripMs": 368.027,
+      "crcAndOffsetPatternValidated": true,
+      "radioBefore": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -53,
+        "wifiChannel": 1
+      },
+      "radioAfter": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -54,
+        "wifiChannel": 1
+      },
+      "radioStateStable": true,
+      "radioStateMatchesFirstTrial": true,
+      "rssiDeltaDb": -1,
+      "scope": "Disk-free synthetic ECHO; no USB MSC, browser worker, OPFS or boot throughput"
+    },
+    {
+      "event": "chunk_trial",
+      "round": 2,
+      "requestedBytes": 32768,
+      "negotiatedBytes": 32768,
+      "fallback": false,
+      "frames": 21,
+      "payloadBytesValidated": 688128,
+      "seconds": 5.104819,
+      "payloadBytesPerSecond": 134800,
+      "bidirectionalAggregatePayloadBytesPerSecond": 269599,
+      "meanRoundTripMs": 242.314,
+      "maxRoundTripMs": 481.488,
+      "crcAndOffsetPatternValidated": true,
+      "radioBefore": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -53,
+        "wifiChannel": 1
+      },
+      "radioAfter": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -53,
+        "wifiChannel": 1
+      },
+      "radioStateStable": true,
+      "radioStateMatchesFirstTrial": true,
+      "rssiDeltaDb": 0,
+      "scope": "Disk-free synthetic ECHO; no USB MSC, browser worker, OPFS or boot throughput"
+    },
+    {
+      "event": "chunk_trial",
+      "round": 2,
+      "requestedBytes": 8192,
+      "negotiatedBytes": 8192,
+      "fallback": false,
+      "frames": 42,
+      "payloadBytesValidated": 344064,
+      "seconds": 5.022759,
+      "payloadBytesPerSecond": 68501,
+      "bidirectionalAggregatePayloadBytesPerSecond": 137002,
+      "meanRoundTripMs": 119.401,
+      "maxRoundTripMs": 265.368,
+      "crcAndOffsetPatternValidated": true,
+      "radioBefore": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -53,
+        "wifiChannel": 1
+      },
+      "radioAfter": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -54,
+        "wifiChannel": 1
+      },
+      "radioStateStable": true,
+      "radioStateMatchesFirstTrial": true,
+      "rssiDeltaDb": -1,
+      "scope": "Disk-free synthetic ECHO; no USB MSC, browser worker, OPFS or boot throughput"
+    },
+    {
+      "event": "chunk_trial",
+      "round": 3,
+      "requestedBytes": 8192,
+      "negotiatedBytes": 8192,
+      "fallback": false,
+      "frames": 43,
+      "payloadBytesValidated": 352256,
+      "seconds": 5.090277,
+      "payloadBytesPerSecond": 69202,
+      "bidirectionalAggregatePayloadBytesPerSecond": 138403,
+      "meanRoundTripMs": 118.193,
+      "maxRoundTripMs": 201.988,
+      "crcAndOffsetPatternValidated": true,
+      "radioBefore": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -53,
+        "wifiChannel": 1
+      },
+      "radioAfter": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -50,
+        "wifiChannel": 1
+      },
+      "radioStateStable": true,
+      "radioStateMatchesFirstTrial": true,
+      "rssiDeltaDb": 3,
+      "scope": "Disk-free synthetic ECHO; no USB MSC, browser worker, OPFS or boot throughput"
+    },
+    {
+      "event": "chunk_trial",
+      "round": 3,
+      "requestedBytes": 32768,
+      "negotiatedBytes": 32768,
+      "fallback": false,
+      "frames": 19,
+      "payloadBytesValidated": 622592,
+      "seconds": 5.19391,
+      "payloadBytesPerSecond": 119870,
+      "bidirectionalAggregatePayloadBytesPerSecond": 239739,
+      "meanRoundTripMs": 272.613,
+      "maxRoundTripMs": 381.498,
+      "crcAndOffsetPatternValidated": true,
+      "radioBefore": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -53,
+        "wifiChannel": 1
+      },
+      "radioAfter": {
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -52,
+        "wifiChannel": 1
+      },
+      "radioStateStable": true,
+      "radioStateMatchesFirstTrial": true,
+      "rssiDeltaDb": 1,
+      "scope": "Disk-free synthetic ECHO; no USB MSC, browser worker, OPFS or boot throughput"
+    },
+    {
+      "event": "chunk_summary",
+      "summaries": [
+        {
+          "requestedBytes": 8192,
+          "negotiatedBytes": [
+            8192
+          ],
+          "runs": 3,
+          "medianPayloadBytesPerSecond": 69202,
+          "medianRoundTripMs": 118.193,
+          "allRadioStatesStable": true
+        },
+        {
+          "requestedBytes": 32768,
+          "negotiatedBytes": [
+            32768
+          ],
+          "runs": 3,
+          "medianPayloadBytesPerSecond": 119870,
+          "medianRoundTripMs": 272.613,
+          "allRadioStatesStable": true
+        }
+      ],
+      "insertedAnyMedium": false,
+      "openedAnyImage": false,
+      "scope": "ECHO payload rate is one direction; aggregate counts both directions. Fallback8KiB runs are not32KiB measurements. Radio snapshots do not establish matched RSSI across runs."
+    }
+  ],
+  "regressions": {
+    "tlsAcceptStall": {
+      "echoPayloadBytes": 32768,
+      "incompleteTcpPeerClosedAfterMs": 2034.753,
+      "duringEchoMs": 2195.184,
+      "duringEchoStatus": 0,
+      "postHeartbeatMs": 65.196,
+      "postHeartbeatStatus": 0,
+      "activePeerHealthy": true,
+      "records": [
+        {
+          "event": "cookie_pairing_ready",
+          "tlsValidated": true,
+          "cookieStoredInMemoryOnly": true
+        },
+        {
+          "event": "control_sent",
+          "label": "baseline-hello",
+          "op": 1,
+          "id": 1,
+          "dataBytes": 0,
+          "atMs": 917.974
+        },
+        {
+          "event": "control_reply",
+          "label": "baseline-hello",
+          "op": 1,
+          "id": 1,
+          "flags": 0,
+          "dataBytes": 8,
+          "elapsedMs": 11.867,
+          "atMs": 928.271,
+          "crcValidated": true
+        },
+        {
+          "event": "control_sent",
+          "label": "baseline-heartbeat",
+          "op": 5,
+          "id": 2,
+          "dataBytes": 0,
+          "atMs": 928.921
+        },
+        {
+          "event": "control_reply",
+          "label": "baseline-heartbeat",
+          "op": 5,
+          "id": 2,
+          "flags": 0,
+          "dataBytes": 1,
+          "elapsedMs": 62.546,
+          "atMs": 991.1,
+          "crcValidated": true
+        },
+        {
+          "event": "control_sent",
+          "label": "baseline-echo",
+          "op": 4,
+          "id": 3,
+          "dataBytes": 32768,
+          "atMs": 994.865
+        },
+        {
+          "event": "control_reply",
+          "label": "baseline-echo",
+          "op": 4,
+          "id": 3,
+          "flags": 0,
+          "dataBytes": 32768,
+          "elapsedMs": 312.842,
+          "atMs": 1304.248,
+          "crcValidated": true
+        },
+        {
+          "event": "baseline_ready",
+          "elapsedMs": 312.842,
+          "atMs": 1304.469,
+          "insertedAnyMedium": false
+        },
+        {
+          "event": "plain_tcp_connected_no_client_hello",
+          "holdMs": 6000,
+          "atMs": 1310.418,
+          "sentBytes": 0
+        },
+        {
+          "event": "control_sent",
+          "label": "echo-during-incomplete-handshake",
+          "op": 4,
+          "id": 4,
+          "dataBytes": 32768,
+          "atMs": 1462.84
+        },
+        {
+          "event": "control_sent",
+          "label": "periodic-heartbeat",
+          "op": 5,
+          "id": 5,
+          "dataBytes": 0,
+          "atMs": 2306.146
+        },
+        {
+          "event": "plain_tcp_closed",
+          "atMs": 3345.171
+        },
+        {
+          "event": "control_reply",
+          "label": "echo-during-incomplete-handshake",
+          "op": 4,
+          "id": 4,
+          "flags": 0,
+          "dataBytes": 32768,
+          "elapsedMs": 2195.184,
+          "atMs": 3657.531,
+          "crcValidated": true
+        },
+        {
+          "event": "control_reply",
+          "label": "periodic-heartbeat",
+          "op": 5,
+          "id": 5,
+          "flags": 0,
+          "dataBytes": 1,
+          "elapsedMs": 1352.443,
+          "atMs": 3657.905,
+          "crcValidated": true
+        },
+        {
+          "event": "control_sent",
+          "label": "post-probe-heartbeat",
+          "op": 5,
+          "id": 6,
+          "dataBytes": 0,
+          "atMs": 3909.411
+        },
+        {
+          "event": "control_reply",
+          "label": "post-probe-heartbeat",
+          "op": 5,
+          "id": 6,
+          "flags": 0,
+          "dataBytes": 1,
+          "elapsedMs": 65.196,
+          "atMs": 3973.701,
+          "crcValidated": true
+        },
+        {
+          "event": "stall_probe_result",
+          "baselineEchoMs": 312.842,
+          "duringEchoMs": 2195.184,
+          "duringEchoStatus": 0,
+          "postHeartbeatStatus": 0,
+          "heartbeatReplies": 1,
+          "heartbeatFailures": 0,
+          "remoteCloseCode": null,
+          "exceedsBrowser4sControlDeadline": false,
+          "activePeerHealthy": true,
+          "insertedAnyMedium": false,
+          "openedAnyImage": false,
+          "scope": "One incomplete new TCP443 connection versus an authenticated existing disk-free WSS owner; no ClientHello, INSERT, HID or disk traffic"
+        }
+      ]
+    },
+    "splitHeader": {
+      "scope": "Unsplit control and 20 ms split-mask/extended-length regression on the installed candidate; the log does not record payload sizes",
+      "records": [
+        {
+          "event": "cookie_pairing_ready",
+          "tlsValidated": true,
+          "cookieStoredInMemoryOnly": true
+        },
+        {
+          "event": "case_result",
+          "label": "unsplit-control",
+          "passed": true,
+          "split": "none",
+          "gapMs": 0,
+          "crcAndPayloadValidated": true,
+          "elapsedMs": 900.58
+        },
+        {
+          "event": "case_result",
+          "label": "split-short-mask",
+          "passed": true,
+          "split": "short-mask",
+          "gapMs": 20,
+          "crcAndPayloadValidated": true,
+          "elapsedMs": 932.475
+        },
+        {
+          "event": "case_result",
+          "label": "split-extended-length",
+          "passed": true,
+          "split": "extended-length",
+          "gapMs": 20,
+          "crcAndPayloadValidated": true,
+          "elapsedMs": 1127.69
+        },
+        {
+          "event": "summary",
+          "controlPassed": true,
+          "shortMaskPassed": true,
+          "extendedLengthPassed": true,
+          "operations": [
+            "HELLO",
+            "ECHO",
+            "HEARTBEAT"
+          ],
+          "insertedAnyMedium": false,
+          "openedAnyImage": false
+        }
+      ]
+    }
+  },
+  "offlineChecks": {
+    "webTestsPassed": 287,
+    "typecheck": "pass",
+    "productionGeneration": "pass",
+    "nativeMediaPsramAndAllocationFailureModes": "pass",
+    "nativeHidAndTlsTests": "pass",
+    "privateQuadPsramBuild": "pass",
+    "compiledUsbDescriptors": "pass",
+    "ci": {
+      "commit": "bc3c4bd637fabd4af749fc6be6a7bcbeed1021c5",
+      "software": "pass",
+      "firmware": "pass",
+      "url": "https://github.com/thebentern/cheap-web-kvm/actions/runs/40496524211"
+    }
+  },
+  "sourceLogs": [
+    "cheap-kvm-chunk-before.jsonl",
+    "cheap-kvm-chunk-after.jsonl",
+    "cheap-kvm-large-reads-stall.jsonl",
+    "cheap-kvm-large-reads-fragment.jsonl"
+  ],
+  "limits": [
+    "ECHO carries full payloads in both directions; actual disk reads carry a small request and a full response.",
+    "These rates exclude USB MSC, browser worker and OPFS and cannot be used as measured boot or ramdisk loading rates.",
+    "RSSI varied during the interleaved runs; only radio policy and channel were held constant.",
+    "Full writable Wyse OS boot and sustained real target READs with 32 KiB read-ahead remain unverified.",
+    "The prior userspace boot failure after 118007808 remote-read bytes remains historical evidence, not a successful boot."
+  ],
+  "insertedAnyMedium": false,
+  "openedAnyImage": false,
+  "savedUserImagesScanned": false,
+  "fullWritableOsBootValidated": false,
+  "postProbeDiagnostics": {
+    "uptimeMs": 269291,
+    "freeHeap": 1945031,
+    "minimumHeap": 1797711,
+    "largestBlock": 1900544,
+    "tlsError": 32794,
+    "tlsCode": 26624,
+    "tlsFlags": 0,
+    "bleAdvertising": true,
+    "bleAdvertisingPauseRequested": false,
+    "wifiPowerSave": 0,
+    "wifiMode": 3,
+    "wifiRssi": -50,
+    "wifiChannel": 1,
+    "media": {
+      "reads": 0,
+      "readBytes": 0,
+      "readTimeUs": 0,
+      "readMaxUs": 0,
+      "cacheBytes": 0,
+      "accepts": 10,
+      "rejects": 0,
+      "lastMediaRejection": 0,
+      "firstFailure": 4,
+      "ioTimeouts": 0,
+      "leaseTimeouts": 0,
+      "backendErrors": 0,
+      "disconnects": 1
+    },
+    "network": {
+      "closes": 10,
+      "receiveErrors": 0,
+      "sendErrors": 0,
+      "invalidFrames": 0,
+      "lastFailure": 6,
+      "lastError": 0,
+      "lastErrno": 0,
+      "lastFrameType": 2,
+      "lastFrameFinal": 1,
+      "lastFrameLength": 32,
+      "lastCloseReads": 0,
+      "lastCloseReadKiB": 0,
+      "coreFailureBeforeClose": 0,
+      "handshakeTimeouts": 1
+    }
+  },
+  "postProbeDiagnosticsInterpretation": "The test deliberately caused one rejected incomplete TLS handshake and closed its own disk-free media connections. handshakeTimeouts1, firstFailure4/disconnects1 and network lastFailure6 describe those actions; receive/send/invalid-frame and IO/lease/backend error counts remain zero."
+}

@@ -743,3 +743,40 @@ operational-error status `8`, which does not itself prove filesystem corruption.
 A normal writable OS-disk boot should use the browser's copy-on-write overlay;
 the original cached image remains unchanged. This setting is separate from the
 transport fixes and requires safe target shutdown/ejection before changing it.
+
+### 2026-10-27: Negotiated 32 KiB Wi-Fi reads
+
+Build `bc3c4bd` is installed with an application-only flash; the device CA is
+unchanged. New clients request up to 32 KiB of Wi-Fi read-ahead. Legacy clients,
+serial media and failed PSRAM allocation retain the 8 KiB ceiling. A single
+163,944-byte PSRAM pool holds the larger buffers, with 48 bytes of additional
+static BSS. TCP send/receive windows are 65,535 bytes with 48 receive-mailbox
+entries; TLS output records remain limited to 16 KiB. The one-request disk window,
+stale/reset guards and durable-write acknowledgements are preserved.
+
+Three interleaved five-second ECHO trials per size on this same build produced
+median one-direction payload rates of **69,202 B/s at 8 KiB** and **119,870 B/s at
+32 KiB**, a **1.732×** ratio. Bluetooth discovery remained active, Wi-Fi power
+saving disabled, AP+STA mode and channel 1 unchanged; sampled RSSI ranged from
+-56 to -50 dBm. The earlier firmware's 8 KiB median was 78,632 B/s at -47 to
+-45 dBm. That signal difference prevents a causal old-versus-new rate comparison.
+Every reply passed CRC, returned-offset and deterministic byte-pattern checks.
+
+The installed candidate also passed the incomplete-TLS-handshake regression with
+a 32 KiB ECHO: the incomplete peer closed after about 2.03 seconds, the active
+ECHO completed in **2,195.184 ms/status `0`**, and the post-probe heartbeat in
+**65.196 ms/status `0`**. The established session stayed healthy. Unsplit,
+20 ms split-mask and split-extended-length checks all passed. All 287 web tests,
+type checking, production generation, native PSRAM/allocation-failure modes,
+media/HID/TLS tests, the private board build and descriptor checks pass.
+[Both CI jobs for the installed candidate](https://github.com/thebentern/cheap-web-kvm/actions/runs/40496524211)
+also pass. Final diagnostics retain more than 1.79 MB of minimum free heap,
+with zero receive, send, invalid-frame, IO-timeout, lease-timeout or backend-error
+counts. The single handshake timeout is the deliberate test; disconnect counters
+include closing the test's own disk-free connections.
+
+These are disk-free synthetic transport measurements. They exclude USB MSC,
+browser workers, OPFS and boot throughput; no image was opened or scanned.
+Full writable Wyse boot and sustained target reads with the larger read-ahead
+remain unverified. [Machine-readable chunk evidence](wifi-media-chunk-performance.json)
+retains every trial, radio snapshot and completed regression result.
