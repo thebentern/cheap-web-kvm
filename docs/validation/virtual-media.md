@@ -833,7 +833,7 @@ ownership/uptime. Those later emergency/background reads and idle time remain
 separate from the boot-attempt rate above. The passive logger then stopped
 cleanly without changing the live disk.
 
-**Normal OS startup did not complete.** Armbian entered emergency mode at kernel
+**Initial unattended startup did not complete.** Armbian entered emergency mode at kernel
 time 353.532 seconds; zram configuration and ramlog later timed out at 381.890
 and 412.138 seconds. Those later failures do not explain the earlier emergency
 transition. A failed required mount or other startup dependency remains to be
@@ -843,3 +843,23 @@ unrelated image fault. No completed-boot duration or causal speedup is claimed.
 The inserted disk and original saved image were left intact.
 [Machine-readable receive and boot evidence](wifi-media-frame-receive.json)
 records the fault probes, observation boundaries and remaining limitations.
+
+The user subsequently confirmed this was a fresh image with no password change.
+The documented default still failed after clearing pending input and using slow
+on-screen keystrokes; its rejection remains unexplained. The offered **Ctrl-D**
+at an empty maintenance prompt did continue startup without rebooting the target
+or reconnecting media. Armbian started the default target, performed automatic
+root login, displayed the mPWRD welcome screen and reached **Create root
+password**. Credential creation was handed to the user. The displayed first-run
+network timeout belongs to the target's network setup, while the ESP32 media
+session remained active. This establishes interactive first-boot setup after
+manual continuation, not unattended startup or post-setup OS health. The long
+maintenance idle period also excludes an uninterrupted whole-boot duration claim.
+The separate sampled continuation window measured 147,513,344 additional
+remote-read bytes over 850.605 seconds, **169.357 KiB/s**, with mean request
+turnaround 127.328 ms. Cumulative session reads reached **399.072 MiB** across
+12,783 READs, with the same owner, continuous uptime and zero new network/media
+failure counts. Two diagnostic-only HTTP 503 responses do not establish a media
+failure; instantaneous interval rates across those observations are unavailable.
+The passive logger stopped cleanly without touching the live media or collecting
+new credentials. The original pre-emergency measurement remains separate.

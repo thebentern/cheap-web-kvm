@@ -1,8 +1,8 @@
 {
   "date": "2026-10-27",
-  "preparedAtUtc": "2026-10-27T13:11:43.621+00:00",
+  "preparedAtUtc": "2026-10-27T13:44:14.789+00:00",
   "candidateCommit": "ddefbfaa35789978a5547c643fa964b970318133",
-  "status": "Installed; payload-gap, absolute-deadline and split-header checks pass. A real writable Armbian boot reached systemd, then emergency mode with the virtual disk still connected; normal OS startup did not complete.",
+  "status": "Installed; controlled receive checks pass. Actual writable Armbian boot initially entered emergency mode with media connected; the offered Ctrl-D continuation subsequently reached automatic root login and interactive first-boot password setup without a reboot or reconnect.",
   "deployment": {
     "applicationOnly": true,
     "applicationOffset": "0x10000",
@@ -15,9 +15,9 @@
     "faultProbes": "Trusted TLS/WSS with HELLO, synthetic ECHO and HEARTBEAT only; no INSERT, HID or image reads",
     "actualBootMeasurement": "Passive HTTP80 diagnostics during a pre-fix failed browser-backed Armbian boot and a post-fix writable boot attempt; only the latter has a known target-restart marker",
     "notEstablished": [
-      "Successful normal writable OS startup",
-      "Completed-boot duration or a causal boot-throughput improvement",
-      "A causal speedup from ECHO to real USB MSC throughput"
+      "Unattended normal startup without emergency-mode intervention",
+      "Post-account-setup OS health and the initial failed startup dependency",
+      "Completed-boot duration or causal whole-boot throughput improvement"
     ],
     "savedImagesScannedOrHashed": false,
     "savedImageContentReadByLogger": false
@@ -389,7 +389,6 @@
     "writeMode": 1,
     "persistentStorageGranted": true,
     "originalImageChanged": false,
-    "normalBootCompleted": false,
     "milestones": {
       "kernelAndInitrdLoadedObservedUtc": "2026-10-27T12:53:14.258+00:00",
       "kernelAndInitrdObservationSecondsAfterRestart": 558.125,
@@ -582,7 +581,7 @@
       "mediaConnected": true,
       "scope": "Rounded live panel values after the emergency-mode endpoint; not substituted into the earlier measurement window"
     },
-    "interpretation": "The installed fix sustained the actual browser/worker/OPFS/ESP32/USB path without new connection errors through the measured emergency-mode observation. This is a measured normal-startup failure, not a successful full OS boot.",
+    "interpretation": "The installed fix sustained the actual browser/worker/OPFS/ESP32/USB path without new connection errors. Initial unattended startup entered emergency mode; the same live disk subsequently reached interactive first-boot setup after the offered manual Ctrl-D continuation.",
     "postEmergencyMonitoring": {
       "lastSampleUtc": "2026-10-27T13:12:55.311+00:00",
       "lastObservedReadIncreaseSampleUtc": "2026-10-27T13:08:05.052+00:00",
@@ -621,6 +620,81 @@
       "continuationOwnerAndUptimeStable": true,
       "continuationDiagnosticErrors": 0,
       "loggerStoppedCleanlyWithoutMediaOperations": true
+    },
+    "unattendedBootCompleted": false,
+    "manualContinuation": {
+      "restartOrMediaReconnect": false,
+      "action": "Offered Ctrl-D at an empty maintenance prompt",
+      "defaultTargetRestartObserved": true,
+      "automaticRootLoginObserved": true,
+      "firstBootCreateRootPasswordObserved": true,
+      "passwordPromptScreenshotObservedUtc": "2026-10-27T13:42:56.231+00:00",
+      "passwordPromptTimingLimit": "Screenshot observation upper bound; not an exact transition timestamp",
+      "agentChangedCredentials": false,
+      "newCredentialEntryHandedToUser": true,
+      "freshImageConfirmedByUser": true,
+      "documentedDefaultLoginStillRejectedAfterCleanSlowInput": true,
+      "defaultPasswordRejectionCause": "Unresolved; source documentation alone does not establish the shipped account hash or exact target input",
+      "targetFirstRunNetworkStatus": "Network connection timeout; separate from continuous authenticated ESP32 media session",
+      "timingLimit": "Long maintenance idle time and manual intervention exclude a meaningful uninterrupted whole-boot duration or speedup claim",
+      "measurement": {
+        "separateRetryPhaseMeasurement": {
+          "scope": "Separate passive sample window during default.target/first-boot-profile retry, excluding earlier maintenance idle time; not whole-boot timing",
+          "firstSampleUtc": "2026-10-27T13:29:52.030+00:00",
+          "lastSampleUtc": "2026-10-27T13:44:02.658+00:00",
+          "wallSeconds": 850.605388,
+          "baselineReadRequests": 8278,
+          "lastReadRequests": 12783,
+          "baselineRemoteReadBytes": 270944256,
+          "lastRemoteReadBytes": 418457600,
+          "additionalRemoteReadBytes": 147513344,
+          "completedReadRequests": 4505,
+          "cumulativeObservedRemoteReadBytesPerSecond": 173421.596,
+          "cumulativeObservedRemoteReadKiBPerSecond": 169.357,
+          "requestServiceBytesPerSecond": 257166.317,
+          "meanReadTurnaroundMs": 127.328,
+          "cacheHitBytesSeparately": 97098240,
+          "rateAcross503Gaps": "Cumulative first/last counters remain usable with stable accepted owner/uptime and cumulative failure counters; instantaneous rates spanning missing observations remain unavailable"
+        },
+        "cumulativeSessionProof": {
+          "acceptedOwnerCounter": 6,
+          "readRequests": 12783,
+          "remoteReadBytes": 418457600,
+          "remoteReadMiB": 399.072266,
+          "cacheHitBytesSeparately": 285070336,
+          "sessionMaxReadTurnaroundMs": 4351.948,
+          "networkCounterDeltasFromActualBootBaseline": {
+            "closes": 0,
+            "receiveErrors": 0,
+            "sendErrors": 0,
+            "invalidFrames": 0,
+            "frameTimeouts": 0,
+            "handshakeTimeouts": 0
+          },
+          "mediaFailureCounters": {
+            "firstFailure": 0,
+            "ioTimeouts": 0,
+            "leaseTimeouts": 0,
+            "backendErrors": 0,
+            "disconnects": 0
+          },
+          "acceptedOwnerStableDuringObservedRetry": true,
+          "uptimeMonotonicDuringObservedRetry": true,
+          "diagnosticsBaselineCaveat": "Global receiveErrors1/frameTimeouts1 predate the actual boot and came from the deliberate eleven-second probe; no new recorded errors are claimed, not literal zero global counters"
+        },
+        "diagnosticObservationGaps": [
+          {
+            "utc": "2026-10-27T13:36:07.313+00:00",
+            "error": "HTTP diagnostics fetch failed (curl 22): curl: (22) The requested URL returned error: 503"
+          },
+          {
+            "utc": "2026-10-27T13:43:22.630+00:00",
+            "error": "HTTP diagnostics fetch failed (curl 22): curl: (22) The requested URL returned error: 503"
+          }
+        ]
+      },
+      "passiveLoggerStoppedCleanlyWithoutMediaOrUiOperations": true,
+      "measurementFile": "cheap-kvm-armbian-default-target-retry-metrics.jsonl"
     }
   },
   "sourceLogs": [
