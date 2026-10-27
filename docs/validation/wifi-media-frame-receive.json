@@ -1,0 +1,726 @@
+{
+  "date": "2026-10-27",
+  "preparedAtUtc": "2026-10-27T13:44:14.789+00:00",
+  "candidateCommit": "ddefbfaa35789978a5547c643fa964b970318133",
+  "status": "Installed; controlled receive checks pass. Actual writable Armbian boot initially entered emergency mode with media connected; the offered Ctrl-D continuation subsequently reached automatic root login and interactive first-boot password setup without a reboot or reconnect.",
+  "deployment": {
+    "applicationOnly": true,
+    "applicationOffset": "0x10000",
+    "applicationBytes": 1599120,
+    "flasherDataHashVerified": true,
+    "deviceCaUnchanged": true,
+    "compiledUsbDescriptors": "pass"
+  },
+  "scope": {
+    "faultProbes": "Trusted TLS/WSS with HELLO, synthetic ECHO and HEARTBEAT only; no INSERT, HID or image reads",
+    "actualBootMeasurement": "Passive HTTP80 diagnostics during a pre-fix failed browser-backed Armbian boot and a post-fix writable boot attempt; only the latter has a known target-restart marker",
+    "notEstablished": [
+      "Unattended normal startup without emergency-mode intervention",
+      "Post-account-setup OS health and the initial failed startup dependency",
+      "Completed-boot duration or causal whole-boot throughput improvement"
+    ],
+    "savedImagesScannedOrHashed": false,
+    "savedImageContentReadByLogger": false
+  },
+  "fix": {
+    "frameBudgetUs": 10000000,
+    "scope": "Remaining WebSocket header plus payload after IDF has consumed the initial opcode byte, scoped to the same HTTP task, request and socket",
+    "initialOpcodeByte": "Retains the original server receive timeout before the application handler",
+    "deadline": "One absolute monotonic deadline shared across header, mask, payload and every underlying TLS BIO receive; progress and retries do not renew it",
+    "postReceiveDeadlineCheck": true,
+    "socketTimeoutRestoration": "Restored immediately after each underlying HTTP receive and retried at scope end on failure",
+    "exactHeaderFieldBytes": [
+      2,
+      4,
+      8
+    ],
+    "transientRetryCodes": [
+      "HTTPD_SOCK_ERR_TIMEOUT",
+      "ESP_TLS_ERR_SSL_WANT_READ",
+      "ESP_TLS_ERR_SSL_WANT_WRITE"
+    ],
+    "retryCpuPolicy": "Yield one scheduler tick without extending the deadline",
+    "pendingPrefixHandling": "Return HTTPD pending bytes separately before a subsequent TLS read can return a raw WANT code",
+    "httpAndExplicitPendingOnlyPassThrough": "Unchanged outside a matched active receive; same task/fd plus receiving flag scopes BIO hook",
+    "unchangedGuards": [
+      "Negotiated receive capacity",
+      "Single pending disk request",
+      "USB epoch and stale request checks",
+      "Durable backend WRITE acknowledgement",
+      "Authenticated owner and certificate checks"
+    ]
+  },
+  "payloadGap": {
+    "gapMs": 2500,
+    "negotiatedBytes": 32768,
+    "before": [
+      {
+        "event": "gap_probe_started",
+        "gapMs": 2500,
+        "expectedOutcome": "echo_and_heartbeat_status_zero",
+        "requestTimeoutMs": 12000,
+        "watchdogMs": 20000,
+        "negotiatedBytes": 32768,
+        "tlsValidated": true,
+        "insertedAnyMedium": false,
+        "openedAnyImage": false
+      },
+      {
+        "event": "payload_prefix_sent",
+        "atMs": 1746.492,
+        "wireBytes": 4104,
+        "webSocketPayloadBytes": 4096,
+        "mediaDataBytes": 4064,
+        "holdMs": 2500
+      },
+      {
+        "event": "payload_gap_result",
+        "passed": false,
+        "gapMs": 2500,
+        "outcome": "peer_closed",
+        "failure": "tls_socket_closed",
+        "remoteCloseCode": null,
+        "closedAfterMs": 2024.12,
+        "expectedCloseWindowMs": [
+          9500,
+          12500
+        ],
+        "insertedAnyMedium": false,
+        "openedAnyImage": false
+      }
+    ],
+    "after": [
+      {
+        "event": "gap_probe_started",
+        "gapMs": 2500,
+        "expectedOutcome": "echo_and_heartbeat_status_zero",
+        "requestTimeoutMs": 12000,
+        "watchdogMs": 20000,
+        "negotiatedBytes": 32768,
+        "tlsValidated": true,
+        "insertedAnyMedium": false,
+        "openedAnyImage": false
+      },
+      {
+        "event": "payload_prefix_sent",
+        "atMs": 1780.272,
+        "wireBytes": 4104,
+        "webSocketPayloadBytes": 4096,
+        "mediaDataBytes": 4064,
+        "holdMs": 2500
+      },
+      {
+        "event": "payload_remainder_sent",
+        "atMs": 4283.339,
+        "wireBytes": 28704,
+        "elapsedMs": 2503.416
+      },
+      {
+        "event": "payload_gap_result",
+        "passed": true,
+        "gapMs": 2500,
+        "outcome": "echo_and_heartbeat_received",
+        "echoStatus": 0,
+        "heartbeatStatus": 0,
+        "payloadBytesValidated": 32768,
+        "offsetValidated": true,
+        "crcValidated": true,
+        "elapsedMs": 2864.978,
+        "insertedAnyMedium": false,
+        "openedAnyImage": false
+      }
+    ],
+    "interpretation": "The former roughly two-second payload receive cutoff is reproduced by the controlled gap; the installed fix accepts that same delayed payload with validated CRC, offset and bytes and successful heartbeat.",
+    "beforeFirmwareStage": "Previous installed 32 KiB build, before scoped frame receive fix",
+    "afterFirmwareCommit": "ddefbfaa35789978a5547c643fa964b970318133"
+  },
+  "absoluteDeadline": {
+    "gapMs": 11000,
+    "closedAfterMs": 10097.231,
+    "interpretation": "Expected failure: peer closes near the ten-second total receive budget instead of waiting for the eleven-second remainder.",
+    "records": [
+      {
+        "event": "gap_probe_started",
+        "gapMs": 11000,
+        "expectedOutcome": "close_near_total_10s_budget",
+        "requestTimeoutMs": 12000,
+        "watchdogMs": 20000,
+        "negotiatedBytes": 32768,
+        "tlsValidated": true,
+        "insertedAnyMedium": false,
+        "openedAnyImage": false
+      },
+      {
+        "event": "payload_prefix_sent",
+        "atMs": 1679.469,
+        "wireBytes": 4104,
+        "webSocketPayloadBytes": 4096,
+        "mediaDataBytes": 4064,
+        "holdMs": 11000
+      },
+      {
+        "event": "payload_gap_result",
+        "passed": true,
+        "gapMs": 11000,
+        "outcome": "peer_closed",
+        "failure": "tls_socket_closed",
+        "remoteCloseCode": null,
+        "closedAfterMs": 10097.231,
+        "expectedCloseWindowMs": [
+          9500,
+          12500
+        ],
+        "insertedAnyMedium": false,
+        "openedAnyImage": false
+      }
+    ]
+  },
+  "splitHeaderRegression": {
+    "scope": "Legacy unsplit, 20 ms split-mask and split-extended-length checks on the installed frame fix; log does not record payload size",
+    "records": [
+      {
+        "event": "cookie_pairing_ready",
+        "tlsValidated": true,
+        "cookieStoredInMemoryOnly": true
+      },
+      {
+        "event": "case_result",
+        "label": "unsplit-control",
+        "passed": true,
+        "split": "none",
+        "gapMs": 0,
+        "crcAndPayloadValidated": true,
+        "elapsedMs": 822.747
+      },
+      {
+        "event": "case_result",
+        "label": "split-short-mask",
+        "passed": true,
+        "split": "short-mask",
+        "gapMs": 20,
+        "crcAndPayloadValidated": true,
+        "elapsedMs": 981.388
+      },
+      {
+        "event": "case_result",
+        "label": "split-extended-length",
+        "passed": true,
+        "split": "extended-length",
+        "gapMs": 20,
+        "crcAndPayloadValidated": true,
+        "elapsedMs": 1108.604
+      },
+      {
+        "event": "summary",
+        "controlPassed": true,
+        "shortMaskPassed": true,
+        "extendedLengthPassed": true,
+        "operations": [
+          "HELLO",
+          "ECHO",
+          "HEARTBEAT"
+        ],
+        "insertedAnyMedium": false,
+        "openedAnyImage": false
+      }
+    ]
+  },
+  "nativeValidation": {
+    "fullMediaAndHidSuite": "pass",
+    "cases": [
+      "Delayed 32 KiB payload and short header reads share one deadline",
+      "Pending prefix followed by raw TLS WANT preserves every byte",
+      "A single TLS read with eight one-second BIO fragments succeeds at eight seconds",
+      "A single TLS read with progressing 1.5-second BIO fragments stops at ten seconds",
+      "Same-task/exact-fd active receive scope; other task/fd and explicit pending-only calls preserve socket settings",
+      "Positive data arriving at or after the deadline is rejected",
+      "Socket timeout setup/restoration failure, EOF and fatal errors fail closed",
+      "First failure preserved and frame-timeout counter increments once"
+    ]
+  },
+  "firstActualBoot": {
+    "date": "2026-10-27",
+    "scope": "Passive HTTP80 diagnostics during an actual browser-backed Armbian boot; boot had already begun before first sample",
+    "measurementFile": "cheap-kvm-armbian-boot-metrics.jsonl",
+    "observedReadSegment": {
+      "firstUtc": "2026-10-27T11:52:57.447+00:00",
+      "lastUtc": "2026-10-27T11:54:02.417+00:00",
+      "wallSeconds": 64.970109,
+      "completedReadRequests": 345,
+      "remoteReadBytes": 11304960,
+      "remoteReadBytesPerSecond": 174002.479,
+      "remoteReadKiBPerSecond": 169.924,
+      "remoteBytesPerRequest": 32768.0,
+      "meanReadTurnaroundMs": 139.519,
+      "cacheHitBytesSeparately": 9891840
+    },
+    "gapErrors": [
+      {
+        "event": "error",
+        "run": "20261027T115257Z-52354",
+        "utc": "2026-10-27T11:54:09.829+00:00",
+        "monotonicSeconds": 820782.458298,
+        "elapsedSeconds": 72.564444,
+        "index": 14,
+        "error": "HTTP diagnostics fetch failed (curl 28): curl: (28) Operation timed out after 2505 milliseconds with 0 bytes received",
+        "derivedRatesDiscarded": true
+      },
+      {
+        "event": "error",
+        "run": "20261027T115257Z-52354",
+        "utc": "2026-10-27T11:54:14.835+00:00",
+        "monotonicSeconds": 820787.463776,
+        "elapsedSeconds": 77.569922,
+        "index": 15,
+        "error": "HTTP diagnostics fetch failed (curl 28): curl: (28) Connection timed out after 2506 milliseconds",
+        "derivedRatesDiscarded": true
+      }
+    ],
+    "firstRecoveredSnapshot": {
+      "event": "sample",
+      "run": "20261027T115257Z-52354",
+      "utc": "2026-10-27T11:54:17.604+00:00",
+      "monotonicSeconds": 820790.23346,
+      "elapsedSeconds": 80.339606,
+      "index": 16,
+      "fetchMs": 290.481,
+      "baseline": true,
+      "counters": {
+        "reads": 789,
+        "readBytes": 25757696,
+        "readTimeUs": 106135372,
+        "cacheBytes": 22339584,
+        "readMaxUs": 1353413,
+        "accepts": 11,
+        "uptimeMs": 1434425
+      },
+      "interval": null,
+      "sessionMaxReadTurnaroundMs": 1353.413,
+      "diagnostics": {
+        "uptimeMs": 1434425,
+        "freeHeap": 1942763,
+        "minimumHeap": 1741515,
+        "largestBlock": 1867776,
+        "tlsError": 0,
+        "tlsCode": 0,
+        "tlsFlags": 0,
+        "bleAdvertising": true,
+        "bleAdvertisingPauseRequested": false,
+        "wifiPowerSave": 0,
+        "wifiMode": 3,
+        "wifiRssi": -60,
+        "wifiChannel": 1,
+        "media": {
+          "reads": 789,
+          "readBytes": 25757696,
+          "readTimeUs": 106135372,
+          "readMaxUs": 1353413,
+          "cacheBytes": 22339584,
+          "accepts": 11,
+          "rejects": 0,
+          "lastMediaRejection": 0,
+          "firstFailure": 4,
+          "ioTimeouts": 0,
+          "leaseTimeouts": 0,
+          "backendErrors": 0,
+          "disconnects": 1
+        },
+        "network": {
+          "closes": 11,
+          "receiveErrors": 1,
+          "sendErrors": 0,
+          "invalidFrames": 0,
+          "lastFailure": 3,
+          "lastError": -1,
+          "lastErrno": 11,
+          "lastFrameType": 2,
+          "lastFrameFinal": 1,
+          "lastFrameLength": 32800,
+          "lastCloseReads": 789,
+          "lastCloseReadKiB": 25154,
+          "coreFailureBeforeClose": 0,
+          "handshakeTimeouts": 1
+        }
+      }
+    },
+    "findings": [
+      "Full32KiB replies confirmed by every completed request in the observed segment",
+      "Recovered snapshot records789 reads and25757696 remote bytes; receiveErrors1, lastFailure3, lastError-1 and errno11",
+      "IO, idle-lease and backend counters remain0; disconnect counter1 records closure cleanup",
+      "Failed or missing observation intervals are excluded from derived deltas",
+      "Boot completion and a whole-boot throughput improvement have not been established; ECHO rates are not used"
+    ],
+    "noMediaOwnershipAcquired": true,
+    "firmwareStage": "Before ddefbfa scoped frame receive fix; this failed actual boot is not a post-fix boot result",
+    "loggerOpenedImages": false
+  },
+  "firstActualBootInterpretation": {
+    "result": "Failed after 25,757,696 remote-read bytes (24.56 MiB); receive-payload failure with errno 11 after a missing-observation gap",
+    "measuredSegmentOnly": {
+      "remoteReadKiBPerSecond": 169.924,
+      "wallSeconds": 64.970109,
+      "remoteBytesPerRequest": 32768,
+      "meanReadTurnaroundMs": 139.519,
+      "cacheHitBytesSeparately": 9891840
+    },
+    "causalityLimit": "The controlled gap reproduces and corrects a receive-timeout defect. It does not prove the exact network pause duration or every cause of the actual boot failure.",
+    "measurementLimit": "No rate is derived across the two failed HTTP observations. Logging began after boot reads had started; the observed successful segment is not a complete boot measurement."
+  },
+  "retryAttempt2": {
+    "uiRestartUtc": "2026-10-27T12:43:56.133000+00:00",
+    "earlierEnterAttemptsProducedNoReads": true,
+    "firstPositiveReadSample": {
+      "utc": "2026-10-27T12:44:03.241+00:00",
+      "counters": {
+        "reads": 13,
+        "readBytes": 329728,
+        "readTimeUs": 1233719,
+        "cacheBytes": 90112,
+        "readMaxUs": 184723,
+        "accepts": 6,
+        "uptimeMs": 1471911
+      },
+      "previousSampleUtc": "2026-10-27T12:43:58.228+00:00",
+      "readStartBracketSecondsAfterUiRestart": [
+        2.095,
+        7.108
+      ]
+    },
+    "writeMode": 1,
+    "persistentStorageGranted": true,
+    "originalImageChanged": false,
+    "milestones": {
+      "kernelAndInitrdLoadedObservedUtc": "2026-10-27T12:53:14.258+00:00",
+      "kernelAndInitrdObservationSecondsAfterRestart": 558.125,
+      "kernelAndInitrdTimingLimit": "Upper bound from screenshot observation; not an exact loader-to-kernel transition timestamp",
+      "filesystemCheck": "Root filesystem reported clean; target reports Write Protect is off",
+      "systemdStartupObserved": true,
+      "emergencyTargetKernelSeconds": 353.531568,
+      "zramConfigTimeoutKernelSeconds": 381.889535,
+      "ramlogTimeoutKernelSeconds": 412.13769,
+      "orderingLimit": "Emergency mode precedes the observed zram/ramlog timeout failures, so those later failures do not establish the initial emergency-mode cause",
+      "rootCauseOfEmergencyMode": "Not isolated; maintenance authentication needed to inspect failed units and journal"
+    },
+    "measurementThroughFirstEmergencyObservation": {
+      "status": "Normal startup did not complete; emergency mode and later service timeouts were observed while the virtual-media session stayed active",
+      "installedCommit": "ddefbfaa35789978a5547c643fa964b970318133",
+      "uiRestartUtc": "2026-10-27T12:43:56.133000+00:00",
+      "emergencyModeObservedUtc": "2026-10-27T13:01:31.282000+00:00",
+      "secondsRestartToEmergencyObservation": 1055.149,
+      "measurementEndUtc": "2026-10-27T13:01:29.756+00:00",
+      "measurementEndBeforeEmergencyObservationSeconds": 1.526,
+      "measurementWindowSeconds": 1053.623,
+      "remoteReadBytes": 198154240,
+      "completedReadRequests": 6055,
+      "overallRemoteReadBytesPerSecond": 188069.395,
+      "overallRemoteReadKiBPerSecond": 183.662,
+      "activeReadServiceBytesPerSecond": 260536.036,
+      "meanReadTurnaroundMs": 125.609,
+      "sessionMaxReadTurnaroundMs": 4323.302,
+      "cacheHitBytesSeparately": 137649152,
+      "acceptedOwnerCounter": 6,
+      "networkCounterDeltas": {
+        "closes": 0,
+        "receiveErrors": 0,
+        "sendErrors": 0,
+        "invalidFrames": 0,
+        "frameTimeouts": 0,
+        "handshakeTimeouts": 0
+      },
+      "media": {
+        "reads": 6055,
+        "readBytes": 198154240,
+        "readTimeUs": 760563656,
+        "readMaxUs": 4323302,
+        "cacheBytes": 137649152,
+        "accepts": 6,
+        "rejects": 0,
+        "lastMediaRejection": 0,
+        "firstFailure": 0,
+        "ioTimeouts": 0,
+        "leaseTimeouts": 0,
+        "backendErrors": 0,
+        "disconnects": 0
+      },
+      "emergencyObservationCounterBracket": {
+        "before": {
+          "utc": "2026-10-27T13:01:29.756+00:00",
+          "counters": {
+            "reads": 6055,
+            "readBytes": 198154240,
+            "readTimeUs": 760563656,
+            "cacheBytes": 137649152,
+            "readMaxUs": 4323302,
+            "accepts": 6,
+            "uptimeMs": 2518439
+          }
+        },
+        "after": {
+          "utc": "2026-10-27T13:01:34.870+00:00",
+          "counters": {
+            "reads": 6086,
+            "readBytes": 199170048,
+            "readTimeUs": 764243561,
+            "cacheBytes": 138308608,
+            "readMaxUs": 4323302,
+            "accepts": 6,
+            "uptimeMs": 2523543
+          }
+        }
+      },
+      "limitations": [
+        "This is a measured failed normal boot attempt, not a complete boot duration or a completed-OS throughput result",
+        "The endpoint is the last diagnostic before the emergency-mode observation; the adjacent sample brackets counters at that visual observation",
+        "Service timeouts may stem from image/service settings or be aggravated by slow virtual-disk IO; stable transport does not identify their cause",
+        "Cumulative remote bytes include read-ahead and repeated reads and are not unique USB bytes; cache hits are separate",
+        "No causal speedup comparison against the earlier failed attempt, which used different radio signal conditions"
+      ],
+      "sourceLogs": [
+        "cheap-kvm-armbian-boot-attempt2-metrics.jsonl",
+        "cheap-kvm-armbian-boot-attempt2-continued-metrics.jsonl"
+      ],
+      "savedUserImagesScannedOrHashed": false,
+      "targetEventOrdering": {
+        "emergencyModeKernelSeconds": 353.53,
+        "zramConfigTimeoutKernelSeconds": 381.89,
+        "ramlogTimeoutKernelSeconds": 412.14,
+        "interpretation": "The emergency-mode event precedes these two named service timeouts. The timeouts cannot be asserted to have caused the emergency transition without further journal evidence."
+      },
+      "readStartBracket": {
+        "lastZeroSampleUtc": "2026-10-27T12:43:58.228+00:00",
+        "firstPositiveSampleUtc": "2026-10-27T12:44:03.241+00:00",
+        "secondsAfterUiRestartBracket": [
+          2.095,
+          7.108
+        ],
+        "firstPositiveCounters": {
+          "reads": 13,
+          "readBytes": 329728,
+          "readTimeUs": 1233719,
+          "cacheBytes": 90112,
+          "readMaxUs": 184723,
+          "accepts": 6,
+          "uptimeMs": 1471911
+        },
+        "interpretation": "First READ began after the last zero observation and by the first positive observation. These are sampled bounds, separate from the UI restart timestamp."
+      },
+      "baselineNetworkCounters": {
+        "closes": 5,
+        "receiveErrors": 1,
+        "sendErrors": 0,
+        "invalidFrames": 0,
+        "lastFailure": 6,
+        "lastError": 0,
+        "lastErrno": 0,
+        "lastFrameType": 2,
+        "lastFrameFinal": 1,
+        "lastFrameLength": 32,
+        "lastCloseReads": 0,
+        "lastCloseReadKiB": 0,
+        "coreFailureBeforeClose": 0,
+        "handshakeTimeouts": 0,
+        "frameTimeouts": 1
+      },
+      "endpointNetworkCounters": {
+        "closes": 5,
+        "receiveErrors": 1,
+        "sendErrors": 0,
+        "invalidFrames": 0,
+        "lastFailure": 6,
+        "lastError": 0,
+        "lastErrno": 0,
+        "lastFrameType": 2,
+        "lastFrameFinal": 1,
+        "lastFrameLength": 32800,
+        "lastCloseReads": 0,
+        "lastCloseReadKiB": 0,
+        "coreFailureBeforeClose": 0,
+        "handshakeTimeouts": 0,
+        "frameTimeouts": 1
+      },
+      "restartToFirstEmergencyObservationMeasurement": {
+        "uiRestartUtc": "2026-10-27T12:43:56.133000+00:00",
+        "emergencyModeObservedUtc": "2026-10-27T13:01:31.282000+00:00",
+        "secondsRestartToEmergencyObservation": 1055.149,
+        "measurementEndUtc": "2026-10-27T13:01:29.756+00:00",
+        "measurementEndBeforeEmergencyObservationSeconds": 1.526,
+        "measurementWindowSeconds": 1053.623,
+        "remoteReadBytes": 198154240,
+        "completedReadRequests": 6055,
+        "overallRemoteReadBytesPerSecond": 188069.395,
+        "overallRemoteReadKiBPerSecond": 183.662,
+        "activeReadServiceBytesPerSecond": 260536.036,
+        "meanReadTurnaroundMs": 125.609,
+        "sessionMaxReadTurnaroundMs": 4323.302,
+        "cacheHitBytesSeparately": 137649152,
+        "acceptedOwnerCounter": 6,
+        "networkCounterDeltas": {
+          "closes": 0,
+          "receiveErrors": 0,
+          "sendErrors": 0,
+          "invalidFrames": 0,
+          "frameTimeouts": 0,
+          "handshakeTimeouts": 0
+        },
+        "endpointMeaning": "Last diagnostics snapshot before the first visual observation of emergency mode; this is not the exact target transition time and is not a completed normal boot endpoint."
+      },
+      "separatePostEmergencyUiObservation": {
+        "observedAtUtc": "2026-10-27T13:06:33.531+00:00",
+        "source": "Root reports UI screenshot with media connected, read233.2MiB, written8.9MiB, current read speed192.8KiB/s; emergency password prompt persists",
+        "rootReportedUiReadMiB": 233.2,
+        "rootReportedUiWrittenMiB": 8.9,
+        "rootReportedUiReadKiBPerSecond": 192.8,
+        "includedInEmergencyEndpointRate": false
+      }
+    },
+    "laterLivePanelObservation": {
+      "utcApproximate": "2026-10-27T13:06:50+00:00",
+      "remoteReadMiBDisplay": 233.2,
+      "writtenMiBDisplay": 8.9,
+      "readKiBPerSecondDisplay": 192.8,
+      "mediaConnected": true,
+      "scope": "Rounded live panel values after the emergency-mode endpoint; not substituted into the earlier measurement window"
+    },
+    "interpretation": "The installed fix sustained the actual browser/worker/OPFS/ESP32/USB path without new connection errors. Initial unattended startup entered emergency mode; the same live disk subsequently reached interactive first-boot setup after the offered manual Ctrl-D continuation.",
+    "postEmergencyMonitoring": {
+      "lastSampleUtc": "2026-10-27T13:12:55.311+00:00",
+      "lastObservedReadIncreaseSampleUtc": "2026-10-27T13:08:05.052+00:00",
+      "cumulativeSession": {
+        "acceptedOwnerCounter": 6,
+        "readRequests": 7994,
+        "remoteReadBytes": 261691392,
+        "remoteReadMiB": 249.568359,
+        "cacheHitBytesSeparately": 182422528,
+        "summedSuccessfulReadTimeUs": 1007168248,
+        "sessionMaxReadTurnaroundMs": 4323.302
+      },
+      "separateAdditionalTotalsSinceEmergencyMeasurementEndpoint": {
+        "endpointUtc": "2026-10-27T13:01:29.756+00:00",
+        "endpointRemoteReadBytes": 198154240,
+        "additionalRemoteReadBytes": 63537152,
+        "additionalReadRequests": 1939,
+        "additionalCacheHitBytesSeparately": 44773376,
+        "scope": "Additional totals after the diagnostic snapshot preceding the first emergency-mode observation; not a completed boot performance result"
+      },
+      "networkCounterDeltasFromActualBootBaseline": {
+        "closes": 0,
+        "receiveErrors": 0,
+        "sendErrors": 0,
+        "invalidFrames": 0,
+        "frameTimeouts": 0,
+        "handshakeTimeouts": 0
+      },
+      "mediaFailureCounters": {
+        "firstFailure": 0,
+        "ioTimeouts": 0,
+        "leaseTimeouts": 0,
+        "backendErrors": 0,
+        "disconnects": 0
+      },
+      "continuationOwnerAndUptimeStable": true,
+      "continuationDiagnosticErrors": 0,
+      "loggerStoppedCleanlyWithoutMediaOperations": true
+    },
+    "unattendedBootCompleted": false,
+    "manualContinuation": {
+      "restartOrMediaReconnect": false,
+      "action": "Offered Ctrl-D at an empty maintenance prompt",
+      "defaultTargetRestartObserved": true,
+      "automaticRootLoginObserved": true,
+      "firstBootCreateRootPasswordObserved": true,
+      "passwordPromptScreenshotObservedUtc": "2026-10-27T13:42:56.231+00:00",
+      "passwordPromptTimingLimit": "Screenshot observation upper bound; not an exact transition timestamp",
+      "agentChangedCredentials": false,
+      "newCredentialEntryHandedToUser": true,
+      "freshImageConfirmedByUser": true,
+      "documentedDefaultLoginStillRejectedAfterCleanSlowInput": true,
+      "defaultPasswordRejectionCause": "Unresolved; source documentation alone does not establish the shipped account hash or exact target input",
+      "targetFirstRunNetworkStatus": "Network connection timeout; separate from continuous authenticated ESP32 media session",
+      "timingLimit": "Long maintenance idle time and manual intervention exclude a meaningful uninterrupted whole-boot duration or speedup claim",
+      "measurement": {
+        "separateRetryPhaseMeasurement": {
+          "scope": "Separate passive sample window during default.target/first-boot-profile retry, excluding earlier maintenance idle time; not whole-boot timing",
+          "firstSampleUtc": "2026-10-27T13:29:52.030+00:00",
+          "lastSampleUtc": "2026-10-27T13:44:02.658+00:00",
+          "wallSeconds": 850.605388,
+          "baselineReadRequests": 8278,
+          "lastReadRequests": 12783,
+          "baselineRemoteReadBytes": 270944256,
+          "lastRemoteReadBytes": 418457600,
+          "additionalRemoteReadBytes": 147513344,
+          "completedReadRequests": 4505,
+          "cumulativeObservedRemoteReadBytesPerSecond": 173421.596,
+          "cumulativeObservedRemoteReadKiBPerSecond": 169.357,
+          "requestServiceBytesPerSecond": 257166.317,
+          "meanReadTurnaroundMs": 127.328,
+          "cacheHitBytesSeparately": 97098240,
+          "rateAcross503Gaps": "Cumulative first/last counters remain usable with stable accepted owner/uptime and cumulative failure counters; instantaneous rates spanning missing observations remain unavailable"
+        },
+        "cumulativeSessionProof": {
+          "acceptedOwnerCounter": 6,
+          "readRequests": 12783,
+          "remoteReadBytes": 418457600,
+          "remoteReadMiB": 399.072266,
+          "cacheHitBytesSeparately": 285070336,
+          "sessionMaxReadTurnaroundMs": 4351.948,
+          "networkCounterDeltasFromActualBootBaseline": {
+            "closes": 0,
+            "receiveErrors": 0,
+            "sendErrors": 0,
+            "invalidFrames": 0,
+            "frameTimeouts": 0,
+            "handshakeTimeouts": 0
+          },
+          "mediaFailureCounters": {
+            "firstFailure": 0,
+            "ioTimeouts": 0,
+            "leaseTimeouts": 0,
+            "backendErrors": 0,
+            "disconnects": 0
+          },
+          "acceptedOwnerStableDuringObservedRetry": true,
+          "uptimeMonotonicDuringObservedRetry": true,
+          "diagnosticsBaselineCaveat": "Global receiveErrors1/frameTimeouts1 predate the actual boot and came from the deliberate eleven-second probe; no new recorded errors are claimed, not literal zero global counters"
+        },
+        "diagnosticObservationGaps": [
+          {
+            "utc": "2026-10-27T13:36:07.313+00:00",
+            "error": "HTTP diagnostics fetch failed (curl 22): curl: (22) The requested URL returned error: 503"
+          },
+          {
+            "utc": "2026-10-27T13:43:22.630+00:00",
+            "error": "HTTP diagnostics fetch failed (curl 22): curl: (22) The requested URL returned error: 503"
+          }
+        ]
+      },
+      "passiveLoggerStoppedCleanlyWithoutMediaOrUiOperations": true,
+      "measurementFile": "cheap-kvm-armbian-default-target-retry-metrics.jsonl"
+    }
+  },
+  "sourceLogs": [
+    "cheap-kvm-payload-gap-before.jsonl",
+    "cheap-kvm-payload-gap-after.jsonl",
+    "cheap-kvm-payload-deadline-after.jsonl",
+    "cheap-kvm-frame-receive-fragment.jsonl",
+    "cheap-kvm-armbian-boot-first-failure-analysis.json",
+    "cheap-kvm-frame-receive-flash.log",
+    "cheap-kvm-frame-receive-descriptors.log",
+    "cheap-kvm-armbian-boot-attempt2-metrics.jsonl",
+    "cheap-kvm-armbian-boot-attempt2-continued-metrics.jsonl"
+  ],
+  "ci": {
+    "url": "https://github.com/thebentern/cheap-web-kvm/actions/runs/40502032156",
+    "software": "pass",
+    "firmware": "pass"
+  },
+  "browserPreparation": {
+    "browser": "Microsoft Edge",
+    "bookmarkRequestGrantedPersistence": false,
+    "installedConsoleApp": true,
+    "installApprovedByUser": true,
+    "persistenceGrantedAfterInstall": true,
+    "writeOverlayEnabledBeforeInsertion": true,
+    "sourceImageReimported": false,
+    "sourceImageScannedOrHashed": false
+  }
+}

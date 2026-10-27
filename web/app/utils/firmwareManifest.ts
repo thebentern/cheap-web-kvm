@@ -23,12 +23,12 @@ export interface FirmwareBundle {
   files: { address: number; data: Uint8Array }[]
 }
 
-// The one supported board's default ESP-IDF layout. Separate files leave NVS
+// The supported board's legacy and on-board UI layouts. Separate files leave NVS
 // at 0x9000 and PHY data at 0xf000 untouched, including sector-rounded erases.
 const REGIONS = [
   { path: 'bootloader.bin', offset: 0, limit: 0x8000 },
   { path: 'partition-table.bin', offset: 0x8000, limit: 0x9000 },
-  { path: 'cheap-web-kvm.bin', offset: 0x10000, limit: 0x110000 },
+  { path: 'cheap-web-kvm.bin', offset: 0x10000, limit: 0x400000 },
 ]
 
 export function validateFirmwareManifest(value: unknown): FirmwareManifest {

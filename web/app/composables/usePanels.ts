@@ -2,6 +2,7 @@
 import { reactive } from 'vue'
 
 export type PanelName =
+  | 'media'
   | 'paste'
   | 'copy'
   | 'keyboard'
@@ -12,6 +13,7 @@ export type PanelName =
   | 'connectPrompt'
 
 const open = reactive<Record<PanelName, boolean>>({
+  media: false,
   paste: false,
   copy: false,
   keyboard: false,

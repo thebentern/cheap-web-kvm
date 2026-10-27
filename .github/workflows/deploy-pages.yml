@@ -10,9 +10,13 @@ on:
       - 'firmware/**'
       - 'tools/package_firmware.py'
       - 'tools/test_package_firmware.py'
+      - 'tools/build_device_web.py'
+      - 'tools/test_build_device_web.py'
       - 'tools/test_led_pattern.py'
       - 'tools/verify_descriptors.py'
       - 'docs/PROTOCOL.md'
+      - 'docs/VIRTUAL_MEDIA.md'
+      - 'docs/WIFI.md'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 
@@ -35,25 +39,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Test firmware packaging and LED patterns
+      - name: Test device assets, firmware packaging and LED patterns
         working-directory: .
         run: |
           python3 tools/test_package_firmware.py
+          python3 tools/test_build_device_web.py
           python3 tools/test_led_pattern.py
-
-      # Official Espressif action, pinned to the reviewed v1 commit. The v5.4
-      # image matches the toolchain used to validate this firmware locally.
-      - name: Build ESP32-S3 firmware and verify USB descriptors
-        uses: espressif/esp-idf-ci-action@9d38657f3d789ca759b2b37aaf5ceffbc42c4f0d
-        with:
-          esp_idf_version: v5.4
-          target: esp32s3
-          path: firmware
-          command: idf.py build && python ../tools/verify_descriptors.py
-
-      - name: Bundle firmware for the browser flasher
-        working-directory: .
-        run: python3 tools/package_firmware.py
 
       - uses: actions/setup-node@v4
         with:
@@ -63,13 +54,35 @@ jobs:
 
       - run: npm ci
 
+      - name: Generate the root-based UI embedded in the device
+        run: npm run generate
+        env:
+          NUXT_APP_BASE_URL: /
+
+      # Official Espressif action, pinned to the reviewed v1 commit. The v5.4
+      # image matches the toolchain used to validate this firmware locally.
+      - name: Build ESP32-S3 firmware and verify USB descriptors
+        uses: espressif/esp-idf-ci-action@9d38657f3d789ca759b2b37aaf5ceffbc42c4f0d
+        with:
+          esp_idf_version: v5.4
+          target: esp32s3
+          path: firmware
+          command: idf.py build && python ../tools/verify_descriptors.py && CC=cc ../tools/test_device_tls.sh && CC=cc ../tools/test_device_web.sh
+
+      - name: Bundle firmware for the browser flasher
+        working-directory: .
+        run: python3 tools/package_firmware.py
+
       # The protocol layer is verified against real hardware; a failure here
       # means the wire format drifted, so refuse to ship it.
       - name: Test protocol layer
         run: npm run test
 
       - name: Sync protocol docs into the published site
-        run: cp ../docs/PROTOCOL.md public/PROTOCOL.md
+        run: |
+          cp ../docs/PROTOCOL.md public/PROTOCOL.md
+          cp ../docs/VIRTUAL_MEDIA.md public/VIRTUAL_MEDIA.md
+          cp ../docs/WIFI.md public/WIFI.md
 
       - name: Generate static site
         run: npm run generate

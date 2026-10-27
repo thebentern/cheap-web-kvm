@@ -1,0 +1,57 @@
+name: Virtual media checks
+on:
+  pull_request:
+    paths: ['firmware/**', 'web/**', 'src/**', 'tools/**', '.github/workflows/test-media.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  software:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache: false
+      - run: npm ci
+        working-directory: web
+      - run: npm test
+        working-directory: web
+      - run: npm run typecheck
+        working-directory: web
+      - run: npm run generate
+        working-directory: web
+      - run: go test ./...
+        working-directory: src
+      - run: tools/test_media_firmware.sh
+      - run: python3 tools/ch9329_test.py --selftest
+      - name: Test device assets and firmware packaging
+        run: |
+          python3 tools/test_build_device_web.py
+          python3 tools/test_package_firmware.py
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - name: Generate the root-based on-board UI
+        run: npm run generate
+        working-directory: web
+        env:
+          NUXT_APP_BASE_URL: /
+      - name: Build Wi-Fi, BLE, composite USB and verify compiled descriptors
+        run: >-
+          docker run --rm -v "$PWD:/project" -w /project/firmware espressif/idf:v5.4
+          bash -c 'idf.py -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.media-ci" build && python ../tools/verify_descriptors.py && CC=cc ../tools/test_device_tls.sh && CC=cc ../tools/test_device_web.sh'

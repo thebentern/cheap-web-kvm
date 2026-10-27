@@ -121,11 +121,11 @@ useHead({
 
           <div class="flash-actions">
             <button v-if="status !== 'success'" type="button" class="kvm-btn kvm-btn-primary" :disabled="!installEnabled" @click="install">
-              <AppIcon :name="busy ? 'refresh' : 'download'" :class="{ 'animate-[kvm-spin_0.9s_linear_infinite]': busy }" />
+              <AppIcon :name="busy ? 'refresh' : 'cpu'" :class="{ 'animate-[kvm-spin_0.9s_linear_infinite]': busy }" />
               {{ busy ? 'Installation in progress…' : status === 'error' && version ? 'Retry installation' : 'Install firmware' }}
             </button>
             <button v-if="retryLoad" type="button" class="kvm-btn" @click="loadFirmware">Retry loading firmware</button>
-            <NuxtLink v-if="status === 'success'" to="/" class="kvm-btn kvm-btn-primary"><AppIcon name="check" /> Open console</NuxtLink>
+            <NuxtLink v-if="status === 'success'" to="/" class="kvm-btn kvm-btn-primary"><AppIcon name="monitor" /> Open console</NuxtLink>
           </div>
         </template>
 

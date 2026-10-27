@@ -180,7 +180,7 @@
     <div class="sr-drag-bar kvm-drag flex items-center justify-between gap-2 border-b border-ink-700 px-3 py-2"
          id="srDragBar">
         <span class="flex items-center gap-2 text-[11px] font-semibold tracking-[0.12em] text-mist-400 uppercase">
-            <i class="film icon text-signal-400"></i> Screen recorder
+            <i class="video icon text-signal-400"></i> Screen recorder
         </span>
         <button class="kvm-btn kvm-btn-icon h-6 w-6 flex-none p-0 text-[11px]"
                 onclick="toggleScreenRecorder()"
@@ -201,7 +201,7 @@
 
         <div class="grid grid-cols-2 gap-1.5">
             <button id="srBtnStart" class="kvm-btn green px-2 text-[11.5px]" onclick="srStartFull()">
-                <i class="circle icon"></i> Record
+                <i class="record icon"></i> Record
             </button>
             <button id="srBtnArea" class="kvm-btn px-2 text-[11.5px]" onclick="srStartArea()">
                 <i class="crop icon"></i> Select area
@@ -429,7 +429,7 @@ function srWarn() {
                 </p>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                   <button class="kvm-btn green" id="srWarnOK" style="font-size:13px;">
-                    <i class="video icon"></i> Start Recording
+                    <i class="record icon"></i> Start Recording
                   </button>
                   <button class="kvm-btn" id="srWarnNo" style="font-size:13px;">Cancel</button>
                 </div>
@@ -506,7 +506,7 @@ function srBegin(stream, mode) {
     const badge = document.getElementById('srModeBadge');
     badge.textContent = (mode === 'area') ? '● Area recording' : '● Full-video recording';
     srUI('recording');
-    $('body').toast({ message: '<i class="circle red icon"></i> Recording started', displayTime: 2000 });
+    $('body').toast({ message: '<i class="record red icon"></i> Recording started', displayTime: 2000 });
 }
 
 function _srStopTimer() {

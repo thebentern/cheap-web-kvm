@@ -51,4 +51,54 @@ menu "cheap-web-kvm"
             radio range can pair and type into the target. Leading zeros are
             allowed: 4321 is entered as 004321.
 
+    config KVM_MEDIA_LOCAL_PROOF
+        bool "Read-only embedded image for local USB boot proof"
+        default n
+        help
+            Embed firmware/local-proof.img (maximum 512 KiB). This is a
+            separate bring-up build; it never replaces the client backend.
+            Supply your own small bootable UEFI image and verify its license.
+
+    config KVM_MEDIA_WIFI
+        bool "Wi-Fi configuration and client-backed media"
+        depends on !KVM_MEDIA_LOCAL_PROOF
+        default y
+        select HTTPD_WS_SUPPORT
+        help
+            Configure Hotspot, Client mode or Wi-Fi off from the web UI
+            over serial or bonded Bluetooth. Settings persist in NVS. Client
+            mode can keep a recovery hotspot. Blank build credentials start
+            with Wi-Fi off; the browser can enable it without recompiling.
+
+    config KVM_MEDIA_SSID
+        string "Initial hotspot SSID (blank generates a device-specific name)"
+        depends on KVM_MEDIA_WIFI
+        default ""
+
+    config KVM_DEVICE_WEB
+        bool "Host the console on the ESP32 over HTTPS"
+        depends on KVM_MEDIA_WIFI
+        default y
+        select MBEDTLS_PEM_WRITE_C
+        select ESP_HTTPS_SERVER_ENABLE
+        help
+            Bundle the generated core web UI in flash. HTTP provides certificate
+            setup; HTTPS serves the console and paired browser media sessions.
+            Generate the web UI with NUXT_APP_BASE_URL=/ before building firmware.
+
+    config KVM_MEDIA_PASSWORD
+        string "Media AP WPA2 password (8-63 characters)"
+        depends on KVM_MEDIA_WIFI
+        default ""
+
+    config KVM_MEDIA_TOKEN
+        string "Media helper token (16-80 characters)"
+        depends on KVM_MEDIA_WIFI
+        default ""
+
+    config KVM_UART_BAUD
+        int "UART0 baud rate (benchmark before changing)"
+        range 115200 2000000
+        default 921600
+
 endmenu

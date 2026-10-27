@@ -56,12 +56,12 @@ const SECTIONS: HotkeySection[] = [
     title: 'Windows',
     items: [
       { id: 'ctrl-alt-del', label: 'Ctrl+Alt+Del', description: 'Security screen', icon: 'lock', mods: ['ctrl', 'alt'], keys: [46] },
-      { id: 'win-shift-s', label: 'Win+Shift+S', description: 'Snip a region', icon: 'camera', mods: ['meta', 'shift'], keys: [83] },
+      { id: 'win-shift-s', label: 'Win+Shift+S', description: 'Snip a region', icon: 'crop', mods: ['meta', 'shift'], keys: [83] },
       { id: 'win-l', label: 'Win+L', description: 'Lock session', icon: 'lock', mods: ['meta'], keys: [76] },
       { id: 'win-d', label: 'Win+D', description: 'Show desktop', icon: 'monitor', mods: ['meta'], keys: [68] },
       { id: 'win-e', label: 'Win+E', description: 'File Explorer', icon: 'folder', mods: ['meta'], keys: [69] },
       { id: 'win-r', label: 'Win+R', description: 'Run dialog', icon: 'terminal', mods: ['meta'], keys: [82] },
-      { id: 'ctrl-shift-esc', label: 'Ctrl+Shift+Esc', description: 'Task Manager', icon: 'cog', mods: ['ctrl', 'shift'], keys: [27] },
+      { id: 'ctrl-shift-esc', label: 'Ctrl+Shift+Esc', description: 'Task Manager', icon: 'activity', mods: ['ctrl', 'shift'], keys: [27] },
       { id: 'alt-f4', label: 'Alt+F4', description: 'Close window', icon: 'x', mods: ['alt'], keys: [115] },
     ],
   },
@@ -69,19 +69,19 @@ const SECTIONS: HotkeySection[] = [
     title: 'macOS',
     items: [
       { id: 'cmd-z', label: '⌘+Z', description: 'Undo', icon: 'undo', mods: ['meta'], keys: [90] },
-      { id: 'cmd-x', label: '⌘+X', description: 'Cut', icon: 'crop', mods: ['meta'], keys: [88] },
-      { id: 'cmd-c', label: '⌘+C', description: 'Copy', icon: 'clipboard', mods: ['meta'], keys: [67] },
+      { id: 'cmd-x', label: '⌘+X', description: 'Cut', icon: 'scissors', mods: ['meta'], keys: [88] },
+      { id: 'cmd-c', label: '⌘+C', description: 'Copy', icon: 'copy', mods: ['meta'], keys: [67] },
       { id: 'cmd-v', label: '⌘+V', description: 'Paste', icon: 'clipboard', mods: ['meta'], keys: [86] },
-      { id: 'cmd-a', label: '⌘+A', description: 'Select all', icon: 'pointer', mods: ['meta'], keys: [65] },
+      { id: 'cmd-a', label: '⌘+A', description: 'Select all', icon: 'select-all', mods: ['meta'], keys: [65] },
       { id: 'cmd-s', label: '⌘+S', description: 'Save', icon: 'save', mods: ['meta'], keys: [83] },
       { id: 'cmd-f', label: '⌘+F', description: 'Find', icon: 'search', mods: ['meta'], keys: [70] },
       { id: 'cmd-w', label: '⌘+W', description: 'Close window', icon: 'x', mods: ['meta'], keys: [87] },
-      { id: 'cmd-q', label: '⌘+Q', description: 'Quit app', icon: 'power', mods: ['meta'], keys: [81] },
+      { id: 'cmd-q', label: '⌘+Q', description: 'Quit app', icon: 'x-circle', mods: ['meta'], keys: [81] },
       { id: 'cmd-space', label: '⌘+Space', description: 'Spotlight', icon: 'search', mods: ['meta'], keys: [32] },
       { id: 'cmd-tab', label: '⌘+Tab', description: 'Switch apps', icon: 'exchange', mods: ['meta'], keys: [9] },
       { id: 'cmd-option-esc', label: '⌘+⌥+Esc', description: 'Force quit', icon: 'stop', mods: ['meta', 'alt'], keys: [27] },
-      { id: 'cmd-h', label: '⌘+H', description: 'Hide window', icon: 'eye', mods: ['meta'], keys: [72] },
-      { id: 'cmd-m', label: '⌘+M', description: 'Minimize', icon: 'compress', mods: ['meta'], keys: [77] },
+      { id: 'cmd-h', label: '⌘+H', description: 'Hide window', icon: 'eye-off', mods: ['meta'], keys: [72] },
+      { id: 'cmd-m', label: '⌘+M', description: 'Minimize', icon: 'minus', mods: ['meta'], keys: [77] },
       { id: 'cmd-option-d', label: '⌘+⌥+D', description: 'Toggle Dock', icon: 'monitor', mods: ['meta', 'alt'], keys: [68] },
     ],
   },
@@ -95,15 +95,15 @@ const SECTIONS: HotkeySection[] = [
   {
     title: 'Editing & navigation',
     items: [
-      { id: 'f2', label: 'F2', description: 'Rename', icon: 'wrench', mods: [], keys: [113] },
-      { id: 'ctrl-c', label: 'Ctrl+C', description: 'Copy', icon: 'clipboard', mods: ['ctrl'], keys: [67] },
+      { id: 'f2', label: 'F2', description: 'Rename', icon: 'pencil', mods: [], keys: [113] },
+      { id: 'ctrl-c', label: 'Ctrl+C', description: 'Copy', icon: 'copy', mods: ['ctrl'], keys: [67] },
       { id: 'ctrl-v', label: 'Ctrl+V', description: 'Paste', icon: 'clipboard', mods: ['ctrl'], keys: [86] },
       { id: 'ctrl-z', label: 'Ctrl+Z', description: 'Undo', icon: 'undo', mods: ['ctrl'], keys: [90] },
-      { id: 'ctrl-y', label: 'Ctrl+Y', description: 'Redo', icon: 'refresh', mods: ['ctrl'], keys: [89] },
-      { id: 'ctrl-a', label: 'Ctrl+A', description: 'Select all', icon: 'pointer', mods: ['ctrl'], keys: [65] },
+      { id: 'ctrl-y', label: 'Ctrl+Y', description: 'Redo', icon: 'redo', mods: ['ctrl'], keys: [89] },
+      { id: 'ctrl-a', label: 'Ctrl+A', description: 'Select all', icon: 'select-all', mods: ['ctrl'], keys: [65] },
       { id: 'ctrl-f', label: 'Ctrl+F', description: 'Find', icon: 'search', mods: ['ctrl'], keys: [70] },
       { id: 'ctrl-s', label: 'Ctrl+S', description: 'Save', icon: 'save', mods: ['ctrl'], keys: [83] },
-      { id: 'ctrl-p', label: 'Ctrl+P', description: 'Print', icon: 'list', mods: ['ctrl'], keys: [80] },
+      { id: 'ctrl-p', label: 'Ctrl+P', description: 'Print', icon: 'printer', mods: ['ctrl'], keys: [80] },
       { id: 'f5', label: 'F5', description: 'Refresh', icon: 'refresh', mods: [], keys: [116] },
       { id: 'ctrl-w', label: 'Ctrl+W', description: 'Close tab', icon: 'x', mods: ['ctrl'], keys: [87] },
     ],
@@ -288,7 +288,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="flex items-center gap-2 border-t border-ink-600 px-3 py-2">
-      <AppIcon name="usb" class="text-mist-400" />
+      <AppIcon name="keyboard" class="text-mist-400" />
       <span class="kvm-hint">Each button sends one press-and-release burst over the HID link.</span>
     </div>
   </div>

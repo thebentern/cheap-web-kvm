@@ -11,12 +11,14 @@ import { useCapture } from '~/composables/useCapture'
 import { usePanels } from '~/composables/usePanels'
 import { useSettings } from '~/composables/useSettings'
 import { useToasts } from '~/composables/useToasts'
+import { useDeviceHost } from '~/composables/useDeviceHost'
 
 const props = defineProps<{ video: HTMLVideoElement | null }>()
 
 const panels = usePanels()
 const toasts = useToasts()
 const capture = useCapture()
+const deviceHost = useDeviceHost()
 const { settings } = useSettings()
 
 /* ------------------------------------------------------------------ tesseract */
@@ -298,6 +300,11 @@ function prettyStatus(s: string) {
 }
 
 async function runOcr() {
+  await deviceHost.initialize()
+  if (deviceHost.onboard.value) {
+    toasts.info('OCR copy is available in the full web app. Its engine does not fit in the board’s storage.')
+    return
+  }
   const crop = cropCanvas.value
   if (!crop) return
 
@@ -510,7 +517,7 @@ onBeforeUnmount(() => {
       <span
         class="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-signal-500/10 text-signal-400"
       >
-        <AppIcon name="search" />
+        <AppIcon name="scan-text" />
       </span>
       <div class="min-w-0 flex-1">
         <h3 class="text-sm font-semibold text-mist-100">Extracted text</h3>
@@ -589,7 +596,7 @@ onBeforeUnmount(() => {
           <AppIcon name="x" /> Close
         </button>
         <button class="kvm-btn kvm-btn-primary" :disabled="busy" @click="copyToClipboard">
-          <AppIcon name="clipboard" /> Copy to clipboard
+          <AppIcon name="copy" /> Copy to clipboard
         </button>
       </div>
     </div>

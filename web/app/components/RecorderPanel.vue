@@ -667,7 +667,7 @@ onBeforeUnmount(() => {
         @pointerup="onDragEnd"
         @pointercancel="onDragEnd"
       >
-        <AppIcon name="film" class="text-signal-400" />
+        <AppIcon name="video" class="text-signal-400" />
         <span class="text-[11px] font-semibold tracking-[0.12em] text-mist-400 uppercase">
           Screen recorder
         </span>

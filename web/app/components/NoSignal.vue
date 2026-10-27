@@ -60,7 +60,7 @@ const copy = computed(() => {
       <p class="text-2xl font-medium tracking-tight text-mist-100">{{ copy.title }}</p>
       <p class="max-w-sm text-sm leading-relaxed text-mist-400">{{ copy.detail }}</p>
       <button v-if="!status || status === 'idle'" type="button" class="kvm-btn kvm-btn-primary mt-3" :disabled="busy" @click="$emit('start')">
-        <AppIcon name="film" /> {{ busy ? 'Starting…' : 'Start video' }}
+        <AppIcon name="monitor" /> {{ busy ? 'Starting…' : 'Start video' }}
       </button>
       <!-- The only part of the overlay that takes pointer input (main.css). -->
       <button

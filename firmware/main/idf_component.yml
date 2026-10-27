@@ -5,5 +5,6 @@ dependencies:
   # 5.3 is the floor: esp_driver_uart (in main/CMakeLists.txt REQUIRES) only
   # exists from the v5.3 driver split.
   idf: ">=5.3"
+  espressif/tinyusb: ">=0.21.0~1,<0.22.0"
   espressif/esp_tinyusb: ">=2.0.0,<3.0.0"
   espressif/led_strip: ">=3.0.0,<4.0.0"

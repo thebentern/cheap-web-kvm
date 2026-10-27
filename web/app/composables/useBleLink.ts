@@ -115,7 +115,12 @@ function onDisconnected() {
 async function write(frame: Uint8Array) {
   const c = rxChar.value
   if (!c) throw new Error('Not connected')
-  await (c.writeValueWithResponse ? c.writeValueWithResponse(frame) : c.writeValue(frame))
+  // Web Bluetooth does not expose the negotiated MTU. Twenty-byte pieces
+  // also work at the minimum ATT MTU; the firmware parser accepts byte streams.
+  for (let at = 0; at < frame.length; at += 20) {
+    const chunk = frame.slice(at, at + 20)
+    await (c.writeValueWithResponse ? c.writeValueWithResponse(chunk) : c.writeValue(chunk))
+  }
 }
 
 async function waitReply(cmd: number): Promise<SendResult> {

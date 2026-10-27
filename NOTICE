@@ -38,7 +38,8 @@ Added
   firmware/                   ESP32-S3 firmware (ESP-IDF + TinyUSB). Presents a
                               boot-protocol HID keyboard and an absolute mouse to
                               the target, and accepts CH9329-compatible frames
-                              from the host on UART0 at 115200. New work, GPLv3.
+                              from the host on UART0 at a configured baud rate
+                              (921600 by default). New work, GPLv3.
                               Deviates from byte-faithful CH9329 emulation in two
                               documented places; see docs/PROTOCOL.md section 7.
   tools/ch9329_test.py        Protocol test harness. New work, GPLv3.
@@ -79,8 +80,9 @@ Changed (applied to the inherited files before the rewrite above superseded them
                               to the capture device generically.
 
   settings.html               Reworded the HID Baudrate field description: this
-                              firmware always starts at 115200, so the CH9329
-                              9600-baud reconfiguration step does not apply. The
+                              firmware starts at its compiled baud rate (921600
+                              by default), so the CH9329 9600-baud
+                              reconfiguration step does not apply. The
                               9600 option itself is retained for use with real
                               CH9329 hardware. Updated the About tab's supported
                               hardware list from MS2109 + CH9329 to MS2130 +
@@ -118,6 +120,11 @@ character recognition works without a network connection.
 
 Nuxt, Vue and Tailwind CSS (all MIT) are build-time dependencies pulled by npm;
 they are not vendored into this repository.
+
+XZ-Decompress 0.2.3 (MIT), by Tim Perry and Steven Sanderson, is bundled by npm
+for streaming compressed disk images in the browser. Its embedded WebAssembly
+decoder uses XZ Embedded and walloc. Source and license notices:
+https://github.com/httptoolkit/xz-decompress
 
 Upstream's Fomantic-UI and jQuery dependencies were removed in this rewrite.
 

@@ -1,0 +1,44 @@
+{
+  "size": 6111100928,
+  "layout": "GPT (header and table CRC verified)",
+  "partitions": [
+    {
+      "start_lba": 8192,
+      "sectors": 8192,
+      "type": "21686148-6449-6e6f-744e-656564454649",
+      "esp": false
+    },
+    {
+      "start_lba": 16384,
+      "sectors": 532480,
+      "type": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
+      "esp": true
+    },
+    {
+      "start_lba": 548864,
+      "sectors": 11384832,
+      "type": "4f68bce3-e8cd-4db1-96e7-fbcaf984b709",
+      "esp": false
+    }
+  ],
+  "fallback": [
+    {
+      "partition_lba": 16384,
+      "fat": 32,
+      "path": "\\EFI\\BOOT\\BOOTX64.EFI",
+      "exists": true,
+      "file_size": 147456,
+      "pe_machine": "0x8664",
+      "x86_64": true,
+      "embedded_certificate_bytes": 0
+    }
+  ],
+  "secure_boot": "Signature and firmware trust not verified; no modifications performed",
+  "hardware_boot": "Not tested",
+  "artifact": "mPWRD-OS_26.05.0-trunk_Uefi-x86_trixie_current_6.18.38_minimal.img.xz",
+  "release": "https://github.com/mPWRD-OS/mPWRD-OS/releases/tag/v0.2.1",
+  "compressed_bytes": 1339317660,
+  "compressed_sha256": "18a0a3588b1638c258401baef654d263691034bc285fc8c83e920408c0abfebb",
+  "sha256": "775dd413607a7f07366fc49087e86cd07eea317a449c06012685716170f32f1b",
+  "inspected_date": "2026-10-26"
+}

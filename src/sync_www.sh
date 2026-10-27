@@ -17,6 +17,8 @@ echo "Building the web UI for the offline server..."
 cd "$ROOT/web"
 [ -d node_modules ] || npm ci
 cp "$ROOT/docs/PROTOCOL.md" public/PROTOCOL.md
+cp "$ROOT/docs/VIRTUAL_MEDIA.md" public/VIRTUAL_MEDIA.md
+cp "$ROOT/docs/WIFI.md" public/WIFI.md
 NUXT_APP_BASE_URL=/ npm run generate
 
 echo "Copying into $DEST"

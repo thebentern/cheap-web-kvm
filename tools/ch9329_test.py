@@ -2,6 +2,8 @@
 """CH9329 protocol test harness. See docs/PROTOCOL.md.
 
 Needs pyserial for anything touching hardware; --selftest does not.
+Defaults to 921600 baud. Use --baud 115200 for older firmware configured at that
+rate, or the matching rate for a genuine CH9329 module.
 
     ./ch9329_test.py --selftest
     ./ch9329_test.py -p /dev/tty.usbserial-0001 --info
@@ -119,7 +121,7 @@ def parse_reply(buf: bytes, cmd: int):
 
 
 class Link:
-    def __init__(self, port, baud=115200, timeout=0.3, verbose=False, settle=1.5):
+    def __init__(self, port, baud=921600, timeout=0.3, verbose=False, settle=1.5):
         import serial  # lazy so --selftest works without pyserial
         # Open without touching the modem lines: on ESP32 dev boards DTR/RTS
         # drive the auto-reset circuit (EN and GPIO0), and pyserial asserts both
@@ -352,7 +354,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("-p", "--port", help="serial port, e.g. /dev/tty.usbserial-0001")
-    ap.add_argument("-b", "--baud", type=int, default=115200)
+    ap.add_argument("-b", "--baud", type=int, default=921600,
+                    help="serial baud; must match firmware (default: 921600)")
     ap.add_argument("-t", "--timeout", type=float, default=0.3,
                     help="reply timeout in seconds (the web UI uses 0.3)")
     ap.add_argument("-v", "--verbose", action="store_true", help="dump every frame")

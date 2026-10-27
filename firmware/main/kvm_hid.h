@@ -14,7 +14,7 @@ extern "C" {
 /* Keyboard must stay at instance 0: some UEFI HID stacks only bind interface 0. */
 enum {
     KVM_HID_ITF_KEYBOARD = 0,
-    KVM_HID_ITF_MOUSE    = 1,
+    KVM_HID_ITF_MOUSE = 1,
     KVM_HID_ITF_COUNT,
 };
 
@@ -39,23 +39,23 @@ typedef struct {
 } kvm_kbd_evt_t;
 
 typedef struct {
-    uint8_t  buttons;
+    uint8_t buttons;
     uint16_t x;
     uint16_t y;
-    int8_t   wheel;
+    int8_t wheel;
 } kvm_mouse_abs_evt_t;
 
 typedef struct {
     uint8_t buttons;
-    int8_t  dx;
-    int8_t  dy;
-    int8_t  wheel;
+    int8_t dx;
+    int8_t dy;
+    int8_t wheel;
 } kvm_mouse_rel_evt_t;
 
 typedef struct {
     kvm_evt_type_t type;
     union {
-        kvm_kbd_evt_t       kbd;
+        kvm_kbd_evt_t kbd;
         kvm_mouse_abs_evt_t abs;
         kvm_mouse_rel_evt_t rel;
     };
@@ -66,6 +66,9 @@ esp_err_t kvm_hid_start(void);
 /* Returns ESP_ERR_TIMEOUT if the queue stayed full. Never blocks the caller
  * longer than timeout_ms. */
 esp_err_t kvm_hid_post(const kvm_event_t *evt, uint32_t timeout_ms);
+
+/* A disconnected control owner requests release independently of queue capacity. */
+void kvm_hid_release_link(void);
 
 bool kvm_hid_mounted(void);
 

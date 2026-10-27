@@ -4,6 +4,12 @@
 // not an overlay over live video: it scrolls, it renders server-side, and it
 // pulls in none of the KVM composables.
 import { useHead } from '#imports'
+import { onMounted } from 'vue'
+import { useDeviceHost } from '~/composables/useDeviceHost'
+
+const deviceHost = useDeviceHost()
+const firmwareUrl = deviceHost.firmwareUrl
+onMounted(() => { void deviceHost.initialize() })
 
 const REPO = 'https://github.com/thebentern/cheap-web-kvm'
 
@@ -15,17 +21,24 @@ interface DocLink {
 }
 
 const links: DocLink[] = [
+  { title: 'Wi-Fi setup: Hotspot or Client', blurb: 'Configure Wi-Fi, enable a recovery hotspot, set up HTTPS trust and pair the browser with the board.', href: `${REPO}/blob/main/docs/WIFI.md`, cta: 'Wi-Fi setup' },
+  {
+    title: 'Virtual media and FAT32 file sharing',
+    blurb: 'Use USB or Wi-Fi to share boot images and FAT32 drives, save target writes, export files and repeat a boot key.',
+    href: `${REPO}/blob/main/docs/VIRTUAL_MEDIA.md`,
+    cta: 'Virtual media guide',
+  },
   {
     title: 'CH9329 wire protocol',
     blurb:
-      'Frame format, checksums, the four commands this UI actually emits, and how replies are parsed. Written from the bytes on the wire rather than from the datasheet — the firmware parser is written against it.',
+      'Frame format, checksums, HID commands, boot repetition, virtual media and runtime Wi-Fi settings.',
     href: `${REPO}/blob/main/docs/PROTOCOL.md`,
     cta: 'docs/PROTOCOL.md',
   },
   {
     title: 'Hardware and setup',
     blurb:
-      'Parts list, port wiring, the bring-up checks worth doing before you plug anything into the target, and how to build and flash the ESP32-S3 firmware with ESP-IDF.',
+      'Parts, port wiring, firmware installation, build instructions and hardware validation.',
     href: `${REPO}#hardware`,
     cta: 'README',
   },
@@ -53,9 +66,9 @@ interface Requirement {
 
 const requirements: Requirement[] = [
   {
-    title: 'A Chromium-based browser, or Bluefy on iPad',
+    title: 'Browser support',
     detail:
-      'Chrome, Edge, Brave or Opera, over Web Serial or Web Bluetooth. Firefox and Safari have neither, so the control half of the KVM cannot work there — video alone still would. On an iPad, use a Web Bluetooth browser such as Bluefy; Safari there shows the capture stick fine on iPadOS 17 and later.',
+      'Desktop Chrome and Edge support USB serial and Bluetooth control. The board-hosted HTTPS console supports Wi-Fi control and media after pairing. On iPad, Bluetooth requires a compatible browser such as Bluefy; USB capture requires iPadOS 17 or later.',
   },
   {
     title: 'A secure context',
@@ -65,7 +78,7 @@ const requirements: Requirement[] = [
   {
     title: 'An ESP32-S3 running the CH9329-compatible firmware',
     detail:
-      'Serial at 115200 8N1, no flow control, over the board’s UART bridge port — or Bluetooth LE, paired once with a six-digit PIN you can change under Settings → Advanced. A genuine CH9329 module works too over serial, once it has been moved off its 9600 baud default.',
+      'Serial at the firmware’s baud rate (921600 by default), 8N1, no flow control, over the board’s UART bridge port — or Bluetooth LE, paired once with a six-digit PIN you can change under Settings → Advanced. A genuine CH9329 module works too over serial, once it has been moved off its 9600 baud default.',
   },
   {
     title: 'An MS2130 HDMI capture stick',
@@ -111,16 +124,16 @@ useHead({
         <p class="docs-lead">Keyboard, mouse and video from your browser.</p>
         <p>
           Video and audio arrive from a USB capture stick. Keystrokes and pointer movement
-          travel over Web Serial or Bluetooth to an ESP32-S3, which the target sees as a
-          USB keyboard and mouse. It works without a server, software on the target, or
-          an internet connection.
+          travel over USB serial, Bluetooth or Wi-Fi to an ESP32-S3. The target sees a
+          USB keyboard, mouse and removable disk. Virtual media uses USB serial or
+          Wi-Fi. No software is required on the target.
         </p>
       </header>
 
       <section class="docs-section" aria-labelledby="reference-title">
         <h2 id="reference-title">Reference</h2>
         <div class="docs-references">
-          <NuxtLink to="/flash" class="docs-reference">
+          <NuxtLink :to="firmwareUrl" class="docs-reference">
             <span class="docs-reference-title">Install firmware<AppIcon name="chevron-right" aria-hidden="true" /></span>
             <span class="docs-reference-description">Flash the packaged $KVM firmware on an ESP32-S3-DevKitC-1-N8R8 from desktop Chrome or Edge, using its UART USB port. Existing Bluetooth PIN and pairings are preserved.</span>
             <span class="docs-path">Browser installer</span>

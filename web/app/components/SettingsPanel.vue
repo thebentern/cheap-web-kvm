@@ -10,6 +10,7 @@ import { useCapture } from '~/composables/useCapture'
 import { useKvm } from '~/composables/useKvm'
 import { usePanels } from '~/composables/usePanels'
 import { useSettings } from '~/composables/useSettings'
+import { useSerialLink } from '~/composables/useSerialLink'
 import { useToasts } from '~/composables/useToasts'
 import { useDialogFocus } from '~/composables/useDialogFocus'
 
@@ -18,8 +19,13 @@ const kvm = useKvm()
 const panels = usePanels()
 const toasts = useToasts()
 const { settings, reset } = useSettings()
+const serial = useSerialLink()
+const serialBaudRate = computed({
+  get: () => serial.baudRate.value,
+  set: (value: number) => { serial.setBaudRate(value) },
+})
 
-type TabId = 'display' | 'audio' | 'input' | 'hotkeys' | 'advanced' | 'about'
+type TabId = 'display' | 'audio' | 'input' | 'hotkeys' | 'advanced' | 'wifi' | 'about'
 
 interface Tab {
   id: TabId
@@ -32,6 +38,7 @@ const TABS: Tab[] = [
   { id: 'audio', label: 'Audio', icon: 'volume-up' },
   { id: 'input', label: 'Keyboard & mouse', icon: 'keyboard' },
   { id: 'hotkeys', label: 'Hotkeys', icon: 'bolt' },
+  { id: 'wifi', label: 'Wi-Fi', icon: 'wifi' },
   { id: 'advanced', label: 'Advanced', icon: 'wrench' },
   { id: 'about', label: 'About', icon: 'info' },
 ]
@@ -96,6 +103,7 @@ async function copyCaptureEvents() {
 const connected = computed(() => kvm.link.connected.value)
 const portLabel = computed(() => kvm.link.portLabel.value)
 const isBle = computed(() => kvm.link.kind.value === 'ble')
+const isWifi = computed(() => kvm.link.kind.value === 'wifi')
 
 /* -------------------------------------------------------- bluetooth passkey */
 // The board owns the PIN; this only reads and writes it, over whichever link is
@@ -222,7 +230,7 @@ onBeforeUnmount(() => {
           </span>
           <div>
             <h3 id="kvm-settings-title" class="text-sm font-semibold text-mist-100">Settings</h3>
-            <p class="kvm-hint">Applied straight away, remembered in this browser</p>
+            <p class="kvm-hint">{{ tab === 'wifi' ? 'Saved on the board with Save and apply' : 'Applied straight away, remembered in this browser' }}</p>
           </div>
         </div>
         <button type="button" class="kvm-btn kvm-btn-icon flex-none" title="Close settings" @click="close">
@@ -388,17 +396,17 @@ onBeforeUnmount(() => {
               <AppIcon name="keyboard" class="text-signal-400" /> Keyboard &amp; mouse
             </h4>
             <p class="kvm-hint mt-1">
-              Input leaves over Web Serial or Bluetooth and reaches the target as real USB HID.
+              Input travels over USB, Bluetooth or Wi-Fi and reaches the target as a USB keyboard and mouse.
             </p>
 
             <div class="mt-4 space-y-5">
               <div>
                 <div class="kvm-label">Relative mouse mode</div>
                 <p class="kvm-hint mt-0.5">
-                  Sends deltas instead of absolute coordinates, for games and 3D applications that
-                  capture the pointer. Absolute is the default and works better through a laggy video
-                  feed — the pointer lands where you clicked even if the picture is a few frames
-                  behind. On a touch screen, relative mode turns the screen into a trackpad.
+                  Use this for BIOS/UEFI screens and applications that capture the mouse.
+                  Click the video to capture movement; press Esc to release it. Absolute mode is
+                  the default for desktop use. On a touch screen, relative mode turns the screen
+                  into a trackpad.
                 </p>
                 <label class="kvm-toggle mt-2">
                   <input v-model="settings.relativeMouseMode" type="checkbox" />
@@ -553,6 +561,7 @@ onBeforeUnmount(() => {
           </section>
 
           <!-- ----------------------------------------------------- Advanced -->
+          <section v-else-if="tab === 'wifi'"><h4 class="mb-3 text-sm font-semibold">Wi-Fi configuration</h4><WifiSettingsPanel /></section>
           <section v-else-if="tab === 'advanced'">
             <h4 class="flex items-center gap-2 text-sm font-semibold text-mist-100">
               <AppIcon name="wrench" class="text-signal-400" /> Advanced
@@ -565,19 +574,35 @@ onBeforeUnmount(() => {
               <div>
                 <div class="kvm-label">HID link</div>
                 <p class="kvm-hint mt-0.5">
-                  Serial always runs at 115200 baud. Bluetooth asks for the PIN below the first time
-                  this device pairs. Either way there is nothing to choose here.
+                  Serial speed must match the board’s firmware. Bluetooth uses its own connection
+                  and asks for the PIN below when this device first pairs.
                 </p>
                 <div class="mt-2 flex max-w-sm items-center gap-2 rounded-lg border border-ink-600 bg-ink-900 px-3 py-2">
                   <AppIcon
-                    :name="isBle ? 'bluetooth' : 'usb'"
+                    :name="isBle ? 'bluetooth' : isWifi ? 'wifi' : 'usb'"
                     :class="connected ? 'text-live-400' : 'text-mist-400'"
                   />
                   <span class="text-[13px] text-mist-200">
                     {{ connected ? portLabel || (isBle ? 'Bluetooth' : 'Serial port') : 'Not connected' }}
                   </span>
-                  <span class="kvm-hint ml-auto font-mono">{{ isBle ? 'BLE GATT' : '115200 8N1' }}</span>
+                  <span class="kvm-hint ml-auto font-mono">{{ isBle ? 'BLE GATT' : isWifi ? 'Wi-Fi' : `${serial.activeBaudRate.value} 8N1` }}</span>
                 </div>
+                <label class="mt-3 block text-sm">
+                  USB serial baud rate
+                  <select
+                    v-model.number="serialBaudRate"
+                    class="kvm-select mt-1 block w-full max-w-sm"
+                    :disabled="serial.baudLocked.value"
+                  >
+                    <option v-for="rate in serial.baudRates" :key="rate" :value="rate">
+                      {{ rate.toLocaleString() }} baud
+                    </option>
+                  </select>
+                </label>
+                <p class="kvm-hint mt-1">
+                  Applies on the next connection. Disconnect USB first to change it; selecting a rate
+                  here does not change the firmware’s speed.
+                </p>
               </div>
 
               <div>
@@ -621,7 +646,7 @@ onBeforeUnmount(() => {
                     <AppIcon name="refresh" class="text-alert-400" /> Reset HID
                   </button>
                   <button type="button" class="kvm-btn" @click="releaseAll">
-                    <AppIcon name="unlink" /> Release all keys
+                    <AppIcon name="keyboard" /> Release all keys
                   </button>
                 </div>
                 <p class="kvm-hint mt-1.5">
@@ -672,8 +697,8 @@ onBeforeUnmount(() => {
                   A browser-based USB KVM. Video and audio come in from a UVC capture card;
                   keystrokes and pointer movement go out over Web Serial or Bluetooth to a
                   CH9329-compatible HID bridge, which the target sees as an ordinary USB keyboard and
-                  mouse. There is no server and nothing to reach on the network — it works on a bench
-                  with no internet at all.
+                  mouse. Serial and Bluetooth control work without internet. Optional virtual media uses
+                  Wi-Fi and a local HTTPS helper.
                 </p>
               </div>
 
@@ -704,7 +729,7 @@ onBeforeUnmount(() => {
                 <div class="kvm-label">Supported hardware</div>
                 <ul class="mt-2 space-y-2">
                   <li class="flex gap-2.5 rounded-lg border border-ink-600 bg-ink-900 p-3">
-                    <AppIcon name="film" class="mt-0.5 flex-none text-signal-400" />
+                    <AppIcon name="video" class="mt-0.5 flex-none text-signal-400" />
                     <div>
                       <div class="text-[13px] text-mist-100">
                         <strong class="font-semibold">MS2130</strong> HDMI capture — preferred
@@ -716,7 +741,7 @@ onBeforeUnmount(() => {
                     </div>
                   </li>
                   <li class="flex gap-2.5 rounded-lg border border-ink-600 bg-ink-900 p-3">
-                    <AppIcon name="usb" class="mt-0.5 flex-none text-signal-400" />
+                    <AppIcon name="cpu" class="mt-0.5 flex-none text-signal-400" />
                     <div>
                       <div class="text-[13px] text-mist-100">
                         <strong class="font-semibold">ESP32-S3</strong> running CH9329-compatible
@@ -724,7 +749,7 @@ onBeforeUnmount(() => {
                       </div>
                       <p class="kvm-hint mt-0.5">
                         Presents a boot-protocol HID keyboard and an absolute mouse to the target,
-                        and takes CH9329 frames from this browser over UART at 115200. A genuine
+                        and takes CH9329 frames from this browser over UART at the selected baud rate (921600 by default). A genuine
                         <strong class="font-medium text-mist-200">CH9329</strong> module works too.
                       </p>
                     </div>
@@ -735,7 +760,7 @@ onBeforeUnmount(() => {
               <!-- GPLv3 section 5(d): Appropriate Legal Notices. -->
               <div class="rounded-lg border border-ink-600 bg-ink-950 p-3">
                 <div class="flex items-center gap-2 text-[13px] font-semibold text-mist-100">
-                  <AppIcon name="lock" /> Licence
+                  <AppIcon name="file-text" /> Licence
                 </div>
                 <div class="mt-2 space-y-2 font-mono text-[11px] leading-relaxed text-mist-400">
                   <p>cheap-web-kvm — Copyright (C) 2026 Ben Meadors</p>
@@ -767,7 +792,7 @@ onBeforeUnmount(() => {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    <AppIcon name="folder" /> Full GPLv3 text
+                    <AppIcon name="file-text" /> Full GPLv3 text
                   </a>
                 </div>
                 <p class="kvm-hint mt-2.5">

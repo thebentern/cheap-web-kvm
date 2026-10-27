@@ -1,0 +1,3 @@
+#pragma once
+#define CONFIG_KVM_MEDIA_WIFI 1
+#define CONFIG_HTTPD_WS_SUPPORT 1

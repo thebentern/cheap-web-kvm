@@ -166,3 +166,7 @@ web/.output/
 web/.data/
 web/dist/
 # Lock files ARE committed: CI runs `npm ci` for reproducible builds.
+
+# Virtual-media validation builds and private local proof image.
+/build-media/
+/firmware/local-proof.img

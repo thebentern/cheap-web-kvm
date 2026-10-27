@@ -38,6 +38,14 @@ describe('the fixed ESP32-S3 firmware manifest', () => {
     expect(validateFirmwareManifest(manifest)).toEqual(manifest)
   })
 
+  it('accepts both legacy firmware and the larger app with the on-board UI', () => {
+    for (const size of [0x100000, 0x180000, 0x3f0000]) {
+      const manifest = fixture()
+      manifest.parts[2]!.size = size
+      expect(validateFirmwareManifest(manifest)).toEqual(manifest)
+    }
+  })
+
   it.each([
     ['schemaVersion', 2], ['name', 'another product'], ['board', 'ESP32-DevKitC'],
     ['chipFamily', 'ESP32'], ['flashSize', '4MB'], ['flashMode', 'qio'], ['flashFreq', '40m'],
@@ -60,7 +68,7 @@ describe('the fixed ESP32-S3 firmware manifest', () => {
     expect(() => validateFirmwareManifest(manifest)).toThrow(/layout/)
   })
 
-  it.each([[0, 0x8000], [1, 0x1000], [2, 0x100000]])('keeps image %i erases within its reserved region', (index, maxSize) => {
+  it.each([[0, 0x8000], [1, 0x1000], [2, 0x3f0000]])('keeps image %i erases within its reserved region', (index, maxSize) => {
     const manifest = fixture()
     manifest.parts[index]!.size = maxSize
     expect(() => validateFirmwareManifest(manifest)).not.toThrow()

@@ -1,24 +1,29 @@
 <script setup lang="ts">
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useSettings } from '~/composables/useSettings'
 import { usePanels } from '~/composables/usePanels'
 import { useDialogFocus } from '~/composables/useDialogFocus'
+import { useDeviceHost } from '~/composables/useDeviceHost'
 
 defineProps<{ busy: boolean }>()
 const emit = defineEmits<{ start: [] }>()
 const { settings } = useSettings()
 const panels = usePanels()
+const deviceHost = useDeviceHost()
+const firmwareUrl = deviceHost.firmwareUrl
 const dialogEl = ref<HTMLElement | null>(null)
 const visible = ref(false)
 useDialogFocus(dialogEl, () => panels.hide('connectPrompt'))
 onMounted(() => setTimeout(() => (visible.value = true), 16))
 
-const steps = [
-  { title: 'Control to this computer', detail: 'Connect the board’s UART port to this computer. You can also connect control over Bluetooth from the toolbar.' },
+const steps = computed(() => [
+  deviceHost.onboard.value
+    ? { title: 'Wi-Fi control', detail: 'Open Virtual media and choose Pair with USB or Bluetooth if asked. Pairing reads the board’s access token for you. The Wi-Fi connection also provides keyboard and mouse control.' }
+    : { title: 'Control to this computer', detail: 'Connect the board’s UART port to this computer. You can also connect control over Bluetooth from the toolbar.' },
   { title: 'USB and HDMI to the target', detail: 'Connect the board’s native USB port to the target. Run HDMI from the target through the capture stick to this computer.' },
   { title: 'Start the video', detail: 'Allow camera access for the capture stick, plus microphone access if audio is enabled. Then connect control from the toolbar.' },
-]
+])
 </script>
 
 <template>
@@ -37,7 +42,7 @@ const steps = [
         </li>
       </ol>
       <button type="button" class="kvm-btn kvm-btn-primary mt-6 w-full" :disabled="busy" @click="emit('start')">
-        <AppIcon :name="busy ? 'refresh' : 'film'" :class="{ 'animate-[kvm-spin_0.9s_linear_infinite]': busy }" />
+        <AppIcon :name="busy ? 'refresh' : 'monitor'" :class="{ 'animate-[kvm-spin_0.9s_linear_infinite]': busy }" />
         {{ busy ? 'Starting video…' : 'Start video' }}
       </button>
       <div class="setup-footer">
@@ -48,7 +53,7 @@ const steps = [
         </label>
         <NuxtLink to="/docs">Setup guide</NuxtLink>
       </div>
-      <p class="mt-5 text-sm text-mist-400">Blank board? <NuxtLink to="/flash" class="text-signal-400 underline underline-offset-4">Install the firmware</NuxtLink> first.</p>
+      <p class="mt-5 text-sm text-mist-400">Blank board? <NuxtLink :to="firmwareUrl" class="text-signal-400 underline underline-offset-4">Install the firmware</NuxtLink> first.</p>
     </div>
   </div>
 </template>
