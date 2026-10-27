@@ -97,6 +97,53 @@
         "insertedAnyMedium": false,
         "openedAnyImage": false
       }
+    ],
+    "afterTlsGuardDeployment": [
+      {
+        "event": "cookie_pairing_ready",
+        "tlsValidated": true,
+        "cookieStoredInMemoryOnly": true
+      },
+      {
+        "event": "case_result",
+        "label": "unsplit-control",
+        "passed": true,
+        "split": "none",
+        "gapMs": 0,
+        "crcAndPayloadValidated": true,
+        "elapsedMs": 1642.134
+      },
+      {
+        "event": "case_result",
+        "label": "split-short-mask",
+        "passed": true,
+        "split": "short-mask",
+        "gapMs": 20,
+        "crcAndPayloadValidated": true,
+        "elapsedMs": 925.602
+      },
+      {
+        "event": "case_result",
+        "label": "split-extended-length",
+        "passed": true,
+        "split": "extended-length",
+        "gapMs": 20,
+        "crcAndPayloadValidated": true,
+        "elapsedMs": 919.704
+      },
+      {
+        "event": "summary",
+        "controlPassed": true,
+        "shortMaskPassed": true,
+        "extendedLengthPassed": true,
+        "operations": [
+          "HELLO",
+          "ECHO",
+          "HEARTBEAT"
+        ],
+        "insertedAnyMedium": false,
+        "openedAnyImage": false
+      }
     ]
   },
   "idleEchoBenchmark": {
@@ -538,7 +585,7 @@
   ],
   "preparedFollowUp": {
     "candidateCommit": "d97b3d3579da722bb65638080d3164899f4192f2",
-    "status": "Built and software-tested; not installed",
+    "status": "Installed; controlled TLS accept-stall and split-header regression checks pass; full writable OS boot pending",
     "checks": {
       "webTestsPassed": 270,
       "typecheck": "pass",
@@ -548,14 +595,223 @@
       "compiledUsbDescriptors": "pass"
     },
     "lastDeploymentAttempt": {
+      "result": "Application-only firmware installed",
+      "applicationOffset": "0x10000",
+      "applicationBytes": 1596832,
+      "flasherDataHashVerified": true,
+      "nvsAndPhyRegionsPreserved": true
+    },
+    "hardwareValidationRequired": [
+      "Safely enable persistent writable overlay and complete a Wyse OS boot with sustained real USB MSC reads"
+    ],
+    "savedUserImagesScanned": false,
+    "installedCommit": "d3ebb6cae21d3440bbceaa3833cb58e39373a46a",
+    "previousDeploymentAttempt": {
       "result": "No firmware written",
       "reason": "Programming USB port absent"
     },
-    "hardwareValidationRequired": [
-      "Repeat incomplete HTTPS handshake fault without losing the existing media session",
-      "Recheck split WebSocket headers",
-      "Safely enable persistent writable overlay and complete a Wyse OS boot"
-    ],
-    "savedUserImagesScanned": false
-  }
+    "hardwareValidationCompleted": [
+      "Incomplete new HTTPS connection terminated after about 2 seconds while existing authenticated disk-free WSS ECHO and heartbeat returned status 0",
+      "Unsplit control, 20 ms split-mask and 20 ms split-extended-length WebSocket checks passed on installed follow-up"
+    ]
+  },
+  "tlsAcceptStallAfter": [
+    {
+      "event": "cookie_pairing_ready",
+      "tlsValidated": true,
+      "cookieStoredInMemoryOnly": true
+    },
+    {
+      "event": "control_sent",
+      "label": "baseline-hello",
+      "op": 1,
+      "id": 1,
+      "dataBytes": 0,
+      "atMs": 822.344
+    },
+    {
+      "event": "control_reply",
+      "label": "baseline-hello",
+      "op": 1,
+      "id": 1,
+      "flags": 0,
+      "dataBytes": 8,
+      "elapsedMs": 12.864,
+      "atMs": 833.759,
+      "crcValidated": true
+    },
+    {
+      "event": "control_sent",
+      "label": "baseline-heartbeat",
+      "op": 5,
+      "id": 2,
+      "dataBytes": 0,
+      "atMs": 834.441
+    },
+    {
+      "event": "control_reply",
+      "label": "baseline-heartbeat",
+      "op": 5,
+      "id": 2,
+      "flags": 0,
+      "dataBytes": 1,
+      "elapsedMs": 68.69,
+      "atMs": 902.798,
+      "crcValidated": true
+    },
+    {
+      "event": "control_sent",
+      "label": "baseline-echo",
+      "op": 4,
+      "id": 3,
+      "dataBytes": 8192,
+      "atMs": 905.289
+    },
+    {
+      "event": "control_reply",
+      "label": "baseline-echo",
+      "op": 4,
+      "id": 3,
+      "flags": 0,
+      "dataBytes": 8192,
+      "elapsedMs": 105.068,
+      "atMs": 1008.26,
+      "crcValidated": true
+    },
+    {
+      "event": "baseline_ready",
+      "elapsedMs": 105.068,
+      "atMs": 1008.585,
+      "insertedAnyMedium": false
+    },
+    {
+      "event": "plain_tcp_connected_no_client_hello",
+      "holdMs": 6000,
+      "atMs": 1016.15,
+      "sentBytes": 0
+    },
+    {
+      "event": "control_sent",
+      "label": "echo-during-incomplete-handshake",
+      "op": 4,
+      "id": 4,
+      "dataBytes": 8192,
+      "atMs": 1168.808
+    },
+    {
+      "event": "control_sent",
+      "label": "periodic-heartbeat",
+      "op": 5,
+      "id": 5,
+      "dataBytes": 0,
+      "atMs": 2009.679
+    },
+    {
+      "event": "plain_tcp_closed",
+      "atMs": 3043.479
+    },
+    {
+      "event": "control_reply",
+      "label": "echo-during-incomplete-handshake",
+      "op": 4,
+      "id": 4,
+      "flags": 0,
+      "dataBytes": 8192,
+      "elapsedMs": 1906.579,
+      "atMs": 3074.266,
+      "crcValidated": true
+    },
+    {
+      "event": "control_reply",
+      "label": "periodic-heartbeat",
+      "op": 5,
+      "id": 5,
+      "flags": 0,
+      "dataBytes": 1,
+      "elapsedMs": 1071.53,
+      "atMs": 3080.889,
+      "crcValidated": true
+    },
+    {
+      "event": "control_sent",
+      "label": "post-probe-heartbeat",
+      "op": 5,
+      "id": 6,
+      "dataBytes": 0,
+      "atMs": 3326.092
+    },
+    {
+      "event": "control_reply",
+      "label": "post-probe-heartbeat",
+      "op": 5,
+      "id": 6,
+      "flags": 0,
+      "dataBytes": 1,
+      "elapsedMs": 135.857,
+      "atMs": 3461.294,
+      "crcValidated": true
+    },
+    {
+      "event": "stall_probe_result",
+      "baselineEchoMs": 105.068,
+      "duringEchoMs": 1906.579,
+      "duringEchoStatus": 0,
+      "postHeartbeatStatus": 0,
+      "heartbeatReplies": 1,
+      "heartbeatFailures": 0,
+      "remoteCloseCode": null,
+      "exceedsBrowser4sControlDeadline": false,
+      "activePeerHealthy": true,
+      "insertedAnyMedium": false,
+      "openedAnyImage": false,
+      "scope": "One incomplete new TCP443 connection versus an authenticated existing disk-free WSS owner; no ClientHello, INSERT, HID or disk traffic"
+    }
+  ],
+  "postDeploymentDiagnostics": {
+    "uptimeMs": 34348,
+    "freeHeap": 2032883,
+    "minimumHeap": 2010599,
+    "largestBlock": 1966080,
+    "tlsError": 32794,
+    "tlsCode": 26624,
+    "tlsFlags": 0,
+    "bleAdvertising": true,
+    "bleAdvertisingPauseRequested": false,
+    "wifiPowerSave": 0,
+    "wifiMode": 3,
+    "wifiRssi": -49,
+    "wifiChannel": 1,
+    "media": {
+      "reads": 0,
+      "readBytes": 0,
+      "readTimeUs": 0,
+      "readMaxUs": 0,
+      "cacheBytes": 0,
+      "accepts": 2,
+      "rejects": 0,
+      "lastMediaRejection": 0,
+      "firstFailure": 0,
+      "ioTimeouts": 0,
+      "leaseTimeouts": 0,
+      "backendErrors": 0,
+      "disconnects": 0
+    },
+    "network": {
+      "closes": 1,
+      "receiveErrors": 0,
+      "sendErrors": 0,
+      "invalidFrames": 0,
+      "lastFailure": 6,
+      "lastError": 0,
+      "lastErrno": 0,
+      "lastFrameType": 2,
+      "lastFrameFinal": 1,
+      "lastFrameLength": 32,
+      "lastCloseReads": 0,
+      "lastCloseReadKiB": 0,
+      "coreFailureBeforeClose": 0,
+      "handshakeTimeouts": 1
+    }
+  },
+  "postDeploymentScope": "Installed d3ebb6c; no-disk control/transport fault and split-header regression only. Earlier 128 MiB ECHO qualification remains transport-only; full writable Wyse OS boot is not yet validated."
 }

@@ -701,7 +701,7 @@ does not bound the whole handshake. The old client also scheduled new heartbeats
 while previous ones remained pending, eventually closing its own connection when
 the four-control window filled.
 
-The prepared follow-up permits only one pending heartbeat, with a 12-second
+The follow-up permits only one pending heartbeat, with a 12-second
 heartbeat-only reply deadline and unchanged four-second ordinary controls. Disk
 IO receives a bounded ten-second window; unfinished IO retains that window rather
 than being canceled by the five-second idle lease. Post-deadline replies are
@@ -715,11 +715,28 @@ the accepted socket's original timeouts. It does not close descriptors or alter
 already-established TLS streams. Native tests cover retry/progress loops,
 restoration/error paths and task/socket isolation; delayed READ/WRITE tests keep
 their original stale-ID, reset and strict-commit guards. All 270 web tests and the
-private board build/descriptor checks pass. The six-second fault test must be
-repeated on the deployed follow-up before claiming it is resolved in hardware.
+private board build/descriptor checks pass.
 [CI for the follow-up](https://github.com/thebentern/cheap-web-kvm/actions/runs/40438444302)
-also passes. The programming port was absent during the deployment attempt, so
-no firmware was written; the connected board has not yet received this follow-up.
+also passes. The initial deployment attempt wrote nothing because the programming
+port was absent. Once programming USB became available, build `d3ebb6c` was
+installed at application offset `0x10000`; the flasher verified its data hash.
+This application-only write preserved the NVS/PHY regions.
+
+The same incomplete-handshake fault was repeated on the installed follow-up.
+Although the test client intended to hold the new TCP connection for six seconds,
+the board closed that incomplete peer after about 2.03 seconds. The existing
+8 KiB ECHO completed in **1,906.579 ms** with status `0`, rather than the previous
+6,007.323 ms/status `3`. The pending heartbeat also returned status `0`, and the
+post-probe heartbeat completed in **135.857 ms** with status `0`. The established
+WSS session remained healthy. The diagnostic snapshot recorded one deliberate
+handshake timeout and zero media IO/lease/backend failures; these disk-free
+checks issued no target READs and did not open an image.
+
+The unsplit control, 20 ms split-mask and 20 ms split-extended-length wire checks
+also all passed again on `d3ebb6c`. These results verify the controlled transport
+fault and its framing regression on the installed firmware. A complete writable
+Wyse OS boot, including sustained real USB MSC reads, remains unverified; the
+previous 118,007,808-byte userspace-boot failure remains part of the evidence.
 
 The OS also reports a write-protected disk. Its filesystem check exits with
 operational-error status `8`, which does not itself prove filesystem corruption.
