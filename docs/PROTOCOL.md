@@ -465,7 +465,12 @@ deadline, and matching successful replies renew the lease. The browser schedules
 heartbeats every second with at most one in flight and a 12 s reply deadline;
 other controls retain 4 s. The HTTPS server bounds new handshakes through a 2 s
 total budget checked at TLS BIO calls and SDK return, preserving certificate
-verification and existing-session timeouts. On timeout/disconnect the
+verification and existing-session timeouts. The media handler's extended header,
+mask and payload share a ten-second receive
+budget, enforced again at each TLS BIO receive. The SDK's initial opcode read
+retains its ordinary socket timeout. Pending buffered bytes are counted before
+retrying transient TLS reads, and the original socket timeout is restored after
+each scoped read. On timeout/disconnect the
 medium becomes unavailable and pending IO fails. A transaction already in the
 browser may still finish after a timeout; its data stays persisted, but its stale
 ACK cannot revive the medium. User recovery requires target unmount/power-off,

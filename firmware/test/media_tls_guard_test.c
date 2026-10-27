@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "media_tls_guard.h"
+#include "media_ws_recv.h"
 #include "esp_tls.h"
 #include "lwip/sockets.h"
 #include "mbedtls/net_sockets.h"
@@ -19,6 +20,8 @@ static enum { SUCCESS, WANT_READ, WANT_WRITE, PROGRESS, ERROR, CPU_EXPIRED,
 static struct timeval original_receive, original_send, current_receive, current_send;
 static unsigned get_calls, set_calls, recv_calls, send_calls, create_calls, fail_get, fail_set;
 static int64_t get_time, first_receive_limit, first_send_limit;
+static int frame_before_error, frame_after_error;
+static unsigned frame_before_calls, frame_after_calls;
 static esp_tls_cfg_server_t config = {.certificate = "test certificate", .verify = 123};
 static esp_tls_t tls = {.marker = 456};
 static __thread bool other_thread;
@@ -32,8 +35,24 @@ static void reset(void)
     mock_time = get_time = 0;
     get_calls = set_calls = recv_calls = send_calls = create_calls = fail_get = fail_set = 0;
     first_receive_limit = first_send_limit = 0;
+    frame_before_error = frame_after_error = 0;
+    frame_before_calls = frame_after_calls = 0;
     original_receive = current_receive = (struct timeval){.tv_sec = 2};
     original_send = current_send = (struct timeval){.tv_sec = 2};
+}
+/* The receive harness separately tests the real frame hook and shared BIO
+ * wrapper together. These stubs keep handshake-policy tests independent. */
+int media_ws_recv_before_tls_recv(int fd)
+{
+    assert(fd == 42 || fd == 99);
+    frame_before_calls++;
+    return frame_before_error;
+}
+int media_ws_recv_after_tls_recv(int fd)
+{
+    assert(fd == 42 || fd == 99);
+    frame_after_calls++;
+    return frame_after_error;
 }
 int getsockopt(int fd, int level, int option, void *value, socklen_t *length)
 {
@@ -182,6 +201,15 @@ int main(void)
     assert(__wrap_mbedtls_net_recv(&context, buffer, sizeof(buffer)) == 8);
     assert(__wrap_mbedtls_net_send(&context, buffer, sizeof(buffer)) == 8);
     assert(!get_calls && !set_calls);
+    reset(); frame_before_error = HTTPD_SOCK_ERR_TIMEOUT;
+    assert(__wrap_mbedtls_net_recv(&context, buffer, sizeof(buffer)) == MBEDTLS_ERR_SSL_TIMEOUT);
+    assert(frame_before_calls == 1 && !frame_after_calls && !recv_calls && !set_calls);
+    reset(); frame_after_error = HTTPD_SOCK_ERR_TIMEOUT;
+    assert(__wrap_mbedtls_net_recv(&context, buffer, sizeof(buffer)) == MBEDTLS_ERR_SSL_TIMEOUT);
+    assert(frame_before_calls == 1 && frame_after_calls == 1 && recv_calls == 1 && !set_calls);
+    reset(); frame_before_error = HTTPD_SOCK_ERR_FAIL;
+    assert(__wrap_mbedtls_net_recv(&context, buffer, sizeof(buffer)) == MBEDTLS_ERR_NET_RECV_FAILED);
+    assert(!recv_calls && !set_calls);
     reset(); mode = OTHER_FD;
     assert(handshake() == 0 && get_calls == 2 && !set_calls); restored();
     reset(); mode = OTHER_THREAD;

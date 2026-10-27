@@ -4,6 +4,9 @@
 #if CONFIG_KVM_DEVICE_WEB
 #include "esp_timer.h"
 #include "esp_tls.h"
+#if CONFIG_KVM_MEDIA_WIFI && CONFIG_HTTPD_WS_SUPPORT
+#include "media_ws_recv.h"
+#endif
 #include "lwip/sockets.h"
 #include "mbedtls/net_sockets.h"
 #include "mbedtls/ssl.h"
@@ -77,8 +80,26 @@ static bool guarded_context(void *context)
 }
 int __wrap_mbedtls_net_recv(void *context, unsigned char *buffer, size_t length)
 {
-    if (!guarded_context(context))
+    if (!guarded_context(context)) {
+#if CONFIG_KVM_MEDIA_WIFI && CONFIG_HTTPD_WS_SUPPORT
+        /* Outside a handshake, a media frame may still span multiple socket
+         * reads inside one TLS record. Keep each wait within its total budget.
+         * The frame hook matches task/fd and active receive; ordinary TLS and
+         * external pending-only calls retain their original timeout. */
+        if (context) {
+            int fd = ((mbedtls_net_context *)context)->fd;
+            int error = media_ws_recv_before_tls_recv(fd);
+            if (error)
+                return error == HTTPD_SOCK_ERR_TIMEOUT ? MBEDTLS_ERR_SSL_TIMEOUT : MBEDTLS_ERR_NET_RECV_FAILED;
+            int result = __real_mbedtls_net_recv(context, buffer, length);
+            error = media_ws_recv_after_tls_recv(fd);
+            if (error)
+                return error == HTTPD_SOCK_ERR_TIMEOUT ? MBEDTLS_ERR_SSL_TIMEOUT : MBEDTLS_ERR_NET_RECV_FAILED;
+            return result;
+        }
+#endif
         return __real_mbedtls_net_recv(context, buffer, length);
+    }
     int result = limit_timeout(true);
     if (result != 0)
         return result;

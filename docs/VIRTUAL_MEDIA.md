@@ -301,6 +301,11 @@ retains its full IO deadline, and matching successful IO replies renew the lease
 Heartbeat replies have a 12-second client deadline; other controls retain their
 4-second deadline. New HTTPS handshakes have a separate 2-second IO budget so
 an incomplete new connection cannot indefinitely block the existing media stream.
+After the SDK reads the opcode, a media frame's remaining header and payload
+share a 10-second receive budget, including repeated TLS reads. A temporary pause
+does not close the connection merely because one receive exceeded the ordinary
+2-second HTTPS timeout. That ordinary timeout remains in effect outside media
+frame handling, including the initial opcode read.
 A timeout,
 suspension, failed storage commit, or socket loss makes the
 medium unavailable and fails pending requests; it never fabricates zeros or

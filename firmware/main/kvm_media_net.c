@@ -10,6 +10,7 @@
 
 #include "esp_http_server.h"
 #include "media_ws.h"
+#include "media_ws_recv.h"
 #include "media_buffers.h"
 #if CONFIG_KVM_DEVICE_WEB
 #include "device_web.h"
@@ -88,7 +89,7 @@ static esp_err_t diagnostics(httpd_req_t *req)
     int n = snprintf(body, sizeof(body), "{\"uptimeMs\":%" PRIi64 ",\"freeHeap\":%u,\"minimumHeap\":%u,\"largestBlock\":%u,\"tlsError\":%d,\"tlsCode\":%d,\"tlsFlags\":%d,\"bleAdvertising\":%s,\"bleAdvertisingPauseRequested\":%s,"
         "\"wifiPowerSave\":%d,\"wifiMode\":%d,\"wifiRssi\":%d,\"wifiChannel\":%u,"
         "\"media\":{\"reads\":%" PRIu32 ",\"readBytes\":%" PRIu64 ",\"readTimeUs\":%" PRIu64 ",\"readMaxUs\":%" PRIu64 ",\"cacheBytes\":%" PRIu64 ",\"accepts\":%u,\"rejects\":%u,\"lastMediaRejection\":%u,\"firstFailure\":%u,\"ioTimeouts\":%" PRIu32 ",\"leaseTimeouts\":%" PRIu32 ",\"backendErrors\":%" PRIu32 ",\"disconnects\":%" PRIu32 "},"
-        "\"network\":{\"closes\":%u,\"receiveErrors\":%u,\"sendErrors\":%u,\"invalidFrames\":%u,\"lastFailure\":%d,\"lastError\":%d,\"lastErrno\":%d,\"lastFrameType\":%u,\"lastFrameFinal\":%u,\"lastFrameLength\":%u,\"lastCloseReads\":%u,\"lastCloseReadKiB\":%u,\"coreFailureBeforeClose\":%u,\"handshakeTimeouts\":%" PRIu32 "}}",
+        "\"network\":{\"closes\":%u,\"receiveErrors\":%u,\"sendErrors\":%u,\"invalidFrames\":%u,\"lastFailure\":%d,\"lastError\":%d,\"lastErrno\":%d,\"lastFrameType\":%u,\"lastFrameFinal\":%u,\"lastFrameLength\":%u,\"lastCloseReads\":%u,\"lastCloseReadKiB\":%u,\"coreFailureBeforeClose\":%u,\"handshakeTimeouts\":%" PRIu32 ",\"frameTimeouts\":%" PRIu32 "}}",
         esp_timer_get_time() / 1000,
         (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT), (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
         (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), atomic_load(&tls_last_error), atomic_load(&tls_code), atomic_load(&tls_flags),
@@ -101,7 +102,8 @@ static esp_err_t diagnostics(httpd_req_t *req)
         atomic_load(&network_closes), atomic_load(&receive_errors), atomic_load(&send_errors), atomic_load(&invalid_frames),
         atomic_load(&last_network_failure), atomic_load(&last_network_error), atomic_load(&last_network_errno),
         atomic_load(&last_frame_type), atomic_load(&last_frame_final), atomic_load(&last_frame_length),
-        atomic_load(&last_close_reads), atomic_load(&last_close_read_kib), atomic_load(&core_failure_before_close), media_tls_guard_timeouts());
+        atomic_load(&last_close_reads), atomic_load(&last_close_read_kib), atomic_load(&core_failure_before_close),
+        media_tls_guard_timeouts(), media_ws_recv_frame_timeouts());
     if (n < 0 || (size_t)n >= sizeof(body))
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Diagnostics unavailable");
     httpd_resp_set_type(req, "application/json");
@@ -205,26 +207,39 @@ static esp_err_t ws(httpd_req_t *req)
     if (httpd_req_to_sockfd(req) != atomic_load(&owner))
         return ESP_FAIL;
     httpd_ws_frame_t frame = {0};
-    esp_err_t err = httpd_ws_recv_frame(req, &frame, 0);
+    esp_err_t err = media_ws_recv_begin(req);
     if (err != ESP_OK) {
         atomic_fetch_add(&receive_errors, 1);
         network_failure(NET_FAILURE_HEADER, err);
         return err;
     }
-    atomic_store(&last_frame_type, frame.type);
-    atomic_store(&last_frame_final, frame.final);
-    atomic_store(&last_frame_length, frame.len > UINT32_MAX ? UINT32_MAX : (uint32_t)frame.len);
-    size_t receive_capacity = MEDIA_HEADER + kvm_media_max_io();
-    if (frame.type != HTTPD_WS_TYPE_BINARY || !frame.final || frame.len > receive_capacity) {
-        atomic_fetch_add(&invalid_frames, 1);
-        network_failure(NET_FAILURE_FRAME, ESP_ERR_INVALID_SIZE);
-        return ESP_FAIL;
+    int receive_stage = NET_FAILURE_HEADER;
+    err = httpd_ws_recv_frame(req, &frame, 0);
+    if (err == ESP_OK) {
+        atomic_store(&last_frame_type, frame.type);
+        atomic_store(&last_frame_final, frame.final);
+        atomic_store(&last_frame_length, frame.len > UINT32_MAX ? UINT32_MAX : (uint32_t)frame.len);
+        size_t receive_capacity = MEDIA_HEADER + kvm_media_max_io();
+        if (frame.type != HTTPD_WS_TYPE_BINARY || !frame.final || frame.len > receive_capacity) {
+            receive_stage = NET_FAILURE_FRAME;
+            err = ESP_ERR_INVALID_SIZE;
+        } else {
+            receive_stage = NET_FAILURE_PAYLOAD;
+            frame.payload = rx;
+            err = httpd_ws_recv_frame(req, &frame, receive_capacity);
+        }
     }
-    frame.payload = rx;
-    err = httpd_ws_recv_frame(req, &frame, receive_capacity);
+    /* One absolute budget spans both SDK calls. Always restore and end the
+     * task-local scope before command processing, including invalid frames. */
+    int receive_error = media_ws_recv_end(req);
+    if (receive_error)
+        err = receive_error;
     if (err != ESP_OK) {
-        atomic_fetch_add(&receive_errors, 1);
-        network_failure(NET_FAILURE_PAYLOAD, err);
+        if (receive_stage == NET_FAILURE_FRAME)
+            atomic_fetch_add(&invalid_frames, 1);
+        else
+            atomic_fetch_add(&receive_errors, 1);
+        network_failure(receive_stage, err);
         return err;
     }
     size_t n = kvm_media_command(rx, frame.len, reply + MEDIA_WS_PREFIX);
