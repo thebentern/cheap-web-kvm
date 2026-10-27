@@ -35,6 +35,8 @@ typedef struct {
     media_failure_t first_failure;
 } media_metrics_t;
 bool kvm_media_metrics(media_metrics_t *out);
+/* Receive bound for the active negotiated session; legacy 8 KiB before HELLO. */
+uint32_t kvm_media_max_io(void);
 
 /* Reserve a disk-free window while changing the network, blocking insertion. */
 bool kvm_media_network_change_begin(void);
