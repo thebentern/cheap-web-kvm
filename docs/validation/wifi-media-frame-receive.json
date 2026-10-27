@@ -714,7 +714,6 @@
     "firmware": "pass"
   },
   "browserPreparation": {
-    "origin": "https://192.168.2.218",
     "browser": "Microsoft Edge",
     "bookmarkRequestGrantedPersistence": false,
     "installedConsoleApp": true,

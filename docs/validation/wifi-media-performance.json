@@ -2,7 +2,6 @@
   "date": "2026-10-26",
   "board": {
     "chip": "ESP32-S3 rev0.2",
-    "mac": "58:e6:c5:45:7d:a0",
     "psramMiB": 2,
     "psramMode": "Quad",
     "nativeUsbVidPid": "303A:4004",

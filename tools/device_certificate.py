@@ -52,7 +52,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('-p', '--port', required=True)
     parser.add_argument('--baud', type=int, default=921600)
-    parser.add_argument('--device', required=True, help='Board HTTP address, e.g. http://192.168.2.218')
+    parser.add_argument('--device', required=True, help='Board HTTP address, e.g. http://BOARD_IP')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     address = urlsplit(args.device)

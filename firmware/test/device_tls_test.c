@@ -16,7 +16,8 @@ static unsigned char stored[sizeof(identity_t)], staged[sizeof(identity_t)];
 static size_t stored_size, staged_size;
 static unsigned commits;
 static bool fail_commit;
-static uint8_t test_mac[6] = {0x58, 0xe6, 0xc5, 0x45, 0x7d, 0xa0};
+/* Synthetic, locally administered address; unrelated to physical test hardware. */
+static uint8_t test_mac[6] = {0x02, 0x00, 0x00, 0x00, 0x12, 0x34};
 void esp_fill_random(void *bytes, size_t length)
 {
     static FILE *random_source;
@@ -85,12 +86,12 @@ static void public_file(const char *directory, const char *name, const char *val
 int main(int argc, char **argv)
 {
     assert(argc == 2);
-    const uint8_t ap[] = {192, 168, 4, 1}, client[] = {192, 168, 2, 218};
-    const uint8_t changed_client[] = {192, 168, 2, 219};
+    const uint8_t ap[] = {192, 168, 4, 1}, client[] = {192, 0, 2, 10};
+    const uint8_t changed_client[] = {192, 0, 2, 11};
     assert(!device_tls_certificate() && !device_tls_private_key());
     assert(device_tls_needs_renewal());
     assert(device_tls_prepare(client, ap) == ESP_OK);
-    assert(!strcmp(device_tls_hostname(), "cheap-web-kvm-7da0.local"));
+    assert(!strcmp(device_tls_hostname(), "cheap-web-kvm-1234.local"));
     assert(commits == 1 && stored_size == sizeof(identity_t));
     assert(issued_not_after - issued_not_before == 800 * DAY_SECONDS);
     assert(issued_not_before == KVM_BUILD_TIME - DAY_SECONDS);

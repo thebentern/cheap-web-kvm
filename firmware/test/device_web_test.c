@@ -59,7 +59,7 @@ static request_t pairing(const char *body, bool secure, const char *origin)
     r.request_body = body;
     r.req.content_len = strlen(body);
     r.recv_chunk = 3;
-    input(&r, "Host", "192.168.2.218");
+    input(&r, "Host", "192.0.2.10");
     if (origin) input(&r, "Origin", origin);
     input(&r, "Content-Type", "application/json");
     return r;
@@ -72,7 +72,7 @@ void esp_fill_random(void *bytes, size_t length)
     unsigned seed = ++entropy;
     for (size_t i = 0; i < length; i++) out[i] = (unsigned char)(seed + i * 7);
 }
-const char *device_tls_hostname(void) { return "cheap-web-kvm-7da0.local"; }
+const char *device_tls_hostname(void) { return "cheap-web-kvm-1234.local"; }
 const char *device_tls_fingerprint(void) { return certificate_ready ? "abcdef0123456789" : NULL; }
 const char *device_tls_trust_certificate(void) { return certificate_ready ? "PUBLIC-CA-PEM" : NULL; }
 const kvm_web_asset_t *kvm_web_asset_find(const char *uri)
@@ -154,26 +154,26 @@ static void authentication(void)
     r = request(false); link_request(&r); input(&r, "X-KVM-Token", "0123456789abcdefghijklmn-extra");
     assert(!device_web_authorized(&r.req, false));
 
-    r = pairing("{\"token\":\"0123456789abcdefghijklmn\"}", false, "http://192.168.2.218"); link_request(&r);
+    r = pairing("{\"token\":\"0123456789abcdefghijklmn\"}", false, "http://192.0.2.10"); link_request(&r);
     assert(pair(&r.req) == ESP_OK && r.status == 403 && !output(&r, "Set-Cookie"));
     r = pairing("{\"token\":\"0123456789abcdefghijklmn\"}", true, "https://evil.test"); link_request(&r);
     assert(pair(&r.req) == ESP_OK && r.status == 403 && !output(&r, "Set-Cookie"));
-    r = pairing("{\"token\":\"wrong\"}", true, "https://192.168.2.218"); link_request(&r);
+    r = pairing("{\"token\":\"wrong\"}", true, "https://192.0.2.10"); link_request(&r);
     assert(pair(&r.req) == ESP_OK && r.status == 401 && !output(&r, "Set-Cookie"));
-    r = pairing("{\"token\":\"0123456789abcdefghijklmn\"}", true, "https://192.168.2.218"); link_request(&r);
+    r = pairing("{\"token\":\"0123456789abcdefghijklmn\"}", true, "https://192.0.2.10"); link_request(&r);
     assert(pair(&r.req) == ESP_OK && r.status == 204);
     const char *set_cookie = output(&r, "Set-Cookie");
     assert(set_cookie && strstr(set_cookie, "; Secure; HttpOnly; SameSite=Strict;"));
     assert(strstr(set_cookie, "Max-Age=28800") && !strstr(set_cookie, access_token));
     char cookie[180]; snprintf(cookie, sizeof(cookie), "%.*s", 76, set_cookie);
     r = request(true); link_request(&r);
-    input(&r, "Host", "192.168.2.218"); input(&r, "Origin", "https://192.168.2.218"); input(&r, "Cookie", cookie);
+    input(&r, "Host", "192.0.2.10"); input(&r, "Origin", "https://192.0.2.10"); input(&r, "Cookie", cookie);
     assert(device_web_authorized(&r.req, true) && !device_web_authorized(&r.req, false));
     assert(session_valid(&r.req));
     r.input[1].value[0] = 'x'; assert(!device_web_authorized(&r.req, true)); r.input[1].value[0] = 'h';
-    snprintf(r.input[0].value, sizeof(r.input[0].value), "192.168.2.218:443");
+    snprintf(r.input[0].value, sizeof(r.input[0].value), "192.0.2.10:443");
     assert(!device_web_authorized(&r.req, true));
-    snprintf(r.input[1].value, sizeof(r.input[1].value), "https://192.168.2.218:443");
+    snprintf(r.input[1].value, sizeof(r.input[1].value), "https://192.0.2.10:443");
     assert(device_web_authorized(&r.req, true));
     snprintf(r.input[2].value, sizeof(r.input[2].value), "other=ok; %s; trailing=ok", cookie);
     assert(session_valid(&r.req));
@@ -189,19 +189,19 @@ static void invalid_requests(void)
     device_web_reset_sessions("0123456789abcdefghijklmn");
     const char *bodies[] = {"", "not json", "[]", "{\"token\":42}", "{\"token\":\"0123456789abcdefghijklmn\"}garbage", "{\"token\":\"0123456789abcdefghijklmn\\u0000trailing\"}"};
     for (size_t i = 0; i < sizeof(bodies)/sizeof(bodies[0]); i++) {
-        request_t r = pairing(bodies[i], true, "https://192.168.2.218"); link_request(&r);
+        request_t r = pairing(bodies[i], true, "https://192.0.2.10"); link_request(&r);
         assert(pair(&r.req) == ESP_OK && (r.status == 400 || r.status == 401));
         assert(!output(&r, "Set-Cookie"));
     }
     device_web_reset_sessions("0123456789abcdefghijklmn");
     for (unsigned attempt = 0; attempt < 6; attempt++) {
-        request_t wrong = pairing("{\"token\":\"wrong\"}", true, "https://192.168.2.218"); link_request(&wrong);
+        request_t wrong = pairing("{\"token\":\"wrong\"}", true, "https://192.0.2.10"); link_request(&wrong);
         assert(pair(&wrong.req) == ESP_OK && wrong.status == 401);
     }
-    request_t r = pairing("{\"token\":\"wrong\"}", true, "https://192.168.2.218"); link_request(&r);
+    request_t r = pairing("{\"token\":\"wrong\"}", true, "https://192.0.2.10"); link_request(&r);
     assert(pair(&r.req) == ESP_OK && r.status == 429 && output(&r, "Retry-After"));
     now += 60000001;
-    r = pairing("{\"token\":\"0123456789abcdefghijklmn\"}", true, "https://192.168.2.218"); link_request(&r);
+    r = pairing("{\"token\":\"0123456789abcdefghijklmn\"}", true, "https://192.0.2.10"); link_request(&r);
     assert(pair(&r.req) == ESP_OK && r.status == 204);
 }
 static void content(void)
@@ -211,8 +211,8 @@ static void content(void)
     assert(output(&r, "Content-Disposition") && !strcmp(output(&r, "Cache-Control"), "no-store"));
     certificate_ready = false; r = request(false); link_request(&r);
     assert(certificate(&r.req) == ESP_OK && r.status == 503); certificate_ready = true;
-    r = request(false); link_request(&r); input(&r, "Host", "192.168.2.218:80");
-    assert(bootstrap(&r.req) == ESP_OK && strstr(r.body, "https://192.168.2.218/"));
+    r = request(false); link_request(&r); input(&r, "Host", "192.0.2.10:80");
+    assert(bootstrap(&r.req) == ESP_OK && strstr(r.body, "https://192.0.2.10/"));
     assert(!strstr(r.body, access_token) && strstr(r.body, "abcdef0123456789"));
     r = request(false); link_request(&r); input(&r, "Host", "evil\"><script>");
     assert(bootstrap(&r.req) == ESP_OK && r.status == 400);
@@ -220,7 +220,7 @@ static void content(void)
     assert(asset(&r.req) == ESP_OK && r.status == 404);
     r = request(true); link_request(&r); r.req.uri = fixture_asset.path;
     assert(asset(&r.req) == ESP_OK && r.status == 406);
-    r = request(true); link_request(&r); r.req.uri = fixture_asset.path; input(&r, "Accept-Encoding", "br, gzip"); input(&r, "Host", "192.168.2.218");
+    r = request(true); link_request(&r); r.req.uri = fixture_asset.path; input(&r, "Accept-Encoding", "br, gzip"); input(&r, "Host", "192.0.2.10");
     assert(asset(&r.req) == ESP_OK && r.status == 200 && r.body_size == sizeof(asset_bytes));
     assert(r.chunk_count == 4 && r.chunks[0] == 4096 && r.chunks[1] == 4096 && r.chunks[2] == 809 && r.chunks[3] == 0);
     assert(!memcmp(r.body, asset_bytes, sizeof(asset_bytes)));
@@ -228,7 +228,7 @@ static void content(void)
     assert(!strcmp(output(&r, "Vary"), "Accept-Encoding"));
     assert(strstr(output(&r, "Cache-Control"), "immutable"));
     assert(strstr(output(&r, "Content-Security-Policy"), "'wasm-unsafe-eval'"));
-    assert(strstr(output(&r, "Content-Security-Policy"), "wss://192.168.2.218"));
+    assert(strstr(output(&r, "Content-Security-Policy"), "wss://192.0.2.10"));
     assert(strstr(output(&r, "Content-Security-Policy"), "frame-ancestors 'none'"));
     assert(!strcmp(output(&r, "X-Content-Type-Options"), "nosniff"));
     assert(!strcmp(r.type, "text/javascript") && !strcmp(output(&r, "ETag"), "\"fixture\""));
@@ -243,7 +243,7 @@ static void content(void)
         assert(asset(&r.req) == ESP_OK && r.status == encodings[i].status);
     }
     r = request(true); link_request(&r); r.req.sess_ctx = NULL;
-    input(&r, "Host", "192.168.2.218");
+    input(&r, "Host", "192.0.2.10");
     headers(&r.req);
     assert(r.req.sess_ctx && r.req.free_ctx);
     for (size_t i = 0; i < r.output_count; i++)

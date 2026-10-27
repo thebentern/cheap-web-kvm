@@ -20,13 +20,13 @@ ${CC:-cc} -std=c11 -D_POSIX_C_SOURCE=200809L -DKVM_BUILD_TIME="$TLS_BUILD_EPOCH"
     -lmbedx509 -lmbedcrypto -o "$TLS_TEST_DIR/test"
 "$TLS_TEST_DIR/test" "$TLS_TEST_DIR"
 openssl verify -CAfile "$TLS_TEST_DIR/device-ca.pem" \
-    -verify_hostname cheap-web-kvm-7da0.local "$TLS_TEST_DIR/server.pem"
+    -verify_hostname cheap-web-kvm-1234.local "$TLS_TEST_DIR/server.pem"
 openssl verify -CAfile "$TLS_TEST_DIR/device-ca.pem" \
-    -verify_ip 192.168.2.219 "$TLS_TEST_DIR/server.pem"
+    -verify_ip 192.0.2.11 "$TLS_TEST_DIR/server.pem"
 openssl verify -CAfile "$TLS_TEST_DIR/device-ca.pem" \
     -verify_ip 192.168.4.1 "$TLS_TEST_DIR/server.pem"
 if openssl verify -CAfile "$TLS_TEST_DIR/device-ca.pem" \
-    -verify_ip 192.168.2.218 "$TLS_TEST_DIR/server.pem" > /dev/null 2>&1; then
+    -verify_ip 192.0.2.10 "$TLS_TEST_DIR/server.pem" > /dev/null 2>&1; then
     echo "A stale DHCP address incorrectly passed certificate verification" >&2
     exit 1
 fi
@@ -38,12 +38,12 @@ echo "OpenSSL independently verified the DNS/IP SANs, CA chain and fingerprint"
 # The predecessor is cryptographically sound and matches the IP; its rejection
 # below must therefore exercise platform policy beyond OpenSSL chain checks.
 openssl verify -CAfile "$TLS_TEST_DIR/device-ca.pem" \
-    -verify_ip 192.168.2.219 "$TLS_TEST_DIR/legacy-server.pem"
+    -verify_ip 192.0.2.11 "$TLS_TEST_DIR/legacy-server.pem"
 if [ "$(uname -s)" = Darwin ]; then
     security verify-cert -c "$TLS_TEST_DIR/server.pem" -r "$TLS_TEST_DIR/device-ca.pem" \
-        -p ssl -s 192.168.2.219
+        -p ssl -s 192.0.2.11
     if security verify-cert -c "$TLS_TEST_DIR/legacy-server.pem" -r "$TLS_TEST_DIR/device-ca.pem" \
-        -p ssl -s 192.168.2.219 > /dev/null 2>&1; then
+        -p ssl -s 192.0.2.11 > /dev/null 2>&1; then
         echo "macOS unexpectedly accepted the original overlong leaf certificate" >&2
         exit 1
     fi
