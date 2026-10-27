@@ -1,5 +1,18 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "media_ws.h"
+#include <string.h>
+
+static bool send_all(const uint8_t *frame, size_t remaining, media_ws_send_fn send, void *context)
+{
+    while (remaining) {
+        int sent = send(context, frame, remaining);
+        if (sent <= 0 || (size_t)sent > remaining)
+            return false;
+        frame += sent;
+        remaining -= sent;
+    }
+    return true;
+}
 
 bool media_ws_send_binary(uint8_t *buffer, size_t length, media_ws_send_fn send, void *context)
 {
@@ -15,13 +28,17 @@ bool media_ws_send_binary(uint8_t *buffer, size_t length, media_ws_send_fn send,
         frame[2] = (uint8_t)(length >> 8);
         frame[3] = (uint8_t)length;
     }
-    size_t remaining = header + length;
-    while (remaining) {
-        int sent = send(context, frame, remaining);
-        if (sent <= 0 || (size_t)sent > remaining)
-            return false;
-        frame += sent;
-        remaining -= sent;
-    }
-    return true;
+    return send_all(frame, header + length, send, context);
+}
+
+bool media_ws_send_close(uint16_t code, const char *reason, media_ws_send_fn send, void *context)
+{
+    if (!reason || !send || code < 4000 || code > 4999)
+        return false;
+    size_t length = strlen(reason);
+    if (length > 123)
+        return false;
+    uint8_t frame[127] = {0x88, (uint8_t)(length + 2), (uint8_t)(code >> 8), (uint8_t)code};
+    memcpy(frame + 4, reason, length);
+    return send_all(frame, length + 4, send, context);
 }

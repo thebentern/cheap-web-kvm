@@ -57,7 +57,7 @@ export async function authenticateDevice(token: string): Promise<void> {
     )
   if (token.length < 16 || token.length > 80 || /[^\x21-\x7e]/.test(token))
     throw new Error(
-      'Enter the board’s 16–80 character access token from Settings → Wi-Fi → Advanced.',
+      'Enter a 16–80 character access token, or use Pair with USB or Bluetooth to read it from the board.',
     )
   let response: Response
   try {
@@ -76,7 +76,7 @@ export async function authenticateDevice(token: string): Promise<void> {
   }
   if (response.status === 401)
     throw new Error(
-      'The board access token was not accepted. Check it in Settings → Wi-Fi → Advanced using USB or Bluetooth.',
+      'The board access token was not accepted. Pair with USB or Bluetooth to read the current token, or re-enter it.',
     )
   if (!response.ok)
     throw new Error(

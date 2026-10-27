@@ -19,7 +19,7 @@ onMounted(() => setTimeout(() => (visible.value = true), 16))
 
 const steps = computed(() => [
   deviceHost.onboard.value
-    ? { title: 'Wi-Fi control', detail: 'Open Virtual media, enter the board’s access token if asked, and connect. The same connection also provides keyboard and mouse control.' }
+    ? { title: 'Wi-Fi control', detail: 'Open Virtual media and choose Pair with USB or Bluetooth if asked. Pairing reads the board’s access token for you. The Wi-Fi connection also provides keyboard and mouse control.' }
     : { title: 'Control to this computer', detail: 'Connect the board’s UART port to this computer. You can also connect control over Bluetooth from the toolbar.' },
   { title: 'USB and HDMI to the target', detail: 'Connect the board’s native USB port to the target. Run HDMI from the target through the capture stick to this computer.' },
   { title: 'Start the video', detail: 'Allow camera access for the capture stick, plus microphone access if audio is enabled. Then connect control from the toolbar.' },

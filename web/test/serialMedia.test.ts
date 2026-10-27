@@ -281,7 +281,7 @@ it('retries a read-only HELLO timeout after a USB-open reset and fails a rejecte
   expect(hello).toBe(2)
   const errors: string[] = []
   c.onError = (e) => errors.push(e)
-  await expect(c.request(OP.STATUS)).rejects.toThrow(/closed/)
+  await expect(c.request(OP.STATUS)).rejects.toThrow(/Media send failed: cable failed/)
   expect(c.live).toBe(false)
   expect(errors.join()).toMatch(/cable failed/)
 })

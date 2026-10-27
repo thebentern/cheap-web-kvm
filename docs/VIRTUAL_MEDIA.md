@@ -75,12 +75,19 @@ enough memory to start.
    computer/tablet that will open the board. This is a manual, one-time trust
    step. Follow the platform instructions in the setup page; proceeding through
    a browser warning is not the setup procedure.
-4. Open `https://BOARD_IP/` on port 443. In **Virtual media → Wi-Fi**, enter the
-   **Media access token** shown in **Settings → Wi-Fi → Advanced → Show saved
-   token** over USB/Bluetooth, then connect. The token is separate from the Wi-Fi
-   password. Pairing creates a Secure, HttpOnly, same-site browser session cookie;
-   the app does not save the token in browser settings. Session expiry, a board
-   restart, or a network/token change can require pairing again.
+4. Open `https://BOARD_IP/` on port 443. In **Virtual media → Wi-Fi**, choose
+   **Pair with USB** with the board’s programming port connected to this computer,
+   or **Pair with Bluetooth** in a supported browser. The console checks that the
+   physical board matches this HTTPS page, reads its access token, and connects;
+   there is no need to find or copy the token. It leaves the physical connection
+   open. After pairing, the programming cable is optional for Wi-Fi control.
+   **Enter token manually** remains available for browsers without these APIs;
+   obtain the token from a connected USB/Bluetooth console under **Settings →
+   Wi-Fi → Advanced → Show saved token**. Those settings only load after a control
+   connection is established. The token is separate from the Wi-Fi password.
+   Pairing creates a Secure, HttpOnly, same-site browser session cookie lasting up
+   to eight hours; the app does not save the token in browser settings. A board
+   restart or a network/token change can require pairing again.
 5. Keyboard and mouse automatically use the Wi-Fi connection when no USB or
    Bluetooth control link is active. Select a boot image
    or USB drive. The target still connects to native USB, and video still uses

@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MediaConnection, type MediaReadStats } from '../app/utils/media/client'
 import { encode, decode, OP, type Message } from '../app/utils/media/protocol'
+import { websocketTransport } from '../app/utils/media/transport'
 class Socket {
   static OPEN = 1
   static all: Socket[] = []
@@ -9,7 +10,7 @@ class Socket {
   binaryType = ''
   onopen?: () => void
   onerror?: () => void
-  onclose?: () => void
+  onclose?: (event?: { code: number; reason?: string }) => void
   onmessage?: (e: { data: ArrayBufferLike }) => void
   sent: Message[] = []
   constructor(_url: string) {
@@ -67,6 +68,94 @@ const request = (op: number, id = 50): Message => ({
   data: op === OP.WRITE ? new Uint8Array(512).fill(3) : new Uint8Array(),
 })
 describe('client media flow and durability', () => {
+  it('preserves the server close cause through an outstanding HELLO without echoing its private reason', async () => {
+    class ClosingSocket extends Socket {
+      send(_bytes: Uint8Array) {
+        queueMicrotask(() =>
+          this.onclose?.({
+            code: 4009,
+            reason: 'private-token-must-not-appear',
+          }),
+        )
+      }
+    }
+    vi.stubGlobal('WebSocket', ClosingSocket)
+    const c = new MediaConnection({
+      read: async (_offset, length) => new Uint8Array(length),
+      write: async () => {},
+    })
+    connections.push(c)
+    const errors: string[] = []
+    c.onError = (error) => errors.push(error)
+    const failure = await c
+      .connect('wss://example/media')
+      .catch((error: Error) => error)
+    expect(failure).toBeInstanceOf(Error)
+    expect((failure as Error).message).toBe(errors[0])
+    expect(errors[0]).toMatch(/Another connection.*WebSocket 4009/)
+    expect(errors[0]).not.toContain('private-token-must-not-appear')
+    expect(errors[0]).not.toContain('Eject/unmount')
+    expect(c.live).toBe(false)
+  })
+  it('preserves a corrupt HELLO reply cause instead of replacing it with a generic close error', async () => {
+    class CorruptSocket extends Socket {
+      send(bytes: Uint8Array) {
+        const m = decode(bytes)
+        const reply = encode({ ...m, op: m.op | 128 })
+        reply[28]! ^= 1
+        queueMicrotask(() => this.onmessage?.({ data: reply.buffer }))
+      }
+    }
+    vi.stubGlobal('WebSocket', CorruptSocket)
+    const c = new MediaConnection({
+      read: async (_offset, length) => new Uint8Array(length),
+      write: async () => {},
+    })
+    connections.push(c)
+    await expect(c.connect('wss://example/media')).rejects.toThrow(
+      'Media integrity check failed',
+    )
+  })
+  it('preserves send failures for pending controls and keeps explicit close generic', async () => {
+    const { c, ws } = await connect()
+    ws.send = () => {
+      throw new Error('Test cable failure')
+    }
+    await expect(c.request(OP.STATUS)).rejects.toThrow(
+      'Media send failed: Test cable failure',
+    )
+    const explicit = await connect()
+    const pending = expect(explicit.c.request(OP.STATUS)).rejects.toThrow(
+      /^Media connection closed$/,
+    )
+    explicit.c.close()
+    await pending
+  })
+  it.each([
+    [4001, /session expired/],
+    [4003, /refused this browser/],
+    [4009, /Another connection/],
+    [1006, /interrupted/],
+  ])(
+    'reports actionable safe WebSocket close status %s',
+    async (code, expected) => {
+      vi.stubGlobal('WebSocket', Socket)
+      const transport = await websocketTransport('wss://example/media')
+      const closed = vi.fn()
+      transport.onclose = closed
+      Socket.all
+        .at(-1)!
+        .onclose?.({
+          code: code as number,
+          reason: 'private-reason-not-for-display',
+        })
+      const reason = closed.mock.calls[0]![0] as string
+      expect(reason).toMatch(expected as RegExp)
+      expect(reason).toContain(`WebSocket ${code}`)
+      expect(reason).not.toContain('private-reason-not-for-display')
+      transport.close()
+    },
+  )
   it('serves exact random-access reads and verifies round-trip benchmark contents', async () => {
     const { c, ws } = await connect()
     ws.receive(request(OP.READ))

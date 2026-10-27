@@ -6,12 +6,14 @@ import { useKvm } from '~/composables/useKvm'
 import { useVirtualMedia } from '~/composables/useVirtualMedia'
 import { useDialogFocus } from '~/composables/useDialogFocus'
 import { useSerialLink } from '~/composables/useSerialLink'
+import { useBleLink } from '~/composables/useBleLink'
 import { useBootRepeatState } from '~/composables/useBootRepeatState'
 import { frame } from '~/utils/ch9329'
 const panels = usePanels(),
   kvm = useKvm(),
   media = useVirtualMedia(),
-  serial = useSerialLink()
+  serial = useSerialLink(),
+  ble = useBleLink()
 const root = ref<HTMLElement | null>(null)
 useDialogFocus(root, () => panels.hide('media'), { restoreAfterUpdate: true })
 const {
@@ -56,6 +58,42 @@ const repeat = useBootRepeatState(connected, flags)
 const repeatActive = repeat.active
 const macroBusy = computed(() => repeat.pending.value !== null)
 const locked = computed(() => busy.value || inserted.value || uncertain.value)
+const needsPairing = computed(
+  () =>
+    transport.value === 'wifi' &&
+    onboard.value &&
+    !deviceInfo.value?.authenticated,
+)
+const pairingMethod = computed(() =>
+  serial.connected.value
+    ? 'usb'
+    : ble.connected.value
+      ? 'bluetooth'
+      : serial.supported.value
+        ? 'usb'
+        : ble.supported.value
+          ? 'bluetooth'
+          : 'manual',
+)
+const manualPairing = ref(false)
+const connectionLabel = computed(() => {
+  if (connecting.value) return 'Connecting…'
+  if (connected.value) return 'Disconnect'
+  if (!needsPairing.value) return 'Connect'
+  if (boardToken.value) return 'Connect with token'
+  return pairingMethod.value === 'usb'
+    ? 'Pair with USB'
+    : pairingMethod.value === 'bluetooth'
+      ? 'Pair with Bluetooth'
+      : 'Enter access token'
+})
+function connectMedia() {
+  if (connected.value) return media.disconnect()
+  if (!needsPairing.value || boardToken.value) return media.connect()
+  if (pairingMethod.value === 'usb') return media.pairWithUsb()
+  if (pairingMethod.value === 'bluetooth') return media.pairWithBluetooth()
+  manualPairing.value = true
+}
 const wifiControlActive = computed(
   () => kvm.link.kind.value === 'wifi' && kvm.link.connected.value,
 )
@@ -254,11 +292,9 @@ onMounted(() => {
         <button
           class="kvm-btn"
           :disabled="busy || connecting || locked"
-          @click="connected ? media.disconnect() : media.connect()"
+          @click="connectMedia()"
         >
-          {{
-            connecting ? 'Connecting…' : connected ? 'Disconnect' : 'Connect'
-          }}
+          {{ connectionLabel }}
         </button>
       </section>
 
@@ -285,24 +321,60 @@ onMounted(() => {
         </button>
       </div>
       <div
-        v-if="transport === 'wifi' && onboard && !deviceInfo?.authenticated"
-        class="mt-3 space-y-2 rounded-lg border border-ink-600 p-3"
+        v-if="needsPairing"
+        class="mt-3 space-y-3 rounded-lg border border-ink-600 p-3"
       >
-        <label class="block text-sm"
-          >Access token<input
-            v-model="boardToken"
-            type="password"
-            autocomplete="off"
-            :spellcheck="false"
-            maxlength="80"
-            class="kvm-input mt-1 w-full"
-            :disabled="connected || connecting || locked"
-            @keydown.enter.prevent="media.connect()"
-        /></label>
+        <p v-if="pairingMethod === 'usb'" class="kvm-hint">
+          Connect the board’s programming USB port to this computer, then choose
+          Pair with USB. The console reads the access token for you.
+        </p>
+        <p v-else-if="pairingMethod === 'bluetooth'" class="kvm-hint">
+          Choose Pair with Bluetooth to read the board’s access token and
+          connect over Wi-Fi.
+        </p>
+        <p v-else class="kvm-hint">
+          Enter the board’s access token below. To read it automatically, open
+          this page in a browser that supports USB or Bluetooth pairing.
+        </p>
+        <button
+          v-if="
+            pairingMethod === 'usb' &&
+            (ble.supported.value || ble.connected.value)
+          "
+          class="kvm-btn"
+          :disabled="connected || connecting || locked"
+          @click="media.pairWithBluetooth()"
+        >
+          Pair with Bluetooth instead
+        </button>
+        <button
+          v-else-if="pairingMethod === 'bluetooth' && serial.supported.value"
+          class="kvm-btn"
+          :disabled="connected || connecting || locked"
+          @click="media.pairWithUsb()"
+        >
+          Pair with USB instead
+        </button>
+        <details :open="manualPairing || pairingMethod === 'manual'">
+          <summary class="cursor-pointer text-sm text-mist-300">
+            Enter token manually
+          </summary>
+          <label class="mt-3 block text-sm"
+            >Access token<input
+              v-model="boardToken"
+              type="password"
+              autocomplete="off"
+              :spellcheck="false"
+              maxlength="80"
+              class="kvm-input mt-1 w-full"
+              :disabled="connected || connecting || locked"
+              @keydown.enter.prevent="media.connect()"
+          /></label>
+        </details>
         <p class="kvm-hint">
-          Find this token in Settings → Wi-Fi → Advanced using USB or Bluetooth.
-          Pairing is saved as a private browser session; the token is not stored
-          by this app.
+          Pairing is saved as a private browser session. The app does not save
+          the token. Pair again after a board restart or when the session
+          expires.
         </p>
       </div>
       <details class="mt-3 border-b border-ink-600 pb-3">
@@ -624,11 +696,13 @@ onMounted(() => {
               data.
             </p>
             <p v-if="activity.readRequests" class="kvm-hint">
-              Browser read response: {{ activity.readRequests.toLocaleString() }}
+              Browser read response:
+              {{ activity.readRequests.toLocaleString() }}
               requests · average
-              {{ (activity.readTotalMs / activity.readRequests).toFixed(1) }} ms ·
-              max {{ activity.readMaxMs.toFixed(1) }} ms. Includes browser storage
-              and response handoff; excludes Wi-Fi transit and target processing.
+              {{ (activity.readTotalMs / activity.readRequests).toFixed(1) }} ms
+              · max {{ activity.readMaxMs.toFixed(1) }} ms. Includes browser
+              storage and response handoff; excludes Wi-Fi transit and target
+              processing.
             </p>
           </div>
         </details>

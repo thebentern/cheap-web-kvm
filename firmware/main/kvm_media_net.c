@@ -31,6 +31,9 @@
 #include <string.h>
 #include <unistd.h>
 static httpd_handle_t server;
+enum { MEDIA_REJECT_NONE, MEDIA_REJECT_TRANSPORT = 1011, MEDIA_REJECT_AUTH = 4001,
+       MEDIA_REJECT_OWNER = 4009 };
+static atomic_uint handshake_accepts, handshake_rejects, last_media_rejection;
 #if CONFIG_KVM_DEVICE_WEB
 static httpd_handle_t secure_server;
 static uint8_t certificate_ips[8];
@@ -67,13 +70,14 @@ static esp_err_t diagnostics(httpd_req_t *req)
     char body[512];
     int n = snprintf(body, sizeof(body), "{\"freeHeap\":%u,\"minimumHeap\":%u,\"largestBlock\":%u,\"tlsError\":%d,\"tlsCode\":%d,\"tlsFlags\":%d,\"bleAdvertising\":%s,\"bleAdvertisingPauseRequested\":%s,"
         "\"wifiPowerSave\":%d,\"wifiMode\":%d,\"wifiRssi\":%d,\"wifiChannel\":%u,"
-        "\"media\":{\"reads\":%" PRIu32 ",\"readBytes\":%" PRIu64 ",\"readTimeUs\":%" PRIu64 ",\"readMaxUs\":%" PRIu64 ",\"cacheBytes\":%" PRIu64 "}}",
+        "\"media\":{\"reads\":%" PRIu32 ",\"readBytes\":%" PRIu64 ",\"readTimeUs\":%" PRIu64 ",\"readMaxUs\":%" PRIu64 ",\"cacheBytes\":%" PRIu64 ",\"accepts\":%u,\"rejects\":%u,\"lastMediaRejection\":%u}}",
         (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT), (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
         (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), atomic_load(&tls_last_error), atomic_load(&tls_code), atomic_load(&tls_flags),
         kvm_ble_advertising_active() ? "true" : "false",
         kvm_ble_advertising_pause_requested() ? "true" : "false",
         wifi_power_save, wifi_mode, wifi_rssi, wifi_channel,
-        metrics.reads, metrics.read_bytes, metrics.read_time_us, metrics.read_max_us, metrics.cache_bytes);
+        metrics.reads, metrics.read_bytes, metrics.read_time_us, metrics.read_max_us, metrics.cache_bytes,
+        atomic_load(&handshake_accepts), atomic_load(&handshake_rejects), atomic_load(&last_media_rejection));
     if (n < 0 || (size_t)n >= sizeof(body))
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Diagnostics unavailable");
     httpd_resp_set_type(req, "application/json");
@@ -106,6 +110,20 @@ static esp_err_t send_binary(httpd_handle_t handle, int fd, uint8_t *buffer, siz
     /* Keep the WebSocket header with its payload in the same TLS write. */
     return media_ws_send_binary(buffer, length, socket_send, &socket) ? ESP_OK : ESP_FAIL;
 }
+static void record_rejection(unsigned reason)
+{
+    atomic_store(&last_media_rejection, reason);
+    atomic_fetch_add(&handshake_rejects, 1);
+}
+static esp_err_t reject_handshake(httpd_req_t *req, uint16_t code, const char *reason)
+{
+    record_rejection(code);
+    media_socket_t socket = {.server = req->handle, .fd = httpd_req_to_sockfd(req)};
+    /* IDF has already sent HTTP 101 before invoking this handler. HTTP error
+     * bytes here would corrupt the upgraded stream; send a real CLOSE instead. */
+    (void)media_ws_send_close(code, reason, socket_send, &socket);
+    return ESP_FAIL; /* IDF closes only this rejected socket. */
+}
 static void closed(httpd_handle_t h, int fd)
 {
     xSemaphoreTake(net_lock, portMAX_DELAY);
@@ -131,24 +149,24 @@ static esp_err_t ws(httpd_req_t *req)
                      !strcmp(token, access_token);
 #endif
         if (!authorized) {
-            httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, "Use the authenticated HTTPS helper");
-            return ESP_FAIL;
+            return reject_handshake(req, MEDIA_REJECT_AUTH, "Media authorization required");
         }
         int fd = httpd_req_to_sockfd(req);
         /* Send small read requests immediately instead of waiting for an ACK. */
         int nodelay = 1;
         if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay)) != 0) {
             ESP_LOGE("media_net", "Cannot configure TCP_NODELAY: errno %d", errno);
+            record_rejection(MEDIA_REJECT_TRANSPORT);
             return ESP_FAIL; /* Close this socket without claiming the medium. */
         }
         xSemaphoreTake(net_lock, portMAX_DELAY);
         if (atomic_load(&owner) >= 0) {
             xSemaphoreGive(net_lock);
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Media already owned");
-            return ESP_FAIL;
+            return reject_handshake(req, MEDIA_REJECT_OWNER, "Media connection already in use");
         }
         atomic_store(&owner_server, req->handle);
         atomic_store(&owner, fd);
+        atomic_fetch_add(&handshake_accepts, 1);
         xSemaphoreGive(net_lock);
         return ESP_OK;
     }

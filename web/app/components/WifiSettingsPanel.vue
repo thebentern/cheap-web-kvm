@@ -185,7 +185,8 @@ onBeforeUnmount(() => {
           {{ status.apIp }}
         </p>
         <p v-if="!kvm.link.connected.value" class="kvm-hint">
-          Connect to the board to change its Wi-Fi settings.
+          Connect the board’s programming USB port or use Bluetooth to load its
+          Wi-Fi settings and saved access token.
         </p>
       </div>
       <button
@@ -205,7 +206,7 @@ onBeforeUnmount(() => {
         :disabled="busy || !kvm.link.serialSupported.value"
         @click="connect('serial')"
       >
-        Connect Serial
+        Connect USB
       </button>
       <button
         type="button"

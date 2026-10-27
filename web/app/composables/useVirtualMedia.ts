@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { reactive, ref, shallowRef } from 'vue'
 import { useSerialLink } from '~/composables/useSerialLink'
+import { useBleLink } from '~/composables/useBleLink'
 import { useDeviceHost } from '~/composables/useDeviceHost'
 import { authenticateDevice } from '~/utils/deviceHost'
+import { readPhysicalPairingToken } from '~/utils/devicePairing'
+import { WifiClient } from '~/utils/wifi'
 import { MediaConnection } from '~/utils/media/client'
 import { FLAG, OP } from '~/utils/media/protocol'
 import { MediaHidQueue } from '~/utils/media/hidQueue'
@@ -212,94 +215,146 @@ async function selectTransport(next: 'usb' | 'wifi') {
     })
 }
 async function connect() {
-  return run(async () => {
-    if (inserted.value || uncertain.value)
-      throw new Error('Eject or recover the existing session first')
-    connecting.value = true
-    try {
-      hidQueue.clear()
-      connection?.close()
-      stopActivity()
-      connection = new MediaConnection({
-        read: (offset, length) => rpc('read', { offset, length }),
-        write: async (offset, data) => {
-          meta.value = await rpc('write', { offset, data })
-        },
-      })
-      const current = connection
-      connection.onError = (message) => {
-        if (connection !== current) return
-        error.value = message
-        if (inserted.value) uncertain.value = true
-        if (!connection?.live) {
-          connected.value = false
-          stopActivity()
-        }
+  return run(() => connectBackend())
+}
+async function connectBackend() {
+  if (inserted.value || uncertain.value)
+    throw new Error('Eject or recover the existing session first')
+  connecting.value = true
+  try {
+    hidQueue.clear()
+    connection?.close()
+    stopActivity()
+    connection = new MediaConnection({
+      read: (offset, length) => rpc('read', { offset, length }),
+      write: async (offset, data) => {
+        meta.value = await rpc('write', { offset, data })
+      },
+    })
+    const current = connection
+    connection.onError = (message) => {
+      if (connection !== current) return
+      error.value = message
+      if (inserted.value) uncertain.value = true
+      if (!connection?.live) {
+        connected.value = false
+        stopActivity()
       }
-      connection.onState = (state) => {
-        if (connection !== current) return
-        flags.value = state
-        if (
-          inserted.value &&
-          (!(state & FLAG.PRESENT) || state & FLAG.FAILED)
-        ) {
-          // Target eject is also synchronized through an explicit browser action.
-          uncertain.value = true
-          error.value =
-            'Target ejected the disk or the backend failed. Finish ejection to synchronize before editing.'
-        }
+    }
+    connection.onState = (state) => {
+      if (connection !== current) return
+      flags.value = state
+      if (inserted.value && (!(state & FLAG.PRESENT) || state & FLAG.FAILED)) {
+        // Target eject is also synchronized through an explicit browser action.
+        uncertain.value = true
+        error.value =
+          'Target ejected the disk or the backend failed. Finish ejection to synchronize before editing.'
       }
-      connection.onActivity = (bytes, write) => {
-        if (connection !== current) return
-        if (write) activity.written += bytes
-        else activity.read += bytes
-        activity.last = `${write ? 'Committed write' : 'Read'} · ${bytes} bytes`
-      }
-      connection.onReadResponse = (stats) => {
-        if (connection !== current) return
-        activity.readRequests = stats.requests
-        activity.readTotalMs = stats.totalMs
-        activity.readMaxMs = stats.maxMs
-      }
-      if (transport.value === 'usb') {
-        const serial = useSerialLink()
-        if (!serial.connected.value && !(await serial.connect(undefined, true)))
-          throw new Error(
-            serial.lastError.value ?? 'USB connection was cancelled',
-          )
-        await connection.connect(serial.mediaTransport())
-      } else {
-        const knownBoard = deviceHost.onboard.value
-        const device = await deviceHost.refresh()
-        if (!device && knownBoard)
-          throw new Error(
-            'Cannot reach the board. Check its Wi-Fi connection and reopen this HTTPS page.',
-          )
-        if (device && !device.authenticated) {
-          try {
-            await authenticateDevice(boardToken.value)
-            const paired = await deviceHost.refresh()
-            if (!paired?.authenticated)
-              throw new Error(
-                'Pairing could not be saved. Allow cookies for this board’s HTTPS page and try again.',
-              )
-          } finally {
-            boardToken.value = ''
-          }
-        }
-        await connection.connect(
-          url.value ||
-            `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/media`,
+    }
+    connection.onActivity = (bytes, write) => {
+      if (connection !== current) return
+      if (write) activity.written += bytes
+      else activity.read += bytes
+      activity.last = `${write ? 'Committed write' : 'Read'} · ${bytes} bytes`
+    }
+    connection.onReadResponse = (stats) => {
+      if (connection !== current) return
+      activity.readRequests = stats.requests
+      activity.readTotalMs = stats.totalMs
+      activity.readMaxMs = stats.maxMs
+    }
+    if (transport.value === 'usb') {
+      const serial = useSerialLink()
+      if (!serial.connected.value && !(await serial.connect(undefined, true)))
+        throw new Error(
+          serial.lastError.value ?? 'USB connection was cancelled',
         )
+      await connection.connect(serial.mediaTransport())
+    } else {
+      const knownBoard = deviceHost.onboard.value
+      const device = await deviceHost.refresh()
+      if (!device && knownBoard)
+        throw new Error(
+          'Cannot reach the board. Check its Wi-Fi connection and reopen this HTTPS page.',
+        )
+      if (device && !device.authenticated) {
+        try {
+          await authenticateDevice(boardToken.value)
+          const paired = await deviceHost.refresh()
+          if (!paired?.authenticated)
+            throw new Error(
+              'Pairing could not be saved. Allow cookies for this board’s HTTPS page and try again.',
+            )
+        } finally {
+          boardToken.value = ''
+        }
       }
-      connected.value = true
-      flags.value = 0
-    } catch (e) {
-      connection?.close()
-      stopActivity()
-      connected.value = false
-      throw e
+      await connection.connect(
+        url.value ||
+          `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/media`,
+      )
+    }
+    connected.value = true
+    flags.value = 0
+  } catch (e) {
+    connection?.close()
+    stopActivity()
+    connected.value = false
+    throw e
+  } finally {
+    connecting.value = false
+  }
+}
+async function pairWithPhysicalLink(kind: 'usb' | 'bluetooth') {
+  return run(async () => {
+    let token = ''
+    try {
+      if (inserted.value || uncertain.value)
+        throw new Error('Eject or recover the existing session before pairing')
+      if (connected.value)
+        throw new Error('Disconnect existing media before pairing this browser')
+      if (!globalThis.isSecureContext || location.protocol !== 'https:')
+        throw new Error('Open the board over trusted HTTPS before pairing')
+      if (!deviceHost.onboard.value)
+        throw new Error('Open the board’s own HTTPS page to pair this browser')
+      const physical = kind === 'usb' ? useSerialLink() : useBleLink()
+      const label = kind === 'usb' ? 'USB' : 'Bluetooth'
+      if (!physical.supported.value)
+        throw new Error(
+          `${label} pairing is not available in this browser. Enter the access token manually instead.`,
+        )
+      connecting.value = true
+      phase.value = `Connecting over ${label}`
+      // Begin the device chooser in this user gesture, before any HTTPS awaits.
+      if (!physical.connected.value) {
+        const selected =
+          kind === 'usb'
+            ? await useSerialLink().connect(undefined, true)
+            : await useBleLink().connect()
+        if (!selected)
+          throw new Error(
+            physical.lastError.value ??
+              `${label} device selection was cancelled`,
+          )
+      }
+      phase.value = 'Checking board identity'
+      token = await readPhysicalPairingToken(
+        new WifiClient((frame, cmd) => physical.sendAndWait(frame, cmd)),
+        deviceHost.refresh,
+      )
+      phase.value = 'Pairing browser'
+      await authenticateDevice(token)
+      const paired = await deviceHost.refresh()
+      if (!paired?.authenticated)
+        throw new Error(
+          'Pairing could not be saved. Allow cookies for this board’s HTTPS page and try again.',
+        )
+      transport.value = 'wifi'
+      hostDefaultsApplied = true
+      await connectBackend()
     } finally {
+      token = ''
+      boardToken.value = ''
       connecting.value = false
     }
   })
@@ -494,6 +549,8 @@ export function useVirtualMedia() {
     cancelImport,
     selectTransport,
     connect,
+    pairWithUsb: () => pairWithPhysicalLink('usb'),
+    pairWithBluetooth: () => pairWithPhysicalLink('bluetooth'),
     disconnect,
     insert,
     eject,

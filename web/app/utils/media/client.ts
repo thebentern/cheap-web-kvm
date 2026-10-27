@@ -49,10 +49,10 @@ export class MediaConnection {
     transport.onmessage = (data) => {
       void this.receive(transport, data)
     }
-    transport.onclose = () => {
+    transport.onclose = (reason) => {
       if (this.transport === transport)
         this.fail(
-          'Media connection lost. Target requests will fail; committed writes remain saved. Eject/unmount the target before recovery.',
+          `${reason ?? 'Media connection lost.'}${this.session ? ' Target requests will fail; committed writes remain saved. Eject/unmount the target before recovery.' : ''}`,
         )
     }
     let hello: Message
@@ -102,10 +102,10 @@ export class MediaConnection {
     this.onReadResponse({ ...this.reads })
   }
   private fail(message: string) {
-    this.close()
+    this.close(new Error(message))
     this.onError(message)
   }
-  close() {
+  close(reason = new Error('Media connection closed')) {
     if (this.heartbeat) clearInterval(this.heartbeat)
     this.generation++
     const transport = this.transport
@@ -119,7 +119,7 @@ export class MediaConnection {
     this.session = 0
     for (const p of this.pending.values()) {
       clearTimeout(p.timer)
-      p.reject(new Error('Media connection closed'))
+      p.reject(reason)
     }
     this.pending.clear()
   }

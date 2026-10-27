@@ -90,5 +90,38 @@ int main(void)
     assert(!media_ws_send_binary(NULL, 32, capture, &buffer));
     assert(!media_ws_send_binary(buffer, 32, NULL, &buffer));
     assert(calls == 0);
-    puts("PASS: binary WebSocket wire headers, bounded full-size payloads, partial sends and failure handling");
+
+    /* Reject an upgraded client with real CLOSE bytes, not an HTTP response. */
+    reset();
+    assert(media_ws_send_close(4001, "Unauthorized", capture, &buffer));
+    const uint8_t unauthorized[] = {0x88, 14, 0x0f, 0xa1, 'U', 'n', 'a', 'u', 't', 'h', 'o', 'r', 'i', 'z', 'e', 'd'};
+    assert(calls == 1 && received_length == sizeof(unauthorized));
+    assert(!memcmp(received, unauthorized, sizeof(unauthorized)));
+    reset();
+    limit = 1;
+    assert(media_ws_send_close(4009, "Busy", capture, &buffer));
+    const uint8_t busy[] = {0x88, 6, 0x0f, 0xa9, 'B', 'u', 's', 'y'};
+    assert(calls == sizeof(busy) && received_length == sizeof(busy));
+    assert(!memcmp(received, busy, sizeof(busy)));
+    char reason[125];
+    memset(reason, 'x', sizeof(reason));
+    reason[123] = 0;
+    reset();
+    assert(media_ws_send_close(4009, reason, capture, &buffer));
+    assert(received_length == 127 && received[1] == 125);
+    reason[123] = 'x'; reason[124] = 0;
+    reset();
+    assert(!media_ws_send_close(4009, reason, capture, &buffer));
+    assert(!media_ws_send_close(3999, "", capture, &buffer));
+    assert(!media_ws_send_close(5000, "", capture, &buffer));
+    assert(!media_ws_send_close(4001, NULL, capture, &buffer));
+    assert(!media_ws_send_close(4001, "", NULL, &buffer));
+    assert(calls == 0);
+    for (int code = 0; code >= -3; code--) {
+        reset();
+        limit = 2; fail_call = 2; failure = code;
+        assert(!media_ws_send_close(4001, "Unauthorized", capture, &buffer));
+        assert(calls == 2 && received_length == 2);
+    }
+    puts("PASS: binary/CLOSE WebSocket wire headers, bounded payloads, partial sends and failure handling");
 }

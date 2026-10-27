@@ -4,9 +4,36 @@ const state = vi.hoisted(() => ({
   addresses: [] as string[],
   close: vi.fn(),
   connections: [] as any[],
+  events: [] as string[],
+  token: '',
+  physicalFingerprint: '',
+  httpsFingerprint: undefined as string | undefined,
+  cancelUsb: false,
+  cancelBluetooth: false,
+  mediaFailure: '',
+  switchBoardDuringTokenRead: false,
+  serial: {
+    supported: { value: true },
+    connected: { value: false },
+    lastError: { value: null as string | null },
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    sendAndWait: vi.fn(),
+  },
+  ble: {
+    supported: { value: true },
+    connected: { value: false },
+    lastError: { value: null as string | null },
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    sendAndWait: vi.fn(),
+  },
 }))
 vi.mock('../app/composables/useSerialLink', () => ({
-  useSerialLink: () => ({ connected: { value: false } }),
+  useSerialLink: () => state.serial,
+}))
+vi.mock('../app/composables/useBleLink', () => ({
+  useBleLink: () => state.ble,
 }))
 vi.mock('../app/utils/media/client', () => ({
   MediaConnection: class {
@@ -20,6 +47,8 @@ vi.mock('../app/utils/media/client', () => ({
     }
     async request() {}
     async connect(address: string) {
+      state.events.push('wss:connect')
+      if (state.mediaFailure) throw new Error(state.mediaFailure)
       state.addresses.push(address)
     }
     close() {
@@ -28,6 +57,7 @@ vi.mock('../app/utils/media/client', () => ({
   },
 }))
 const TOKEN = 'device-token-at-least-16-characters'
+const FINGERPRINT = 'ab'.repeat(32)
 const json = (value: unknown) =>
   new Response(JSON.stringify(value), {
     headers: { 'Content-Type': 'application/json' },
@@ -42,15 +72,79 @@ async function setup(onboard = true, initialInfoFailures = 0) {
   state.addresses = []
   state.connections = []
   state.close.mockClear()
+  state.events = []
+  state.token = TOKEN
+  state.physicalFingerprint = FINGERPRINT
+  state.httpsFingerprint = FINGERPRINT
+  state.cancelUsb = false
+  state.cancelBluetooth = false
+  state.mediaFailure = ''
+  state.switchBoardDuringTokenRead = false
+  for (const [kind, physical] of [
+    ['usb', state.serial],
+    ['bluetooth', state.ble],
+  ] as const) {
+    physical.connected.value = false
+    physical.supported.value = true
+    physical.lastError.value = null
+    physical.disconnect.mockReset()
+    physical.connect.mockReset().mockImplementation(async () => {
+      state.events.push(`${kind}:connect`)
+      if (kind === 'usb' ? state.cancelUsb : state.cancelBluetooth) return false
+      physical.connected.value = true
+      return true
+    })
+    physical.sendAndWait
+      .mockReset()
+      .mockImplementation(async (f: Uint8Array, cmd: number) => {
+        expect(cmd).toBe(0x35) // Pairing only reads; it never changes board settings.
+        if (!f[4])
+          return {
+            ok: true,
+            timeout: false,
+            payload: new Uint8Array([1, 1, 2, 1, 1, 1, 1, 0]),
+          }
+        const field = f[6]!,
+          offset = f[7]!
+        state.events.push(`${kind}:field:${field}:${offset}`)
+        const value =
+          field === 0x80
+            ? state.physicalFingerprint
+            : field === 6
+              ? state.token
+              : field === 2
+                ? 'Recovery'
+                : 'Client network'
+        if (field === 6 && state.switchBoardDuringTokenRead)
+          state.physicalFingerprint = 'cd'.repeat(32)
+        return {
+          ok: true,
+          timeout: false,
+          payload: new Uint8Array([
+            1,
+            field,
+            value.length,
+            offset,
+            ...new TextEncoder().encode(value.slice(offset, offset + 60)),
+          ]),
+        }
+      })
+  }
   let authenticated = false,
     acceptToken = true,
     allowCookies = true
   const fetch = vi.fn(async (path: string, options?: RequestInit) => {
+    state.events.push(`https:${path}`)
     if (path === '/device/info') {
       if (initialInfoFailures-- > 0)
         throw new DOMException('Timed out', 'TimeoutError')
       return onboard
-        ? json({ device: true, authenticated, httpsPort: 443 })
+        ? json({
+            device: true,
+            authenticated,
+            httpsPort: 443,
+            certificateFingerprint: state.httpsFingerprint,
+          })
         : new Response(null, { status: 404 })
     }
     if (path === '/device/session') {
@@ -269,5 +363,192 @@ describe('direct on-board media connection', () => {
     expect(
       fetch.mock.calls.filter(([path]) => path === '/device/session'),
     ).toHaveLength(0)
+  })
+})
+
+describe('pair and connect through a physical control link', () => {
+  it('starts the USB chooser before HTTPS, verifies identity, reads a paged token and connects Wi-Fi', async () => {
+    const { media, fetch } = await setup()
+    state.token = 't'.repeat(80)
+    media.boardToken.value = 'unused-manual-token-at-least-16-characters'
+    state.events = []
+    const paired = media.pairWithUsb()
+    expect(state.events[0]).toBe('usb:connect')
+    await paired
+    expect(media.error.value).toBe(null)
+    expect(media.connected.value).toBe(true)
+    expect(media.transport.value).toBe('wifi')
+    expect(media.boardToken.value).toBe('')
+    expect(
+      state.events.filter((event) => event.startsWith('usb:field:6:')),
+    ).toEqual(['usb:field:6:0', 'usb:field:6:60'])
+    expect(state.events.indexOf('usb:field:128:60')).toBeLessThan(
+      state.events.indexOf('https:/device/info'),
+    )
+    expect(state.events.indexOf('https:/device/info')).toBeLessThan(
+      state.events.indexOf('usb:field:6:0'),
+    )
+    expect(state.events.indexOf('https:/device/session')).toBeLessThan(
+      state.events.indexOf('wss:connect'),
+    )
+    expect(
+      fetch.mock.calls.find(([path]) => path === '/device/session')?.[1]?.body,
+    ).toBe(JSON.stringify({ token: state.token }))
+    expect(state.addresses).toEqual(['wss://kvm.local/media'])
+    expect(state.serial.connected.value).toBe(true)
+    expect(state.serial.disconnect).not.toHaveBeenCalled()
+  })
+  it('reuses an open USB port without reopening, changing its baud or disconnecting it', async () => {
+    const { media } = await setup()
+    state.serial.connected.value = true
+    await media.pairWithUsb()
+    expect(media.connected.value).toBe(true)
+    expect(state.serial.connect).not.toHaveBeenCalled()
+    expect(state.serial.disconnect).not.toHaveBeenCalled()
+  })
+  it.each([false, true])(
+    'pairs over Bluetooth and preserves the physical link (already connected: %s)',
+    async (reused) => {
+      const { media } = await setup()
+      state.ble.connected.value = reused
+      await media.pairWithBluetooth()
+      expect(media.connected.value).toBe(true)
+      expect(state.ble.connect).toHaveBeenCalledTimes(reused ? 0 : 1)
+      expect(state.ble.connected.value).toBe(true)
+      expect(state.ble.disconnect).not.toHaveBeenCalled()
+      expect(state.serial.connect).not.toHaveBeenCalled()
+    },
+  )
+  it.each(['usb', 'bluetooth'] as const)(
+    'does not authenticate when %s is unsupported or its chooser is cancelled',
+    async (kind) => {
+      const unsupported = await setup()
+      const physical = kind === 'usb' ? state.serial : state.ble
+      physical.supported.value = false
+      await (kind === 'usb'
+        ? unsupported.media.pairWithUsb()
+        : unsupported.media.pairWithBluetooth())
+      expect(unsupported.media.error.value).toMatch(/not available/)
+      expect(physical.connect).not.toHaveBeenCalled()
+      expect(physical.sendAndWait).not.toHaveBeenCalled()
+      expect(
+        unsupported.fetch.mock.calls.some(
+          ([path]) => path === '/device/session',
+        ),
+      ).toBe(false)
+
+      const cancelled = await setup()
+      if (kind === 'usb') state.cancelUsb = true
+      else state.cancelBluetooth = true
+      cancelled.media.boardToken.value = TOKEN
+      await (kind === 'usb'
+        ? cancelled.media.pairWithUsb()
+        : cancelled.media.pairWithBluetooth())
+      expect(cancelled.media.error.value).toMatch(/cancelled/)
+      expect(cancelled.media.boardToken.value).toBe('')
+      expect(state.addresses).toHaveLength(0)
+      expect(
+        cancelled.fetch.mock.calls.some(([path]) => path === '/device/session'),
+      ).toBe(false)
+    },
+  )
+  it.each(['mismatch', 'missing'] as const)(
+    'does not read the token or authenticate when board identity is %s',
+    async (failure) => {
+      const { media, fetch } = await setup()
+      if (failure === 'mismatch') state.physicalFingerprint = 'cd'.repeat(32)
+      else state.httpsFingerprint = undefined
+      await media.pairWithUsb()
+      expect(media.error.value).toMatch(
+        failure === 'mismatch' ? /does not match/ : /manually/,
+      )
+      expect(
+        state.events.some((event) => event.startsWith('usb:field:6:')),
+      ).toBe(false)
+      expect(
+        fetch.mock.calls.some(([path]) => path === '/device/session'),
+      ).toBe(false)
+      expect(state.addresses).toHaveLength(0)
+      expect(state.serial.disconnect).not.toHaveBeenCalled()
+    },
+  )
+  it.each(['credentials', 'cookies'] as const)(
+    'does not open Wi-Fi media when pairing fails because of %s',
+    async (failure) => {
+      const current = await setup()
+      if (failure === 'credentials') current.rejectToken()
+      else current.blockCookies()
+      current.media.boardToken.value = TOKEN
+      await current.media.pairWithUsb()
+      expect(current.media.error.value).toMatch(
+        failure === 'credentials' ? /not accepted/ : /Allow cookies/,
+      )
+      expect(current.media.boardToken.value).toBe('')
+      expect(current.media.connected.value).toBe(false)
+      expect(state.addresses).toHaveLength(0)
+      expect(state.serial.connected.value).toBe(true)
+      expect(state.serial.disconnect).not.toHaveBeenCalled()
+    },
+  )
+  it('does not submit a token if physical control changes boards during its read', async () => {
+    const { media, fetch } = await setup()
+    state.switchBoardDuringTokenRead = true
+    media.boardToken.value = TOKEN
+    await media.pairWithUsb()
+    expect(media.error.value).toMatch(/changed while pairing/)
+    expect(media.boardToken.value).toBe('')
+    expect(fetch.mock.calls.some(([path]) => path === '/device/session')).toBe(
+      false,
+    )
+    expect(state.addresses).toHaveLength(0)
+    expect(state.serial.disconnect).not.toHaveBeenCalled()
+  })
+  it.each(['inserted', 'uncertain', 'busy'] as const)(
+    'does not open physical control or pair while media is %s',
+    async (lock) => {
+      const { media, fetch } = await setup()
+      media[lock].value = true
+      await media.pairWithUsb()
+      expect(state.serial.connect).not.toHaveBeenCalled()
+      expect(state.serial.sendAndWait).not.toHaveBeenCalled()
+      expect(
+        fetch.mock.calls.some(([path]) => path === '/device/session'),
+      ).toBe(false)
+      expect(state.addresses).toHaveLength(0)
+    },
+  )
+  it('requires the board’s trusted HTTPS page before opening a physical chooser', async () => {
+    const ordinary = await setup(false)
+    await ordinary.media.pairWithUsb()
+    expect(ordinary.media.error.value).toMatch(/own HTTPS page/)
+    expect(state.serial.connect).not.toHaveBeenCalled()
+    const insecure = await setup()
+    vi.stubGlobal('isSecureContext', false)
+    await insecure.media.pairWithUsb()
+    expect(insecure.media.error.value).toMatch(/trusted HTTPS/)
+    expect(state.serial.connect).not.toHaveBeenCalled()
+  })
+  it('does not bypass media ownership when another backend refuses the Wi-Fi connection', async () => {
+    const { media } = await setup()
+    state.mediaFailure = 'Media already owned by another backend'
+    await media.pairWithUsb()
+    expect(media.error.value).toMatch(/already owned/)
+    expect(media.connected.value).toBe(false)
+    expect(state.addresses).toHaveLength(0)
+    expect(state.serial.disconnect).not.toHaveBeenCalled()
+  })
+  it('does not authenticate after an unsupported physical settings response', async () => {
+    const { media, fetch } = await setup()
+    state.serial.sendAndWait.mockResolvedValue({
+      ok: false,
+      timeout: false,
+      payload: new Uint8Array([0xe3]),
+    })
+    await media.pairWithUsb()
+    expect(media.error.value).toMatch(/updated firmware/)
+    expect(fetch.mock.calls.some(([path]) => path === '/device/session')).toBe(
+      false,
+    )
+    expect(state.addresses).toHaveLength(0)
   })
 })
