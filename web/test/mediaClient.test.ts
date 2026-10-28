@@ -476,6 +476,7 @@ describe('negotiated media transfer ceilings', () => {
     await expect(connect(undefined, capabilitySocket(unknownUnits))).rejects.toThrow(/Incompatible media capabilities/)
   })
   it('serves 128 KiB random reads and waits for durable 128 KiB writes before ACK', async () => {
+    vi.useFakeTimers()
     let commit!: () => void
     const content = Uint8Array.from({ length: MAX_IO }, (_, i) => (i * 17) & 255)
     const read = vi.fn(async () => content.slice())
@@ -483,17 +484,28 @@ describe('negotiated media transfer ceilings', () => {
     const { c, ws } = await connect({ read, write }, capabilitySocket(capabilities()))
     const offset = 8 * 1073741824 + 65530
     ws.receive({ ...request(OP.READ), offset, length: MAX_IO })
-    await tick()
+    await vi.advanceTimersByTimeAsync(0)
     expect(read).toHaveBeenCalledWith(offset, MAX_IO)
-    expect(ws.sent.at(-1)?.data).toEqual(content)
+    const readReply = ws.sent.find((m) => m.op === (OP.READ | 128))
+    expect(readReply).toMatchObject({ id: 50, session: 123, flags: 0, offset, length: MAX_IO })
+    expect(readReply?.data).toEqual(content)
+    const writeReplies = () => ws.sent.filter((m) => m.op === (OP.WRITE | 128))
     ws.receive({ ...request(OP.WRITE, 51), offset, length: MAX_IO, data: content })
-    await tick()
+    await vi.advanceTimersByTimeAsync(0)
     expect(write).toHaveBeenCalledWith(offset, content)
-    expect(ws.sent.at(-1)?.op).toBe(OP.READ | 128)
+    expect(writeReplies()).toHaveLength(0)
+    // A keepalive may be the newest frame while storage is still committing.
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(ws.sent.at(-1)?.op).toBe(OP.HEARTBEAT)
+    expect(writeReplies()).toHaveLength(0)
     commit()
-    await tick()
-    expect(ws.sent.at(-1)).toMatchObject({ op: OP.WRITE | 128, flags: 0, offset, length: MAX_IO })
-    expect(ws.sent.at(-1)?.data).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(0)
+    // And another heartbeat may follow the ACK before the assertion runs.
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(ws.sent.at(-1)?.op).toBe(OP.HEARTBEAT)
+    expect(writeReplies()).toHaveLength(1)
+    expect(writeReplies()[0]).toMatchObject({ id: 51, session: 123, flags: 0, offset, length: MAX_IO })
+    expect(writeReplies()[0]?.data).toHaveLength(0)
     expect(c.live).toBe(true)
   })
   it('refuses disk requests and outgoing controls above a legacy ceiling without accessing storage', async () => {
