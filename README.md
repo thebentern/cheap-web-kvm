@@ -5,6 +5,14 @@
   </picture>
 </h1>
 
+## $12 HDMI capture dongle + $8 ESP32-S3 dev board = $KVM
+
+A cheap KVM for about **$20** in hardware.
+
+![KVM signal path: browser control through the ESP32-S3 to the target PC, with HDMI capture returning video to the browser](docs/images/kvm-signal-path.svg)
+
+_Prices are approximate (USD); USB and HDMI cables are extra._
+
 A USB KVM made from an ESP32-S3 dev board and an HDMI capture stick. Control a
 headless machine's keyboard, mouse and video from a browser on a laptop or iPad.
 No drivers or software to install.
