@@ -70,6 +70,36 @@ menu "cheap-web-kvm"
             mode can keep a recovery hotspot. Blank build credentials start
             with Wi-Fi off; the browser can enable it without recompiling.
 
+    config KVM_MEDIA_WIFI_MAX_IO
+        int "Wi-Fi virtual-media transfer ceiling (bytes)"
+        depends on KVM_MEDIA_WIFI
+        range 8192 131072
+        default 32768
+        help
+            Must be a multiple of 512. Larger ceilings allocate five buffers
+            from PSRAM; 128 KiB uses about 640 KiB total. If the allocation
+            fails, an 8 KiB IO pool is allocated internally. UART stays
+            at 8 KiB. New browser clients negotiate larger Wi-Fi ceilings.
+
+    config KVM_MEDIA_PREFETCH
+        bool "Experimental overlapping Wi-Fi read-ahead"
+        depends on KVM_MEDIA_WIFI
+        default n
+        help
+            Fetch the next sequential range while USB consumes cached data.
+            Read-ahead starts at 32 KiB and grows to the configured ceiling
+            for sequential reads. Only one remote disk operation is active;
+            writes and resets discard speculative data.
+
+    config KVM_MSC_BUFSIZE
+        int "USB mass-storage transfer buffer (bytes)"
+        range 512 8192
+        default 4096
+        help
+            Must be a multiple of 512. An 8 KiB buffer is available for
+            throughput experiments. It uses 4 KiB more internal RAM than
+            the default. This is separate from Wi-Fi read-ahead buffers.
+
     config KVM_MEDIA_SSID
         string "Initial hotspot SSID (blank generates a device-specific name)"
         depends on KVM_MEDIA_WIFI

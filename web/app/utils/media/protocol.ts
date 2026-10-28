@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 export const HEADER = 32
-export const MAX_IO = 32768
+export const MAX_IO = 131072
+export const LEGACY_WIFI_MAX_IO = 32768
 export const SERIAL_MAX_IO = 8192
 export const OP = {
   HELLO: 1,

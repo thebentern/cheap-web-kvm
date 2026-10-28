@@ -166,6 +166,56 @@ regenerate `firmware/sdkconfig` from the current defaults so it uses the custom
 partition table and HTTPS options; retain any custom configuration separately.
 Changing the app/partition images leaves NVS intact.
 
+For Wi-Fi virtual-media throughput experiments, `sdkconfig.wifi-rx` selects 16
+static receive buffers, 64 dynamic receive buffers and a 32-frame receive
+aggregation window. It follows [Espressif's ESP32-S3 iperf profile](https://github.com/espressif/esp-idf/blob/v5.4/examples/wifi/iperf/sdkconfig.defaults.esp32s3)
+and can use approximately 60 KB more RAM at peak than the default receive settings. Use a
+fresh, separate configuration and build directory so existing settings stay intact:
+
+```bash
+idf.py -B build/wifi-rx -D SDKCONFIG=build/wifi-rx.sdkconfig \
+  -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.wifi-rx" build
+```
+
+Include any board-specific or private configuration overlay before
+`sdkconfig.wifi-rx`. Existing configuration values take precedence over overlays.
+The profile is experimental: compare actual target read throughput, minimum free
+internal RAM, and repeated boots before selecting it for normal use.
+
+`sdkconfig.media-performance` enables overlapping sequential read-ahead, growing
+from 32 KiB to 64 KiB and then 128 KiB, and an 8 KiB USB mass-storage buffer.
+The two read buffers alternate while USB consumes one and Wi-Fi fills the other;
+only one remote disk request is outstanding. Random seeks reset growth, and
+writes, ejection and USB resets discard speculative data. The five transport/core
+buffers use about 640 KiB of PSRAM at the 128 KiB ceiling, with an 8 KiB fallback
+if allocation fails. The fallback pool is allocated internally only when PSRAM
+is unavailable, saving about 40 KiB of internal RAM on PSRAM-equipped boards.
+The larger USB buffer uses another 4 KiB of internal RAM.
+The profile limits the TCP send queue to 32 KiB while keeping the existing
+64 KiB receive window, reducing transmit queue pressure on internal memory.
+Combine the experiments with:
+
+```bash
+idf.py -B build/media-performance -D SDKCONFIG=build/media-performance.sdkconfig \
+  -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.wifi-rx;sdkconfig.media-performance" build
+```
+
+The normal defaults remain 32 KiB read-ahead and a 4 KiB USB buffer. Updated
+browsers negotiate 64/128 KiB with the experimental firmware and retry at 32 KiB
+when older firmware rejects the larger ceiling. Older browsers retain their
+existing ceilings. Large browser messages may span WebSocket continuation frames;
+the firmware assembles them within one size and time limit. Outgoing messages
+use 4 KiB TLS write batches to bound encryption scratch memory independently of
+the negotiated disk request size. Browser echo measurements exercise this
+transport; target boot and memory measurements are still needed to establish
+boot-read throughput.
+
+`sdkconfig.media-cpu` separately selects the 240 MHz CPU clock and `-O2`
+compiler optimization. Append it to `SDKCONFIG_DEFAULTS` in a fresh configuration
+to compare it with the 160 MHz debug build. Firmware uses the ROM CRC32 routine
+on ESP targets, preserving the protocol's CRC seeds and header/payload chaining.
+The native CRC differential test and on-device echo checks cover wire compatibility.
+
 #### Match the PSRAM mode
 
 On-board HTTPS requires functioning PSRAM for TLS while Wi-Fi and Bluetooth are

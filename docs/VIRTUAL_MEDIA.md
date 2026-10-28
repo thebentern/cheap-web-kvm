@@ -215,10 +215,16 @@ the cleared report on re-enumeration.
 
 ## Performance and diagnostics
 
-Wi-Fi negotiates read-ahead requests up to **32 KiB** with PSRAM; USB UART and the
-no-PSRAM fallback use **8 KiB**. Writes wait for browser storage commits. One disk
-request is outstanding at a time, and writes or media changes invalidate the
-read-ahead cache.
+Standard firmware negotiates Wi-Fi read-ahead up to **32 KiB** with PSRAM; USB
+UART and the no-PSRAM fallback use **8 KiB**. The experimental
+`sdkconfig.media-performance` build overlaps Wi-Fi reads with USB delivery,
+grows sequential read-ahead from **32 → 64 → 128 KiB**, and uses an **8 KiB USB
+transfer buffer** instead of 4 KiB. Random seeks reset growth. A sent speculative
+read drains before another remote operation; a matching USB demand can wait on
+that same request. Writes and USB resets discard speculative data. The browser
+and firmware negotiate the ceiling; older firmware receives a 32 KiB HELLO retry.
+Writes still wait for browser storage commits, only one remote disk request is
+outstanding, and writes or media changes invalidate the read-ahead cache.
 
 **Connection settings → Test connection speed** measures echo throughput between
 the browser and board, including a helper if used. It does not measure target

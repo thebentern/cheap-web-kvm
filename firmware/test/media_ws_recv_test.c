@@ -291,6 +291,19 @@ static void scoped_tests(void)
     mock_time = 10000000; /* End checks elapsed time too. */
     assert(media_ws_recv_end(&request) == HTTPD_SOCK_ERR_TIMEOUT);
 
+    /* Continuation frames inherit the original message deadline rather than
+     * buying another ten seconds after every completed fragment. */
+    reset(); parts[0] = parts[1] = 4;
+    elapsed[0] = 1500000; elapsed[1] = 500000;
+    assert(media_ws_recv_begin_until(&request, 2000000) == 0);
+    assert(receive(4) == 4 && media_ws_recv_end(&request) == 0);
+    assert(media_ws_recv_begin_until(&request, 2000000) == 0);
+    assert(receive(4) == HTTPD_SOCK_ERR_TIMEOUT && original_timeout());
+    assert(media_ws_recv_end(&request) == HTTPD_SOCK_ERR_TIMEOUT);
+    uint32_t fragment_timeouts = media_ws_recv_frame_timeouts();
+    assert(media_ws_recv_begin_until(&request, 2000000) == HTTPD_SOCK_ERR_TIMEOUT);
+    assert(media_ws_recv_frame_timeouts() == fragment_timeouts + 1);
+
     /* Fatal errors and EOF fail immediately, preserving the first cause and
      * restoring the original timeout before end and after every call. */
     const int errors[] = {0, HTTPD_SOCK_ERR_FAIL, HTTPD_SOCK_ERR_INVALID, -0x7200};

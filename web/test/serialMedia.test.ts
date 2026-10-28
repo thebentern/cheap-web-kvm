@@ -7,6 +7,7 @@ import {
   encode,
   HEADER,
   MAX_IO,
+  LEGACY_WIFI_MAX_IO,
   SERIAL_MAX_IO,
   OP,
   type Message,
@@ -68,7 +69,7 @@ describe('bounded USB serial framing', () => {
     expect(controls).toEqual([frame(0x82, [0])])
     expect(media).toHaveLength(0)
   })
-  it('keeps UART framing at 8 KiB while the network protocol permits 32 KiB', () => {
+  it('keeps UART framing at 8 KiB while the network protocol permits 128 KiB', () => {
     const media: Uint8Array[] = [], controls: Uint8Array[] = []
     const parser = new SerialDemux((bytes) => controls.push(bytes), (bytes) => media.push(bytes))
     cleanup.push(() => parser.reset())
@@ -77,9 +78,12 @@ describe('bounded USB serial framing', () => {
     expect(media).toEqual([full])
     const larger = encode({ ...packet(), length: MAX_IO, data: new Uint8Array(MAX_IO).fill(42) })
     expect(() => serialMediaFrame(larger)).toThrow(/length/)
-    const oversized = new Uint8Array(6 + larger.length)
-    oversized.set([75, 86, 83, 49, larger.length & 255, larger.length >>> 8])
-    oversized.set(larger, 6)
+    // The serial wire length itself is 16-bit: use an actually representable
+    // oversized packet rather than wrapping a 128 KiB length back to 32.
+    const serialOversize = encode({ ...packet(), length: LEGACY_WIFI_MAX_IO, data: new Uint8Array(LEGACY_WIFI_MAX_IO).fill(42) })
+    const oversized = new Uint8Array(6 + serialOversize.length)
+    oversized.set([75, 86, 83, 49, serialOversize.length & 255, serialOversize.length >>> 8])
+    oversized.set(serialOversize, 6)
     parser.feed(oversized)
     parser.feed(frame(0x82, [0]))
     expect(media).toEqual([full])

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MediaConnection, type MediaReadStats } from '../app/utils/media/client'
-import { encode, decode, MAX_IO, SERIAL_MAX_IO, OP, type Message } from '../app/utils/media/protocol'
+import { encode, decode, MAX_IO, LEGACY_WIFI_MAX_IO, SERIAL_MAX_IO, OP, type Message } from '../app/utils/media/protocol'
 import { websocketTransport } from '../app/utils/media/transport'
 class Socket {
   static OPEN = 1
@@ -55,8 +55,10 @@ function capabilitySocket(data: Uint8Array) {
     }
   }
 }
-const capabilities = (ceiling = MAX_IO, window = 1) =>
-  new Uint8Array([1, window, 0, 2, ceiling & 255, ceiling >>> 8, 1, 0])
+const capabilities = (ceiling = MAX_IO, window = 1) => {
+  const units = ceiling > 65535 ? ceiling / 512 : ceiling
+  return new Uint8Array([1, window, 0, 2, units & 255, units >>> 8, ceiling > 65535 ? 3 : 1, 0])
+}
 const connections: MediaConnection[] = []
 afterEach(() => {
   for (const c of connections) c.close()
@@ -420,7 +422,37 @@ describe('client media flow and durability', () => {
 })
 
 describe('negotiated media transfer ceilings', () => {
-  it.each([SERIAL_MAX_IO, 16384, MAX_IO])('requests 32 KiB and respects an advertised %s-byte ceiling', async (ceiling) => {
+  it('retries HELLO at 32 KiB when older firmware rejects a larger ceiling', async () => {
+    class LegacyFirmware extends Socket {
+      send(bytes: Uint8Array) {
+        const m = decode(bytes)
+        if (m.op !== OP.HELLO) return super.send(bytes)
+        this.sent.push(m)
+        const flags = m.offset > LEGACY_WIFI_MAX_IO ? 1 : 0
+        const data = flags ? new Uint8Array() : capabilities(LEGACY_WIFI_MAX_IO)
+        this.receive({ ...m, op: m.op | 128, flags, session: 123, length: data.length, data })
+      }
+    }
+    const { c, ws } = await connect(undefined, LegacyFirmware)
+    expect(ws.sent.filter((m) => m.op === OP.HELLO).map((m) => m.offset)).toEqual([MAX_IO, LEGACY_WIFI_MAX_IO])
+    await c.benchmark(0)
+    expect(ws.sent.find((m) => m.op === OP.ECHO)?.data).toHaveLength(LEGACY_WIFI_MAX_IO)
+    expect(c.live).toBe(true)
+  })
+  it('does not retry a refused or busy handshake as legacy negotiation', async () => {
+    for (const flags of [2, 3, 4]) {
+      class RefusedFirmware extends Socket {
+        send(bytes: Uint8Array) {
+          const m = decode(bytes)
+          this.sent.push(m)
+          this.receive({ ...m, op: m.op | 128, flags, session: 123, length: 0, data: new Uint8Array() })
+        }
+      }
+      await expect(connect(undefined, RefusedFirmware)).rejects.toThrow()
+      expect(Socket.all.at(-1)!.sent).toHaveLength(1)
+    }
+  })
+  it.each([SERIAL_MAX_IO, 16384, LEGACY_WIFI_MAX_IO, 65536, MAX_IO])('requests 128 KiB and respects an advertised %s-byte ceiling', async (ceiling) => {
     const { c, ws } = await connect(undefined, capabilitySocket(capabilities(ceiling)))
     const hello = ws.sent.find((m) => m.op === OP.HELLO)!
     expect(hello.offset).toBe(MAX_IO)
@@ -439,8 +471,12 @@ describe('negotiated media transfer ceilings', () => {
     wrongBlock[3] = 1
     for (const data of [capabilities(MAX_IO, 2), capabilities().subarray(0, 7), wrongBlock])
       await expect(connect(undefined, capabilitySocket(data))).rejects.toThrow(/Incompatible media capabilities/)
+    const unknownUnits = capabilities(LEGACY_WIFI_MAX_IO)
+    unknownUnits[6] = 5
+    await expect(connect(undefined, capabilitySocket(unknownUnits))).rejects.toThrow(/Incompatible media capabilities/)
   })
-  it('serves 32 KiB random reads and waits for durable 32 KiB writes before ACK', async () => {
+  it('serves 128 KiB random reads and waits for durable 128 KiB writes before ACK', async () => {
+    vi.useFakeTimers()
     let commit!: () => void
     const content = Uint8Array.from({ length: MAX_IO }, (_, i) => (i * 17) & 255)
     const read = vi.fn(async () => content.slice())
@@ -448,17 +484,28 @@ describe('negotiated media transfer ceilings', () => {
     const { c, ws } = await connect({ read, write }, capabilitySocket(capabilities()))
     const offset = 8 * 1073741824 + 65530
     ws.receive({ ...request(OP.READ), offset, length: MAX_IO })
-    await tick()
+    await vi.advanceTimersByTimeAsync(0)
     expect(read).toHaveBeenCalledWith(offset, MAX_IO)
-    expect(ws.sent.at(-1)?.data).toEqual(content)
+    const readReply = ws.sent.find((m) => m.op === (OP.READ | 128))
+    expect(readReply).toMatchObject({ id: 50, session: 123, flags: 0, offset, length: MAX_IO })
+    expect(readReply?.data).toEqual(content)
+    const writeReplies = () => ws.sent.filter((m) => m.op === (OP.WRITE | 128))
     ws.receive({ ...request(OP.WRITE, 51), offset, length: MAX_IO, data: content })
-    await tick()
+    await vi.advanceTimersByTimeAsync(0)
     expect(write).toHaveBeenCalledWith(offset, content)
-    expect(ws.sent.at(-1)?.op).toBe(OP.READ | 128)
+    expect(writeReplies()).toHaveLength(0)
+    // A keepalive may be the newest frame while storage is still committing.
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(ws.sent.at(-1)?.op).toBe(OP.HEARTBEAT)
+    expect(writeReplies()).toHaveLength(0)
     commit()
-    await tick()
-    expect(ws.sent.at(-1)).toMatchObject({ op: OP.WRITE | 128, flags: 0, offset, length: MAX_IO })
-    expect(ws.sent.at(-1)?.data).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(0)
+    // And another heartbeat may follow the ACK before the assertion runs.
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(ws.sent.at(-1)?.op).toBe(OP.HEARTBEAT)
+    expect(writeReplies()).toHaveLength(1)
+    expect(writeReplies()[0]).toMatchObject({ id: 51, session: 123, flags: 0, offset, length: MAX_IO })
+    expect(writeReplies()[0]?.data).toHaveLength(0)
     expect(c.live).toBe(true)
   })
   it('refuses disk requests and outgoing controls above a legacy ceiling without accessing storage', async () => {

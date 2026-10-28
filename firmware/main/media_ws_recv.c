@@ -94,12 +94,22 @@ int media_ws_recv_after_tls_recv(int fd)
 
 int media_ws_recv_begin(httpd_req_t *req)
 {
+    return media_ws_recv_begin_until(req, 0);
+}
+
+int media_ws_recv_begin_until(httpd_req_t *req, int64_t deadline)
+{
     if (frame.req || !req || !req->handle)
         return HTTPD_SOCK_ERR_INVALID;
     int fd = httpd_req_to_sockfd(req);
     if (fd < 0 || httpd_ws_get_fd_info(req->handle, fd) != HTTPD_WS_CLIENT_WEBSOCKET)
         return HTTPD_SOCK_ERR_INVALID;
     int64_t started = esp_timer_get_time();
+    if (deadline && deadline <= started) {
+        atomic_fetch_add(&frame_timeouts, 1);
+        errno = ETIMEDOUT;
+        return HTTPD_SOCK_ERR_TIMEOUT;
+    }
     struct timeval original;
     socklen_t option_length = sizeof(original);
     if (getsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &original, &option_length) != 0 ||
@@ -108,6 +118,8 @@ int media_ws_recv_begin(httpd_req_t *req)
     frame.req = req;
     frame.fd = fd;
     frame.deadline = started + FRAME_BUDGET_US;
+    if (deadline && deadline < frame.deadline)
+        frame.deadline = deadline;
     frame.original = original;
     return 0;
 }

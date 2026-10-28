@@ -5,8 +5,23 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define MEDIA_WS_PREFIX 4
+#define MEDIA_WS_PREFIX 10
 #define MEDIA_WS_MAX_PAYLOAD (MEDIA_HEADER + MEDIA_MAX_IO)
+#define MEDIA_WS_MESSAGE_TIMEOUT_US INT64_C(10000000)
+#define MEDIA_WS_MAX_FRAGMENTS 64
+/* Bound TLS encryption scratch space independently of the disk request size. */
+#define MEDIA_WS_SEND_CHUNK 4096
+typedef struct {
+    size_t length;
+    unsigned fragments;
+    int64_t deadline;
+    bool active;
+} media_ws_message_t;
+/* Validate and reserve a binary/continuation fragment before receiving it.
+ * Caller writes at the previous length (or zero for a new message). Bounded
+ * total size, fragment count and deadline apply to the whole message. */
+bool media_ws_message_accept(media_ws_message_t *message, uint8_t opcode, bool final,
+                             size_t length, size_t capacity, int64_t now);
 typedef int (*media_ws_send_fn)(void *context, const uint8_t *data, size_t length);
 
 /* Payload begins at buffer + MEDIA_WS_PREFIX. The buffer must hold that prefix

@@ -11,6 +11,9 @@
  * Scope is local to this HTTP task and request/socket; HTTP and pending-only
  * receives retain their original behavior and socket timeout. */
 int media_ws_recv_begin(httpd_req_t *req);
+/* Continuation frames share their message's original absolute deadline.
+ * Zero selects the normal 10s frame budget. */
+int media_ws_recv_begin_until(httpd_req_t *req, int64_t deadline);
 int media_ws_recv_end(httpd_req_t *req);
 uint32_t media_ws_recv_frame_timeouts(void);
 
